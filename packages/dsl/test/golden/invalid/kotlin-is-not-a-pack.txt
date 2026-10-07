@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:2:10  error[unknown-pack]  Unknown pack 'kotlin'.
+  2 | use jvm, kotlin
+    |          ^^^^^^
+  expected: an installed pack: 'jvm', 'lintonly'
+  fix: 'kotlin.*' rules come from the 'jvm' pack. Write `use jvm`.
+  available: jvm, lintonly

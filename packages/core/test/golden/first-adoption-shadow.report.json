@@ -1,0 +1,236 @@
+{
+  "agent": {},
+  "checks": [
+    {
+      "advisory": false,
+      "check": "build",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "assemble"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "assemble.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 12,
+        "file": ".gauntlet/policy.gx",
+        "line": 15,
+        "text": "fast   { build, lint ratchet }"
+      },
+      "status": "passed",
+      "tier": "fast"
+    },
+    {
+      "advisory": false,
+      "check": "lint",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "detekt"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "detekt.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 19,
+        "file": ".gauntlet/policy.gx",
+        "line": 15,
+        "text": "fast   { build, lint ratchet }"
+      },
+      "status": "passed",
+      "tier": "fast"
+    },
+    {
+      "advisory": false,
+      "check": "mutation",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "pitest"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "pitest.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 18,
+        "file": ".gauntlet/policy.gx",
+        "line": 16,
+        "text": "verify { unit, mutation ratchet on changed }"
+      },
+      "status": "passed",
+      "tier": "verify"
+    },
+    {
+      "advisory": false,
+      "check": "unit",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "test"
+        ],
+        "executed": 42,
+        "exitCode": 0,
+        "reports": {
+          "test.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 12,
+        "file": ".gauntlet/policy.gx",
+        "line": 16,
+        "text": "verify { unit, mutation ratchet on changed }"
+      },
+      "status": "passed",
+      "tests": {
+        "errored": 0,
+        "executed": 42,
+        "failed": 0,
+        "passed": 42,
+        "skipped": 0
+      },
+      "tier": "verify"
+    },
+    {
+      "advisory": false,
+      "check": "trade-holdout",
+      "reason": "holdout pending: holdouts run only in CI",
+      "source": {
+        "column": 15,
+        "file": ".gauntlet/policy.gx",
+        "line": 17,
+        "text": "behaviour { trade-holdout }"
+      },
+      "status": "not-executed",
+      "tier": "behaviour"
+    }
+  ],
+  "decision": {
+    "blocking": false,
+    "mode": "shadow",
+    "nominations": [
+      {
+        "blocking": false,
+        "reason": "1 caution signal (reviewer) raised the tier one step.",
+        "rule": "caution",
+        "tier": "owner"
+      },
+      {
+        "blocking": false,
+        "reason": "The integrity check 'assertions per test' was not executed.",
+        "rule": "integrity-not-executed",
+        "tier": "review"
+      },
+      {
+        "blocking": false,
+        "reason": "The integrity check 'mocks of class under test' was not executed.",
+        "rule": "integrity-not-executed",
+        "tier": "review"
+      },
+      {
+        "blocking": false,
+        "reason": "trade-holdout was not executed: holdout pending: holdouts run only in CI",
+        "rule": "missing-evidence",
+        "source": {
+          "column": 15,
+          "file": ".gauntlet/policy.gx",
+          "line": 17,
+          "text": "behaviour { trade-holdout }"
+        },
+        "tier": "review"
+      },
+      {
+        "blocking": false,
+        "reason": "No review rule matched, so the change needs review.",
+        "rule": "no-rule-matched",
+        "tier": "review"
+      }
+    ],
+    "overrides": [],
+    "owners": [],
+    "tier": "owner",
+    "wouldBlock": false
+  },
+  "facts": {
+    "budgetsChanged": [],
+    "dependencyChanges": [],
+    "files": [],
+    "gauntletChanged": false,
+    "linesChanged": 12,
+    "protectedTouched": [],
+    "zonesTouched": []
+  },
+  "gauntletVersion": "0.1.0",
+  "imports": [
+    {
+      "new": [
+        {
+          "baselineState": "new",
+          "message": {
+            "text": "Branch only taken under test"
+          },
+          "properties": {
+            "gauntlet": {
+              "caution": true
+            }
+          },
+          "ruleId": "llm/special-case"
+        }
+      ],
+      "source": "reviewer",
+      "total": 2,
+      "trust": "caution"
+    }
+  ],
+  "integrity": {
+    "findings": [],
+    "notExecuted": [
+      "assertions-per-test",
+      "mocks-of-class-under-test"
+    ]
+  },
+  "notExecuted": [
+    {
+      "what": "behaviour: trade-holdout",
+      "why": "holdout pending: holdouts run only in CI"
+    },
+    {
+      "what": "integrity: assertions per test",
+      "why": "no used pack implements it, or it had no data"
+    },
+    {
+      "what": "integrity: mocks of class under test",
+      "why": "no used pack implements it, or it had no data"
+    }
+  ],
+  "policy": {
+    "baseSha": "1111111111111111111111111111111111111111",
+    "drift": [
+      {
+        "change": "added",
+        "path": ".gauntlet/policy.gx"
+      }
+    ],
+    "firstAdoption": true,
+    "headSha": "2222222222222222222222222222222222222222",
+    "irHash": "e2dfb6cfa3465bc4a198e01cdab13e2f0a25e2fc449a7b36fa4adbf54a0c2be9",
+    "mode": "shadow",
+    "notes": [
+      "111111111111 has no .gauntlet/policy.gx, so this change adopts Gauntlet. Its own policy is used, in shadow mode."
+    ],
+    "origin": "working-copy",
+    "owners": [
+      "@platform"
+    ]
+  },
+  "ratchets": [],
+  "remediation": [],
+  "schemaVersion": 1,
+  "violations": []
+}

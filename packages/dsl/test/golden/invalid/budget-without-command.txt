@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:8  error[budget-without-command]  Budget 'api' has no command, so nothing can be measured.
+  4 | budget api {
+    |        ^^^
+  expected: a `command` line inside the budget
+  fix: Add a line such as: command "./perf/run.sh"

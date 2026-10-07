@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:18  error[wrong-direction]  Higher 'coverage' is better, so the threshold is a minimum.
+  4 | gates { verify { coverage <= 90% } }
+    |                  ^^^^^^^^^^^^^^^
+  expected: '>=' or '>'
+  fix: Write: coverage >= 90%

@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:6  error[zone-without-paths]  Zone 'money' has no paths, so it can never be touched.
+  6 | zone money { owner @payments }
+    |      ^^^^^
+  expected: a `paths` line inside the zone
+  fix: Add a line such as: paths "src/**/money/**"

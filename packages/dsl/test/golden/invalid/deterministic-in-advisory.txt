@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:35  error[deterministic-check-in-advisory]  'lint' is deterministic evidence; the advisory tier only holds caution-only checks.
+  4 | gates { fast { build } advisory { lint } }
+    |                                   ^^^^
+  expected: `llm review x<N>`
+  fix: Move 'lint' to a required tier so it can fail the change.

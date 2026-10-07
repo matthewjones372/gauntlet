@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:1:1  error[missing-header]  A policy must start with `gauntlet "<name>"` but found 'use'.
+  1 | use jvm
+    | ^^^
+  expected: 'gauntlet'
+  fix: Add a first line such as: gauntlet "my-service"

@@ -1,0 +1,34 @@
+gauntlet "kotlin-service"
+use jvm
+mode enforce
+owners @maintainers
+
+protect {
+  tests    "src/test/**"
+  config   "*.gradle.kts", "gradle/**", "settings.gradle.kts", ".github/workflows/**"
+  fixtures "src/test/resources/**"
+}
+
+arch {
+  module domain must not depend on infra, web
+}
+
+suites {
+  unit "src/test/**"
+}
+
+gates {
+  fast   { build, lint ratchet, arch ratchet }
+  verify { unit, mutation ratchet >= 80% on changed, coverage >= 90% on changed }
+}
+
+on fail mutation { fix "Kill the surviving mutants listed in the report by adding assertions. Do not delete or weaken tests." }
+on fail coverage { fix "Add tests for the uncovered changed lines listed in the report." }
+
+predicate small = diff < 150 lines and no zone touched
+
+review {
+  review when protected changed
+  review when dependency added
+  auto   when small and all gates pass
+}

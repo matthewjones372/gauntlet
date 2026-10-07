@@ -1,0 +1,4 @@
+gauntlet "x"
+use jvm
+owners @platform
+gates { verify { coverage <= 90% } }

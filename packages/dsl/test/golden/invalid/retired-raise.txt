@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:7:3  error[retired-syntax]  `raise` was removed: every rule nominates a tier and the most cautious one wins, so a relative raise has no meaning.
+  7 |   raise when evidence missing
+    |   ^^^^^
+  expected: `owner`, `review`, `skim` or `auto`
+  fix: Write `review when ...`. Missing evidence already nominates review, so `raise when evidence missing` can simply be deleted.

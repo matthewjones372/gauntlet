@@ -1,0 +1,5 @@
+gauntlet "x"
+use lintonly
+owners @p
+suites { unit "src/test/**" }
+gates { verify { unit } }

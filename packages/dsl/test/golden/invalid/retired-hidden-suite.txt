@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:5:3  error[retired-syntax]  `hidden ... from env` was replaced by holdout suites.
+  5 |   hidden "holdout" from env HARNESS_HOLDOUT
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  expected: `holdout "<name>" ci only`
+  fix: Write: holdout "holdout" ci only

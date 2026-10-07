@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:4:18  error[unknown-gate]  Unknown gate 'mutaton'.
+  4 | gates { verify { mutaton ratchet } }
+    |                  ^^^^^^^^^^^^^^^
+  expected: a gate from a used pack, or a suite declared in `suites`
+  fix: Did you mean 'mutation'?
+  available: build, lint, arch, mutation, coverage

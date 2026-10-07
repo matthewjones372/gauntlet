@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:6  error[reserved-word]  'review' is a reserved word and can't be used as a name.
+  4 | zone review { paths "a/**" }
+    |      ^^^^^^
+  expected: a name
+  fix: Choose a different name.

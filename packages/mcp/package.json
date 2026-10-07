@@ -1,0 +1,22 @@
+{
+  "name": "@gauntlet/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "bun scripts/generate.ts"
+  },
+  "dependencies": {
+    "@gauntlet/author": "workspace:*",
+    "@gauntlet/core": "workspace:*",
+    "@gauntlet/dsl": "workspace:*",
+    "@gauntlet/ir": "workspace:*",
+    "effect": "4.0.1"
+  },
+  "devDependencies": {
+    "@gauntlet/pack-jvm": "workspace:*"
+  }
+}

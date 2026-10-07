@@ -1,0 +1,5 @@
+gauntlet "x"
+use jvm
+owners @platform
+suites { unit "src/test/**" }
+gates { verify { unit, coverage >= 90 pct } }

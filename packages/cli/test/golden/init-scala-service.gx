@@ -1,0 +1,39 @@
+// Drafted by `gauntlet init` from the scala pack defaults and this repository's layout.
+// Read every block before committing it: this file decides what agents' changes must pass.
+gauntlet "scala-service"
+use scala
+mode shadow // report only, never block. Switch to enforce once `gauntlet report shadow` looks right.
+owners @platform
+
+protect {
+  tests  "src/test/**"
+  config "*.sbt", "project/**"
+}
+
+// Zones mark code that needs its owners' review, and scope stricter rules to it:
+// zone money {
+//   paths "src/**/payments/**"
+//   owner @payments
+// }
+
+// Lower layers never import higher ones:
+// arch { module domain must not depend on infra }
+
+suites {
+  unit "src/test/**"
+}
+
+// Ratchets keep each file from getting worse; the floors apply to new and changed lines only, so old code doesn't block a change.
+gates {
+  fast   { build, lint ratchet }
+  verify { unit, coverage ratchet >= 80% on changed, mutation ratchet >= 60% on changed }
+}
+
+predicate small = diff < 150 lines and no zone touched
+
+review {
+  owner  when zone touched
+  review when protected changed
+  review when dependency added
+  auto   when small and all gates pass
+}

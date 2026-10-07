@@ -1,0 +1,9 @@
+# protect config
+*.gradle.kts @platform
+/gradle/ @platform
+# protect tests
+/src/test/ @platform
+# zone money
+/src/main/kotlin/svc/settlement/ @payments
+# The policy, its baseline and self-tests need a policy owner.
+/.gauntlet/ @platform

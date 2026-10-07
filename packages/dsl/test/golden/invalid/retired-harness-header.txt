@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:1:1  error[retired-syntax]  The `harness` header was renamed.
+  1 | harness "x"
+    | ^^^^^^^
+  expected: `gauntlet "<name>"`
+  fix: Write: gauntlet "x"

@@ -1,0 +1,16 @@
+{
+  "name": "@gauntlet/templates",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "bun scripts/generate.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "@gauntlet/dsl": "workspace:*",
+    "@gauntlet/pack-jvm": "workspace:*"
+  }
+}

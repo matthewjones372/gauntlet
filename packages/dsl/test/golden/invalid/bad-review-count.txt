@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:46  error[bad-review-count]  'three' isn't a review count.
+  4 | gates { fast { build } advisory { llm review three } }
+    |                                              ^^^^^
+  expected: x followed by a number, such as x3
+  fix: Write the number of independent reviews as x<N>, for example: llm review x3

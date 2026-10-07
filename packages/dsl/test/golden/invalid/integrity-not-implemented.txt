@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:10  error[integrity-not-implemented]  No used pack implements the 'new skips' check, so it could never produce evidence.
+  6 |   forbid new skips
+    |          ^^^^^^^^^
+  expected: an integrity check implemented by a used pack
+  fix: Remove 'new skips', or use a pack that implements it.

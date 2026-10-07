@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:7:10  error[unknown-integrity-check]  Unknown forbid check 'new skipz'.
+  7 |   forbid new skipz
+    |          ^^^^^^^^^
+  expected: one of 'deleted tests', 'weakened assertions', 'new skips', 'new suppressions', 'test refs in main', 'exit in tests', 'added retries'
+  fix: Did you mean 'new skips'?
+  available: deleted tests, weakened assertions, new skips, new suppressions, test refs in main, exit in tests, added retries

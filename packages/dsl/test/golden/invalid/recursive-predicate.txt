@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:15  error[recursive-predicate]  Predicate 'a' refers to itself.
+  6 | predicate a = a and all gates pass
+    |               ^
+  expected: conditions or earlier predicates
+  fix: Remove 'a' from its own definition.

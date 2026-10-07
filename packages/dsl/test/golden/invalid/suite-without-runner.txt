@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:5:18  error[no-suite-runner]  Suite 'unit' needs a pack that runs test suites, and no used pack does.
+  5 | gates { verify { unit } }
+    |                  ^^^^
+  expected: a used pack that runs suites
+  fix: Add `use jvm`.

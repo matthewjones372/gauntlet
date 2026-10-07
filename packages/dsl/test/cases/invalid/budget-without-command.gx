@@ -1,0 +1,7 @@
+gauntlet "x"
+use jvm
+owners @platform
+budget api {
+  p99 < 50ms
+}
+gates { fast { build } perf { budget api } }

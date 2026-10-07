@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:1:10  error[expected-string]  Expected a quoted string at the top level but found 'payments'.
+  1 | gauntlet payments
+    |          ^^^^^^^^
+  expected: a quoted string
+  fix: Put it in double quotes: "payments"

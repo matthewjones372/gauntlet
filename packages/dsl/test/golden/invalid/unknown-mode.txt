@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:4:6  error[unknown-mode]  Unknown mode 'lax'.
+  4 | mode lax
+    |      ^^^
+  expected: 'shadow' or 'enforce'
+  fix: Use `mode shadow` to report only, or `mode enforce` to block on failure.
+  available: shadow, enforce

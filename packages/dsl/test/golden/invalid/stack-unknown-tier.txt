@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:7:35  error[unknown-tier]  Unknown review tier 'high'.
+  7 |   review stack when cumulative >= high
+    |                                   ^^^^
+  expected: one of 'auto', 'skim', 'review', 'owner'
+  fix: Use one of 'auto', 'skim', 'review', 'owner'.
+  available: auto, skim, review, owner

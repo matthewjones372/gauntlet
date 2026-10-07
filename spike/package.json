@@ -1,0 +1,22 @@
+{
+  "name": "spike",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "langium-cli": "^4.4.0"
+  },
+  "peerDependencies": {
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@effect/ai-anthropic": "^4.0.1",
+    "@effect/platform-bun": "^4.0.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "effect": "^4.0.1",
+    "langium": "^4.4.0",
+    "web-tree-sitter": "^0.27.0",
+    "zod": "^4.6.5"
+  }
+}

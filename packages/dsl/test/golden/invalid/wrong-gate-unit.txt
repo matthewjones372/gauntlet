@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:4:18  error[wrong-unit]  'coverage' is measured in '%', so '90ms' can't apply.
+  4 | gates { verify { coverage >= 90ms } }
+    |                  ^^^^^^^^^^^^^^^^
+  expected: a unit from '%'
+  fix: Write the amount with a unit, for example 90%.
+  available: %

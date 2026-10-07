@@ -1,0 +1,12 @@
+.gauntlet/policy.gx:6:1  warning[unused-predicate]  Predicate 'small' is never used.
+  6 | predicate small = diff < 150 lines
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  expected: a rule that uses it
+  fix: Use it in a review rule, or remove it.
+
+.gauntlet/policy.gx:8:13  error[unknown-predicate]  'smal' is neither a predicate nor a condition.
+  8 |   auto when smal and all gates pass
+    |             ^^^^
+  expected: a predicate ('small') or a condition such as 'zone touched', 'no zone touched', 'protected changed'
+  fix: Did you mean 'small'?
+  available: small, zone touched, no zone touched, protected changed, dependency added, budget changed, evidence missing, all gates pass

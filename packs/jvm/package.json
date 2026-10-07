@@ -1,0 +1,21 @@
+{
+  "name": "@gauntlet/pack-jvm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@gauntlet/core": "workspace:*",
+    "@gauntlet/dsl": "workspace:*",
+    "@gauntlet/ir": "workspace:*",
+    "@gauntlet/sarif": "workspace:*",
+    "effect": "4.0.1",
+    "fast-xml-parser": "5.11.2",
+    "@gauntlet/syntax": "workspace:*"
+  },
+  "devDependencies": {
+    "@effect/platform-bun": "4.0.1"
+  }
+}

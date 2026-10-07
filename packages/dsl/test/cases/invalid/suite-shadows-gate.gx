@@ -1,0 +1,5 @@
+gauntlet "x"
+use jvm
+owners @platform
+suites { lint "src/lint/**" }
+gates { fast { build } }

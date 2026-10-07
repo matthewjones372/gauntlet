@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:1:10  error[unterminated-string]  This string is never closed.
+  1 | gauntlet "x
+    |          ^
+  expected: a name, a quoted string, a number, an owner such as @team, or one of { } ( ) , . < <= > >= == != -> %
+  fix: Add a closing " on the same line. Strings cannot span lines.

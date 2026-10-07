@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:10  error[suite-shadows-gate]  Suite 'lint' has the same name as a gate from pack 'jvm'.
+  4 | suites { lint "src/lint/**" }
+    |          ^^^^
+  expected: a suite name that isn't a gate name
+  fix: Rename the suite, for example 'lint-tests'.

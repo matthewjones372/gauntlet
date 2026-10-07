@@ -1,0 +1,411 @@
+{
+  "file": ".gauntlet/policy.gx",
+  "nodes": {
+    "": {
+      "line": 1,
+      "column": 10,
+      "endLine": 1,
+      "endColumn": 27,
+      "text": "gauntlet \"trade-reporting\""
+    },
+    "/protect/0": {
+      "line": 8,
+      "column": 3,
+      "endLine": 8,
+      "endColumn": 9,
+      "text": "config   \"*.gradle.kts\", \"gradle/**\", \".github/workflows/**\""
+    },
+    "/protect/1": {
+      "line": 9,
+      "column": 3,
+      "endLine": 9,
+      "endColumn": 11,
+      "text": "fixtures \"src/test/resources/golden/**\""
+    },
+    "/protect/3": {
+      "line": 7,
+      "column": 3,
+      "endLine": 7,
+      "endColumn": 8,
+      "text": "tests    \"src/test/**\", \"src/acceptance/**\""
+    },
+    "/zones/0": {
+      "line": 12,
+      "column": 6,
+      "endLine": 12,
+      "endColumn": 11,
+      "text": "zone money {"
+    },
+    "/arch/0": {
+      "line": 18,
+      "column": 8,
+      "endLine": 18,
+      "endColumn": 46,
+      "text": "arch { module domain must not depend on infra }"
+    },
+    "/suites/0": {
+      "line": 22,
+      "column": 3,
+      "endLine": 22,
+      "endColumn": 13,
+      "text": "acceptance \"src/acceptance/**\""
+    },
+    "/suites/1": {
+      "line": 23,
+      "column": 14,
+      "endLine": 23,
+      "endColumn": 29,
+      "text": "holdout    \"trade-holdout\" ci only"
+    },
+    "/suites/2": {
+      "line": 21,
+      "column": 3,
+      "endLine": 21,
+      "endColumn": 7,
+      "text": "unit       \"src/test/**\""
+    },
+    "/budgets/0": {
+      "line": 34,
+      "column": 8,
+      "endLine": 34,
+      "endColumn": 14,
+      "text": "budget ingest {"
+    },
+    "/budgets/0/thresholds/0": {
+      "line": 37,
+      "column": 3,
+      "endLine": 37,
+      "endColumn": 16,
+      "text": "errors < 0.1%"
+    },
+    "/budgets/0/thresholds/1": {
+      "line": 36,
+      "column": 3,
+      "endLine": 36,
+      "endColumn": 13,
+      "text": "p99 < 50ms"
+    },
+    "/budgets/0/thresholds/2": {
+      "line": 38,
+      "column": 3,
+      "endLine": 38,
+      "endColumn": 30,
+      "text": "regression < 5% vs baseline"
+    },
+    "/gates/0": {
+      "line": 42,
+      "column": 3,
+      "endLine": 42,
+      "endColumn": 7,
+      "text": "fast      { build, lint, arch ratchet }"
+    },
+    "/gates/0/checks/0": {
+      "line": 42,
+      "column": 28,
+      "endLine": 42,
+      "endColumn": 40,
+      "text": "fast      { build, lint, arch ratchet }"
+    },
+    "/gates/0/checks/1": {
+      "line": 42,
+      "column": 15,
+      "endLine": 42,
+      "endColumn": 20,
+      "text": "fast      { build, lint, arch ratchet }"
+    },
+    "/gates/0/checks/2": {
+      "line": 42,
+      "column": 22,
+      "endLine": 42,
+      "endColumn": 26,
+      "text": "fast      { build, lint, arch ratchet }"
+    },
+    "/gates/1": {
+      "line": 43,
+      "column": 3,
+      "endLine": 43,
+      "endColumn": 9,
+      "text": "verify    { unit, mutation ratchet on changed, coverage >= 90% on changed in zone money }"
+    },
+    "/gates/1/checks/0": {
+      "line": 43,
+      "column": 50,
+      "endLine": 43,
+      "endColumn": 90,
+      "text": "verify    { unit, mutation ratchet on changed, coverage >= 90% on changed in zone money }"
+    },
+    "/gates/1/checks/1": {
+      "line": 43,
+      "column": 21,
+      "endLine": 43,
+      "endColumn": 48,
+      "text": "verify    { unit, mutation ratchet on changed, coverage >= 90% on changed in zone money }"
+    },
+    "/gates/1/checks/2": {
+      "line": 43,
+      "column": 15,
+      "endLine": 43,
+      "endColumn": 19,
+      "text": "verify    { unit, mutation ratchet on changed, coverage >= 90% on changed in zone money }"
+    },
+    "/gates/2": {
+      "line": 44,
+      "column": 3,
+      "endLine": 44,
+      "endColumn": 12,
+      "text": "behaviour { acceptance, trade-holdout }"
+    },
+    "/gates/2/checks/0": {
+      "line": 44,
+      "column": 27,
+      "endLine": 44,
+      "endColumn": 40,
+      "text": "behaviour { acceptance, trade-holdout }"
+    },
+    "/gates/2/checks/1": {
+      "line": 44,
+      "column": 15,
+      "endLine": 44,
+      "endColumn": 25,
+      "text": "behaviour { acceptance, trade-holdout }"
+    },
+    "/gates/3": {
+      "line": 45,
+      "column": 3,
+      "endLine": 45,
+      "endColumn": 7,
+      "text": "perf      { budget ingest }"
+    },
+    "/gates/3/checks/0": {
+      "line": 45,
+      "column": 15,
+      "endLine": 45,
+      "endColumn": 28,
+      "text": "perf      { budget ingest }"
+    },
+    "/gates/4": {
+      "line": 46,
+      "column": 3,
+      "endLine": 46,
+      "endColumn": 11,
+      "text": "advisory  { llm review x3 }"
+    },
+    "/gates/4/checks/0": {
+      "line": 46,
+      "column": 15,
+      "endLine": 46,
+      "endColumn": 28,
+      "text": "advisory  { llm review x3 }"
+    },
+    "/remediation/0": {
+      "line": 49,
+      "column": 1,
+      "endLine": 49,
+      "endColumn": 127,
+      "text": "on fail mutation { fix \"Add assertions that kill the surviving mutants listed in the report. Do not delete or weaken tests.\" }"
+    },
+    "/imports/0": {
+      "line": 32,
+      "column": 8,
+      "endLine": 32,
+      "endColumn": 15,
+      "text": "import semgrep { command \"semgrep scan --sarif --output {sarif}\" }"
+    },
+    "/predicates/0": {
+      "line": 51,
+      "column": 1,
+      "endLine": 51,
+      "endColumn": 55,
+      "text": "predicate small = diff < 150 lines and no zone touched"
+    },
+    "/predicates/0/conditions/0": {
+      "line": 51,
+      "column": 19,
+      "endLine": 51,
+      "endColumn": 35,
+      "text": "predicate small = diff < 150 lines and no zone touched"
+    },
+    "/predicates/0/conditions/1": {
+      "line": 51,
+      "column": 40,
+      "endLine": 51,
+      "endColumn": 55,
+      "text": "predicate small = diff < 150 lines and no zone touched"
+    },
+    "/review/0": {
+      "line": 58,
+      "column": 3,
+      "endLine": 58,
+      "endColumn": 39,
+      "text": "auto   when small and all gates pass"
+    },
+    "/review/0/conditions/0": {
+      "line": 58,
+      "column": 25,
+      "endLine": 58,
+      "endColumn": 39,
+      "text": "auto   when small and all gates pass"
+    },
+    "/review/0/conditions/1": {
+      "line": 58,
+      "column": 15,
+      "endLine": 58,
+      "endColumn": 20,
+      "text": "auto   when small and all gates pass"
+    },
+    "/review/1": {
+      "line": 57,
+      "column": 3,
+      "endLine": 57,
+      "endColumn": 29,
+      "text": "review when budget changed"
+    },
+    "/review/1/conditions/0": {
+      "line": 57,
+      "column": 15,
+      "endLine": 57,
+      "endColumn": 29,
+      "text": "review when budget changed"
+    },
+    "/review/2": {
+      "line": 56,
+      "column": 3,
+      "endLine": 56,
+      "endColumn": 31,
+      "text": "review when dependency added"
+    },
+    "/review/2/conditions/0": {
+      "line": 56,
+      "column": 15,
+      "endLine": 56,
+      "endColumn": 31,
+      "text": "review when dependency added"
+    },
+    "/review/3": {
+      "line": 55,
+      "column": 3,
+      "endLine": 55,
+      "endColumn": 32,
+      "text": "review when protected changed"
+    },
+    "/review/3/conditions/0": {
+      "line": 55,
+      "column": 15,
+      "endLine": 55,
+      "endColumn": 32,
+      "text": "review when protected changed"
+    },
+    "/review/4": {
+      "line": 54,
+      "column": 3,
+      "endLine": 54,
+      "endColumn": 27,
+      "text": "owner  when zone touched"
+    },
+    "/review/4/conditions/0": {
+      "line": 54,
+      "column": 15,
+      "endLine": 54,
+      "endColumn": 27,
+      "text": "owner  when zone touched"
+    },
+    "/stack": {
+      "line": 61,
+      "column": 1,
+      "endLine": 61,
+      "endColumn": 6,
+      "text": "stack {"
+    },
+    "/stack/layers/0": {
+      "line": 64,
+      "column": 9,
+      "endLine": 64,
+      "endColumn": 16,
+      "text": "layer feature { acceptance red -> green }"
+    },
+    "/stack/layers/0/properties/0": {
+      "line": 64,
+      "column": 19,
+      "endLine": 64,
+      "endColumn": 42,
+      "text": "layer feature { acceptance red -> green }"
+    },
+    "/stack/layers/1": {
+      "line": 63,
+      "column": 9,
+      "endLine": 63,
+      "endColumn": 18,
+      "text": "layer migration { additive, reversible }"
+    },
+    "/stack/layers/1/properties/0": {
+      "line": 63,
+      "column": 21,
+      "endLine": 63,
+      "endColumn": 29,
+      "text": "layer migration { additive, reversible }"
+    },
+    "/stack/layers/1/properties/1": {
+      "line": 63,
+      "column": 31,
+      "endLine": 63,
+      "endColumn": 41,
+      "text": "layer migration { additive, reversible }"
+    },
+    "/stack/layers/2": {
+      "line": 62,
+      "column": 9,
+      "endLine": 62,
+      "endColumn": 17,
+      "text": "layer refactor { tests unchanged, results unchanged, perf unchanged }"
+    },
+    "/stack/layers/2/properties/0": {
+      "line": 62,
+      "column": 56,
+      "endLine": 62,
+      "endColumn": 70,
+      "text": "layer refactor { tests unchanged, results unchanged, perf unchanged }"
+    },
+    "/stack/layers/2/properties/1": {
+      "line": 62,
+      "column": 37,
+      "endLine": 62,
+      "endColumn": 54,
+      "text": "layer refactor { tests unchanged, results unchanged, perf unchanged }"
+    },
+    "/stack/layers/2/properties/2": {
+      "line": 62,
+      "column": 20,
+      "endLine": 62,
+      "endColumn": 35,
+      "text": "layer refactor { tests unchanged, results unchanged, perf unchanged }"
+    },
+    "/stack/layers/3": {
+      "line": 65,
+      "column": 9,
+      "endLine": 65,
+      "endColumn": 15,
+      "text": "layer wiring { touches config, di only }"
+    },
+    "/stack/layers/3/properties/0": {
+      "line": 65,
+      "column": 34,
+      "endLine": 65,
+      "endColumn": 41,
+      "text": "layer wiring { touches config, di only }"
+    },
+    "/stack/layers/3/properties/1": {
+      "line": 65,
+      "column": 18,
+      "endLine": 65,
+      "endColumn": 32,
+      "text": "layer wiring { touches config, di only }"
+    },
+    "/stack/reviewStackWhen": {
+      "line": 67,
+      "column": 3,
+      "endLine": 67,
+      "endColumn": 41,
+      "text": "review stack when cumulative >= review"
+    }
+  }
+}

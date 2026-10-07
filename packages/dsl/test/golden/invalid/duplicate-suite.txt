@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:3  error[duplicate-suite]  Suite 'unit' is declared more than once.
+  6 |   unit "src/other/**"
+    |   ^^^^
+  expected: unique suite names
+  fix: Remove one of the 'unit' suites or rename it.

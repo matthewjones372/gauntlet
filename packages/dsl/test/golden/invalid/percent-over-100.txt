@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:18  error[percent-out-of-range]  120% is more than 100%.
+  4 | gates { verify { coverage >= 120% } }
+    |                  ^^^^^^^^^^^^^^^^
+  expected: a percentage between 0 and 100
+  fix: Use a value between 0% and 100%.

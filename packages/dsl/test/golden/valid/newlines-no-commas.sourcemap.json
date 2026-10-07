@@ -1,0 +1,180 @@
+{
+  "file": ".gauntlet/policy.gx",
+  "nodes": {
+    "": {
+      "line": 2,
+      "column": 10,
+      "endLine": 2,
+      "endColumn": 20,
+      "text": "gauntlet \"newlines\""
+    },
+    "/protect/0": {
+      "line": 10,
+      "column": 3,
+      "endLine": 10,
+      "endColumn": 9,
+      "text": "config \"*.gradle.kts\""
+    },
+    "/protect/2": {
+      "line": 8,
+      "column": 3,
+      "endLine": 8,
+      "endColumn": 8,
+      "text": "tests \"src/test/**\""
+    },
+    "/zones/0": {
+      "line": 13,
+      "column": 6,
+      "endLine": 13,
+      "endColumn": 11,
+      "text": "zone money {"
+    },
+    "/suites/0": {
+      "line": 21,
+      "column": 3,
+      "endLine": 21,
+      "endColumn": 13,
+      "text": "acceptance \"src/acceptance/**\""
+    },
+    "/suites/1": {
+      "line": 20,
+      "column": 3,
+      "endLine": 20,
+      "endColumn": 7,
+      "text": "unit \"src/test/**\""
+    },
+    "/gates/0": {
+      "line": 31,
+      "column": 3,
+      "endLine": 31,
+      "endColumn": 7,
+      "text": "fast {"
+    },
+    "/gates/0/checks/0": {
+      "line": 32,
+      "column": 5,
+      "endLine": 32,
+      "endColumn": 10,
+      "text": "build"
+    },
+    "/gates/0/checks/1": {
+      "line": 33,
+      "column": 5,
+      "endLine": 33,
+      "endColumn": 17,
+      "text": "lint ratchet"
+    },
+    "/gates/1": {
+      "line": 35,
+      "column": 3,
+      "endLine": 35,
+      "endColumn": 9,
+      "text": "verify {"
+    },
+    "/gates/1/checks/0": {
+      "line": 37,
+      "column": 5,
+      "endLine": 37,
+      "endColumn": 31,
+      "text": "coverage >= 80% on changed"
+    },
+    "/gates/1/checks/1": {
+      "line": 36,
+      "column": 5,
+      "endLine": 36,
+      "endColumn": 9,
+      "text": "unit"
+    },
+    "/predicates/0": {
+      "line": 41,
+      "column": 1,
+      "endLine": 41,
+      "endColumn": 54,
+      "text": "predicate tiny = diff <= 20 lines and no zone touched"
+    },
+    "/predicates/0/conditions/0": {
+      "line": 41,
+      "column": 18,
+      "endLine": 41,
+      "endColumn": 34,
+      "text": "predicate tiny = diff <= 20 lines and no zone touched"
+    },
+    "/predicates/0/conditions/1": {
+      "line": 41,
+      "column": 39,
+      "endLine": 41,
+      "endColumn": 54,
+      "text": "predicate tiny = diff <= 20 lines and no zone touched"
+    },
+    "/review/0": {
+      "line": 46,
+      "column": 3,
+      "endLine": 46,
+      "endColumn": 48,
+      "text": "skim when diff < 300 lines and all gates pass"
+    },
+    "/review/0/conditions/0": {
+      "line": 46,
+      "column": 34,
+      "endLine": 46,
+      "endColumn": 48,
+      "text": "skim when diff < 300 lines and all gates pass"
+    },
+    "/review/0/conditions/1": {
+      "line": 46,
+      "column": 13,
+      "endLine": 46,
+      "endColumn": 29,
+      "text": "skim when diff < 300 lines and all gates pass"
+    },
+    "/review/1": {
+      "line": 47,
+      "column": 3,
+      "endLine": 47,
+      "endColumn": 36,
+      "text": "auto when tiny and all gates pass"
+    },
+    "/review/1/conditions/0": {
+      "line": 47,
+      "column": 22,
+      "endLine": 47,
+      "endColumn": 36,
+      "text": "auto when tiny and all gates pass"
+    },
+    "/review/1/conditions/1": {
+      "line": 47,
+      "column": 13,
+      "endLine": 47,
+      "endColumn": 17,
+      "text": "auto when tiny and all gates pass"
+    },
+    "/review/2": {
+      "line": 45,
+      "column": 3,
+      "endLine": 45,
+      "endColumn": 32,
+      "text": "review when protected changed"
+    },
+    "/review/2/conditions/0": {
+      "line": 45,
+      "column": 15,
+      "endLine": 45,
+      "endColumn": 32,
+      "text": "review when protected changed"
+    },
+    "/review/3": {
+      "line": 44,
+      "column": 3,
+      "endLine": 44,
+      "endColumn": 26,
+      "text": "owner when zone touched"
+    },
+    "/review/3/conditions/0": {
+      "line": 44,
+      "column": 14,
+      "endLine": 44,
+      "endColumn": 26,
+      "text": "owner when zone touched"
+    }
+  }
+}

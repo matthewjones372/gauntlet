@@ -1,0 +1,90 @@
+{
+  "allowManagedHooksOnly": true,
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "gauntlet hook stop"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "gauntlet hook pre-tool-use"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "deny": [
+      "Edit(.eslintrc*)",
+      "Write(.eslintrc*)",
+      "MultiEdit(.eslintrc*)",
+      "NotebookEdit(.eslintrc*)",
+      "Edit(.gauntlet/**)",
+      "Write(.gauntlet/**)",
+      "MultiEdit(.gauntlet/**)",
+      "NotebookEdit(.gauntlet/**)",
+      "Edit(.github/**)",
+      "Write(.github/**)",
+      "MultiEdit(.github/**)",
+      "NotebookEdit(.github/**)",
+      "Edit(.strykerrc*)",
+      "Write(.strykerrc*)",
+      "MultiEdit(.strykerrc*)",
+      "NotebookEdit(.strykerrc*)",
+      "Edit(biome.json)",
+      "Write(biome.json)",
+      "MultiEdit(biome.json)",
+      "NotebookEdit(biome.json)",
+      "Edit(biome.jsonc)",
+      "Write(biome.jsonc)",
+      "MultiEdit(biome.jsonc)",
+      "NotebookEdit(biome.jsonc)",
+      "Edit(bunfig.toml)",
+      "Write(bunfig.toml)",
+      "MultiEdit(bunfig.toml)",
+      "NotebookEdit(bunfig.toml)",
+      "Edit(eslint.config.*)",
+      "Write(eslint.config.*)",
+      "MultiEdit(eslint.config.*)",
+      "NotebookEdit(eslint.config.*)",
+      "Edit(examples/**)",
+      "Write(examples/**)",
+      "MultiEdit(examples/**)",
+      "NotebookEdit(examples/**)",
+      "Edit(jest.config.*)",
+      "Write(jest.config.*)",
+      "MultiEdit(jest.config.*)",
+      "NotebookEdit(jest.config.*)",
+      "Edit(stryker.conf.*)",
+      "Write(stryker.conf.*)",
+      "MultiEdit(stryker.conf.*)",
+      "NotebookEdit(stryker.conf.*)",
+      "Edit(stryker.config.*)",
+      "Write(stryker.config.*)",
+      "MultiEdit(stryker.config.*)",
+      "NotebookEdit(stryker.config.*)",
+      "Edit(tsconfig*.json)",
+      "Write(tsconfig*.json)",
+      "MultiEdit(tsconfig*.json)",
+      "NotebookEdit(tsconfig*.json)",
+      "Edit(vitest.config.*)",
+      "Write(vitest.config.*)",
+      "MultiEdit(vitest.config.*)",
+      "NotebookEdit(vitest.config.*)",
+      "Edit(vitest.workspace.*)",
+      "Write(vitest.workspace.*)",
+      "MultiEdit(vitest.workspace.*)",
+      "NotebookEdit(vitest.workspace.*)"
+    ]
+  }
+}

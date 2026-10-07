@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:7:3  error[rule-never-holds]  This rule needs both 'zone touched' and 'no zone touched', so it can never hold.
+  7 |   auto when zone touched and no zone touched
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  expected: conditions that can hold together
+  fix: Remove one of the two conditions.

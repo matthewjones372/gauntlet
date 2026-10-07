@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:41  error[arch-self-dependency]  Module 'domain' can't be forbidden from depending on itself.
+  6 | arch { module domain must not depend on domain }
+    |                                         ^^^^^^
+  expected: a different module name
+  fix: Name the module that 'domain' must not depend on, or remove 'domain'.

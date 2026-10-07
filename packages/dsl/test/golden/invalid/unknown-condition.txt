@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:7:15  error[implicit-condition]  'policy changed' needs no rule: any change under `.gauntlet/` already nominates owner.
+  7 |   review when policy changed
+    |               ^^^^^^^^^^^^^^
+  expected: one of 'zone touched', 'no zone touched', 'protected changed', 'dependency added', 'budget changed', 'evidence missing', 'all gates pass', 'diff < <n> lines', or a predicate name
+  fix: Remove this rule.
+  available: zone touched, no zone touched, protected changed, dependency added, budget changed, evidence missing, all gates pass, diff < <n> lines

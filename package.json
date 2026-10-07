@@ -1,0 +1,22 @@
+{
+  "name": "harness-monorepo",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "packs/*"
+  ],
+  "scripts": {
+    "generate": "bun run --filter '*' generate",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "bun test",
+    "build": "bun scripts/build.ts",
+    "smoke": "bun scripts/smoke.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "langium-cli": "4.4.0",
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:7:17  error[protected-in-unowned-zone]  Protected path "src/test/**" overlaps zone 'money', which has no owner.
+  7 | protect { tests "src/test/**" }
+    |                 ^^^^^^^^^^^^^
+  expected: an `owner` in zone 'money'
+  fix: Add an owner to the zone, for example: owner @money-owners

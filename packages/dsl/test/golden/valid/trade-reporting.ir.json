@@ -1,0 +1,376 @@
+{
+  "hash": "74450f756063e5068ef83c94cfbaf0b6b4fb6313d5d05eb07a0cc1b55be19827",
+  "ir": {
+    "arch": [
+      {
+        "module": "domain",
+        "mustNotDependOn": [
+          "infra"
+        ]
+      }
+    ],
+    "budgets": [
+      {
+        "command": "./perf/ingest.sh",
+        "name": "ingest",
+        "thresholds": [
+          {
+            "metric": "errors",
+            "op": "<",
+            "value": {
+              "unit": "%",
+              "value": 0.1
+            },
+            "vsBaseline": false
+          },
+          {
+            "metric": "p99",
+            "op": "<",
+            "value": {
+              "unit": "ms",
+              "value": 50
+            },
+            "vsBaseline": false
+          },
+          {
+            "metric": "regression",
+            "op": "<",
+            "value": {
+              "unit": "%",
+              "value": 5
+            },
+            "vsBaseline": true
+          }
+        ]
+      }
+    ],
+    "gates": [
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "gate",
+            "name": "arch",
+            "ratchet": true,
+            "scope": "all"
+          },
+          {
+            "kind": "gate",
+            "name": "build",
+            "ratchet": false,
+            "scope": "all"
+          },
+          {
+            "kind": "gate",
+            "name": "lint",
+            "ratchet": false,
+            "scope": "all"
+          }
+        ],
+        "name": "fast"
+      },
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "gate",
+            "name": "coverage",
+            "ratchet": false,
+            "scope": "changed",
+            "threshold": {
+              "op": ">=",
+              "value": {
+                "unit": "%",
+                "value": 90
+              }
+            },
+            "zone": "money"
+          },
+          {
+            "kind": "gate",
+            "name": "mutation",
+            "ratchet": true,
+            "scope": "changed"
+          },
+          {
+            "kind": "suite",
+            "name": "unit"
+          }
+        ],
+        "name": "verify"
+      },
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "holdout",
+            "name": "trade-holdout"
+          },
+          {
+            "kind": "suite",
+            "name": "acceptance"
+          }
+        ],
+        "name": "behaviour"
+      },
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "budget": "ingest",
+            "kind": "budget"
+          }
+        ],
+        "name": "perf"
+      },
+      {
+        "advisory": true,
+        "checks": [
+          {
+            "kind": "llm-review",
+            "reviews": 3
+          }
+        ],
+        "name": "advisory"
+      }
+    ],
+    "imports": [
+      {
+        "command": "semgrep scan --sarif --output {sarif}",
+        "name": "semgrep",
+        "trust": "evidence"
+      }
+    ],
+    "integrity": {
+      "flag": [
+        "catch-all-near-changed-code",
+        "env-branching",
+        "equality-overrides",
+        "flaky-patterns",
+        "mocks-of-class-under-test",
+        "test-special-case-comments"
+      ],
+      "forbid": [
+        "added-retries",
+        "deleted-tests",
+        "exit-in-tests",
+        "new-skips",
+        "new-suppressions",
+        "test-refs-in-main",
+        "weakened-assertions"
+      ],
+      "ratchet": [
+        "assertions-per-test",
+        "executed-tests",
+        "property-tests",
+        "quarantined-tests",
+        "skipped-tests",
+        "suppressions"
+      ]
+    },
+    "irVersion": 1,
+    "mode": "shadow",
+    "name": "trade-reporting",
+    "owners": [
+      "@platform"
+    ],
+    "packs": [
+      "jvm"
+    ],
+    "predicates": [
+      {
+        "conditions": [
+          {
+            "kind": "diff",
+            "lines": 150,
+            "op": "<"
+          },
+          {
+            "kind": "no-zone-touched"
+          }
+        ],
+        "name": "small"
+      }
+    ],
+    "protect": [
+      {
+        "globs": [
+          "*.gradle.kts",
+          ".github/workflows/**",
+          "gradle/**"
+        ],
+        "group": "config",
+        "kind": "config"
+      },
+      {
+        "globs": [
+          "src/test/resources/golden/**"
+        ],
+        "group": "fixtures",
+        "kind": "fixtures"
+      },
+      {
+        "globs": [
+          ".gauntlet/**"
+        ],
+        "group": "gauntlet",
+        "kind": "gauntlet"
+      },
+      {
+        "globs": [
+          "src/acceptance/**",
+          "src/test/**"
+        ],
+        "group": "tests",
+        "kind": "tests"
+      }
+    ],
+    "remediation": [
+      {
+        "fix": "Add assertions that kill the surviving mutants listed in the report. Do not delete or weaken tests.",
+        "gate": "mutation"
+      }
+    ],
+    "review": [
+      {
+        "conditions": [
+          {
+            "kind": "all-gates-pass"
+          },
+          {
+            "kind": "predicate",
+            "name": "small"
+          }
+        ],
+        "tier": "auto"
+      },
+      {
+        "conditions": [
+          {
+            "kind": "budget-changed"
+          }
+        ],
+        "tier": "review"
+      },
+      {
+        "conditions": [
+          {
+            "kind": "dependency-added"
+          }
+        ],
+        "tier": "review"
+      },
+      {
+        "conditions": [
+          {
+            "kind": "protected-changed"
+          }
+        ],
+        "tier": "review"
+      },
+      {
+        "conditions": [
+          {
+            "kind": "zone-touched"
+          }
+        ],
+        "tier": "owner"
+      }
+    ],
+    "stack": {
+      "layers": [
+        {
+          "name": "feature",
+          "properties": [
+            {
+              "kind": "red-to-green",
+              "suite": "acceptance"
+            }
+          ]
+        },
+        {
+          "name": "migration",
+          "properties": [
+            {
+              "kind": "additive"
+            },
+            {
+              "kind": "reversible"
+            }
+          ]
+        },
+        {
+          "name": "refactor",
+          "properties": [
+            {
+              "kind": "unchanged",
+              "subject": "perf"
+            },
+            {
+              "kind": "unchanged",
+              "subject": "results"
+            },
+            {
+              "kind": "unchanged",
+              "subject": "tests"
+            }
+          ]
+        },
+        {
+          "name": "wiring",
+          "properties": [
+            {
+              "kind": "only",
+              "subjects": [
+                "di"
+              ]
+            },
+            {
+              "kind": "touches",
+              "subjects": [
+                "config"
+              ]
+            }
+          ]
+        }
+      ],
+      "maxLayerDiffLines": 300,
+      "reviewStackWhen": {
+        "op": ">=",
+        "tier": "review"
+      }
+    },
+    "suites": [
+      {
+        "kind": "suite",
+        "location": "src/acceptance/**",
+        "name": "acceptance"
+      },
+      {
+        "ciOnly": true,
+        "kind": "holdout",
+        "name": "trade-holdout"
+      },
+      {
+        "kind": "suite",
+        "location": "src/test/**",
+        "name": "unit"
+      }
+    ],
+    "zones": [
+      {
+        "globs": [
+          "src/**/fx/**",
+          "src/**/settlement/**"
+        ],
+        "name": "money",
+        "owners": [
+          "@payments"
+        ],
+        "rules": [
+          "kotlin.no-floating-money"
+        ]
+      }
+    ]
+  }
+}

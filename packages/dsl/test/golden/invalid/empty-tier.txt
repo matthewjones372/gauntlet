@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:9  error[empty-tier]  Gate tier 'fast' has no checks.
+  4 | gates { fast { } }
+    |         ^^^^
+  expected: at least one check, such as `build` or `unit`
+  fix: Add checks, for example: fast { build, unit }, or remove the tier.

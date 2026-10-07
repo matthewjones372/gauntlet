@@ -1,0 +1,210 @@
+{
+  "hash": "2eb1b763cee54376060649375de93c03af4c6a764bfc475271a9a6513cd7bb6c",
+  "ir": {
+    "arch": [
+      {
+        "module": "domain",
+        "mustNotDependOn": [
+          "infra",
+          "web"
+        ]
+      }
+    ],
+    "budgets": [],
+    "gates": [
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "gate",
+            "name": "arch",
+            "ratchet": true,
+            "scope": "all"
+          },
+          {
+            "kind": "gate",
+            "name": "build",
+            "ratchet": false,
+            "scope": "all"
+          },
+          {
+            "kind": "gate",
+            "name": "lint",
+            "ratchet": true,
+            "scope": "all"
+          }
+        ],
+        "name": "fast"
+      },
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "gate",
+            "name": "coverage",
+            "ratchet": false,
+            "scope": "changed",
+            "threshold": {
+              "op": ">=",
+              "value": {
+                "unit": "%",
+                "value": 90
+              }
+            }
+          },
+          {
+            "kind": "gate",
+            "name": "mutation",
+            "ratchet": true,
+            "scope": "changed",
+            "threshold": {
+              "op": ">=",
+              "value": {
+                "unit": "%",
+                "value": 80
+              }
+            }
+          },
+          {
+            "kind": "suite",
+            "name": "unit"
+          }
+        ],
+        "name": "verify"
+      }
+    ],
+    "imports": [],
+    "integrity": {
+      "flag": [
+        "catch-all-near-changed-code",
+        "env-branching",
+        "equality-overrides",
+        "flaky-patterns",
+        "mocks-of-class-under-test",
+        "test-special-case-comments"
+      ],
+      "forbid": [
+        "added-retries",
+        "deleted-tests",
+        "exit-in-tests",
+        "new-skips",
+        "new-suppressions",
+        "test-refs-in-main",
+        "weakened-assertions"
+      ],
+      "ratchet": [
+        "assertions-per-test",
+        "executed-tests",
+        "property-tests",
+        "quarantined-tests",
+        "skipped-tests",
+        "suppressions"
+      ]
+    },
+    "irVersion": 1,
+    "mode": "enforce",
+    "name": "kotlin-service",
+    "owners": [
+      "@maintainers"
+    ],
+    "packs": [
+      "jvm"
+    ],
+    "predicates": [
+      {
+        "conditions": [
+          {
+            "kind": "diff",
+            "lines": 150,
+            "op": "<"
+          },
+          {
+            "kind": "no-zone-touched"
+          }
+        ],
+        "name": "small"
+      }
+    ],
+    "protect": [
+      {
+        "globs": [
+          "*.gradle.kts",
+          ".github/workflows/**",
+          "gradle/**",
+          "settings.gradle.kts"
+        ],
+        "group": "config",
+        "kind": "config"
+      },
+      {
+        "globs": [
+          "src/test/resources/**"
+        ],
+        "group": "fixtures",
+        "kind": "fixtures"
+      },
+      {
+        "globs": [
+          ".gauntlet/**"
+        ],
+        "group": "gauntlet",
+        "kind": "gauntlet"
+      },
+      {
+        "globs": [
+          "src/test/**"
+        ],
+        "group": "tests",
+        "kind": "tests"
+      }
+    ],
+    "remediation": [
+      {
+        "fix": "Add tests for the uncovered changed lines listed in the report.",
+        "gate": "coverage"
+      },
+      {
+        "fix": "Kill the surviving mutants listed in the report by adding assertions. Do not delete or weaken tests.",
+        "gate": "mutation"
+      }
+    ],
+    "review": [
+      {
+        "conditions": [
+          {
+            "kind": "all-gates-pass"
+          },
+          {
+            "kind": "predicate",
+            "name": "small"
+          }
+        ],
+        "tier": "auto"
+      },
+      {
+        "conditions": [
+          {
+            "kind": "dependency-added"
+          }
+        ],
+        "tier": "review"
+      },
+      {
+        "conditions": [
+          {
+            "kind": "protected-changed"
+          }
+        ],
+        "tier": "review"
+      }
+    ],
+    "suites": [
+      {
+        "kind": "suite",
+        "location": "src/test/**",
+        "name": "unit"
+      }
+    ],
+    "zones": []
+  }
+}

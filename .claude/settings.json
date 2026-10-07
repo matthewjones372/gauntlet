@@ -1,0 +1,89 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "gauntlet hook stop"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "gauntlet hook pre-tool-use"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "deny": [
+      "Edit(.eslintrc*)",
+      "Edit(.gauntlet/**)",
+      "Edit(.github/**)",
+      "Edit(.strykerrc*)",
+      "Edit(biome.json)",
+      "Edit(biome.jsonc)",
+      "Edit(bunfig.toml)",
+      "Edit(eslint.config.*)",
+      "Edit(examples/**)",
+      "Edit(jest.config.*)",
+      "Edit(stryker.conf.*)",
+      "Edit(stryker.config.*)",
+      "Edit(tsconfig*.json)",
+      "Edit(vitest.config.*)",
+      "Edit(vitest.workspace.*)",
+      "MultiEdit(.eslintrc*)",
+      "MultiEdit(.gauntlet/**)",
+      "MultiEdit(.github/**)",
+      "MultiEdit(.strykerrc*)",
+      "MultiEdit(biome.json)",
+      "MultiEdit(biome.jsonc)",
+      "MultiEdit(bunfig.toml)",
+      "MultiEdit(eslint.config.*)",
+      "MultiEdit(examples/**)",
+      "MultiEdit(jest.config.*)",
+      "MultiEdit(stryker.conf.*)",
+      "MultiEdit(stryker.config.*)",
+      "MultiEdit(tsconfig*.json)",
+      "MultiEdit(vitest.config.*)",
+      "MultiEdit(vitest.workspace.*)",
+      "NotebookEdit(.eslintrc*)",
+      "NotebookEdit(.gauntlet/**)",
+      "NotebookEdit(.github/**)",
+      "NotebookEdit(.strykerrc*)",
+      "NotebookEdit(biome.json)",
+      "NotebookEdit(biome.jsonc)",
+      "NotebookEdit(bunfig.toml)",
+      "NotebookEdit(eslint.config.*)",
+      "NotebookEdit(examples/**)",
+      "NotebookEdit(jest.config.*)",
+      "NotebookEdit(stryker.conf.*)",
+      "NotebookEdit(stryker.config.*)",
+      "NotebookEdit(tsconfig*.json)",
+      "NotebookEdit(vitest.config.*)",
+      "NotebookEdit(vitest.workspace.*)",
+      "Write(.eslintrc*)",
+      "Write(.gauntlet/**)",
+      "Write(.github/**)",
+      "Write(.strykerrc*)",
+      "Write(biome.json)",
+      "Write(biome.jsonc)",
+      "Write(bunfig.toml)",
+      "Write(eslint.config.*)",
+      "Write(examples/**)",
+      "Write(jest.config.*)",
+      "Write(stryker.conf.*)",
+      "Write(stryker.config.*)",
+      "Write(tsconfig*.json)",
+      "Write(vitest.config.*)",
+      "Write(vitest.workspace.*)"
+    ]
+  }
+}

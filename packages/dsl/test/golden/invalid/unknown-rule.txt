@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:9:8  error[unknown-rule]  Unknown rule 'kotlin.no-floating-mony' in zone 'm'.
+  9 |   rule kotlin.no-floating-mony
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+  expected: a rule provided by a used pack
+  fix: Did you mean 'kotlin.no-floating-money'?
+  available: kotlin.no-floating-money

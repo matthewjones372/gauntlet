@@ -1,0 +1,7 @@
+gauntlet "x"
+use lintonly
+owners @p
+gates { fast { lint } }
+integrity {
+  forbid new skips
+}

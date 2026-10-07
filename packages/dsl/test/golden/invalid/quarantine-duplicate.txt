@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:7:3  error[duplicate-quarantine]  'svc.FxTest.rounding' is quarantined more than once.
+  7 |   "svc.FxTest.rounding" until 2026-12-01 owner @payments
+    |   ^^^^^^^^^^^^^^^^^^^^^
+  expected: each test once
+  fix: Keep one entry for it.

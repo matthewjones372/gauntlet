@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:27  error[unexpected-token]  Expected 'not' in an arch rule (module <a> must not depend on <b>) but found 'depend'.
+  6 | arch { module domain must depend on infra }
+    |                           ^^^^^^
+  expected: 'not'
+  fix: Insert 'not' before 'depend'.

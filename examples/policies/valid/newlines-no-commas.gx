@@ -1,0 +1,48 @@
+// Commas are optional: line breaks separate items too.
+gauntlet "newlines"
+use jvm
+mode enforce
+owners @platform @security
+
+protect {
+  tests "src/test/**"
+        "src/acceptance/**"
+  config "*.gradle.kts"
+}
+
+zone money {
+  paths "src/**/settlement/**"
+        "src/**/fx/**"
+  owner @payments
+}
+
+suites {
+  unit "src/test/**"
+  acceptance "src/acceptance/**"
+}
+
+integrity {
+  ratchet executed tests
+          assertions per test
+  flag env branching
+}
+
+gates {
+  fast {
+    build
+    lint ratchet
+  }
+  verify {
+    unit
+    coverage >= 80% on changed
+  }
+}
+
+predicate tiny = diff <= 20 lines and no zone touched
+
+review {
+  owner when zone touched
+  review when protected changed
+  skim when diff < 300 lines and all gates pass
+  auto when tiny and all gates pass
+}

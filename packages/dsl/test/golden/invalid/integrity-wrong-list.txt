@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:7:8  error[wrong-integrity-list]  'new skips' is a forbid check, not a flag check.
+  7 |   flag new skips
+    |        ^^^^^^^^^
+  expected: a flag phrase
+  fix: Move it to a `forbid` line: forbid new skips
+  available: equality overrides, catch-all near changed code, env branching, mocks of class under test, test special-case comments, flaky patterns

@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:7:3  error[unexpected-token]  Unexpected 'block' in the `review` block.
+  7 |   block when zone touched
+    |   ^^^^^
+  expected: one of 'owner', 'review', 'skim', 'auto', '}'
+  fix: Start each line in the `review` block with 'owner', 'review', 'skim', 'auto', or close the block with '}'.

@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:23  error[llm-review-not-advisory]  `llm review` is probabilistic, so it can only run in the advisory tier.
+  4 | gates { fast { build, llm review x3 } }
+    |                       ^^^^^^^^^^^^^
+  expected: `llm review` inside `advisory { ... }`
+  fix: Move it to: advisory { llm review x3 }

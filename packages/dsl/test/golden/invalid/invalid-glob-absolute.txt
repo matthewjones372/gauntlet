@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:17  error[invalid-glob]  Invalid path pattern "/src/test/**": patterns are relative to the repository root.
+  6 | protect { tests "/src/test/**" }
+    |                 ^^^^^^^^^^^^^^
+  expected: a relative glob such as "src/test/**"
+  fix: Remove the leading '/': "src/test/**"

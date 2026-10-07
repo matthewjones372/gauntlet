@@ -1,0 +1,196 @@
+{
+  "hash": "cd8245de4a53d45035d1c58112f39a587995c28a017d3262c09891e838f12fe0",
+  "ir": {
+    "arch": [],
+    "budgets": [],
+    "gates": [
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "gate",
+            "name": "build",
+            "ratchet": false,
+            "scope": "all"
+          },
+          {
+            "kind": "gate",
+            "name": "lint",
+            "ratchet": true,
+            "scope": "all"
+          }
+        ],
+        "name": "fast"
+      },
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "gate",
+            "name": "coverage",
+            "ratchet": false,
+            "scope": "changed",
+            "threshold": {
+              "op": ">=",
+              "value": {
+                "unit": "%",
+                "value": 80
+              }
+            }
+          },
+          {
+            "kind": "suite",
+            "name": "unit"
+          }
+        ],
+        "name": "verify"
+      }
+    ],
+    "imports": [],
+    "integrity": {
+      "flag": [
+        "catch-all-near-changed-code",
+        "env-branching",
+        "equality-overrides",
+        "flaky-patterns",
+        "mocks-of-class-under-test",
+        "test-special-case-comments"
+      ],
+      "forbid": [
+        "added-retries",
+        "deleted-tests",
+        "exit-in-tests",
+        "new-skips",
+        "new-suppressions",
+        "test-refs-in-main",
+        "weakened-assertions"
+      ],
+      "ratchet": [
+        "assertions-per-test",
+        "executed-tests",
+        "property-tests",
+        "quarantined-tests",
+        "skipped-tests",
+        "suppressions"
+      ]
+    },
+    "irVersion": 1,
+    "mode": "enforce",
+    "name": "newlines",
+    "owners": [
+      "@platform",
+      "@security"
+    ],
+    "packs": [
+      "jvm"
+    ],
+    "predicates": [
+      {
+        "conditions": [
+          {
+            "kind": "diff",
+            "lines": 20,
+            "op": "<="
+          },
+          {
+            "kind": "no-zone-touched"
+          }
+        ],
+        "name": "tiny"
+      }
+    ],
+    "protect": [
+      {
+        "globs": [
+          "*.gradle.kts"
+        ],
+        "group": "config",
+        "kind": "config"
+      },
+      {
+        "globs": [
+          ".gauntlet/**"
+        ],
+        "group": "gauntlet",
+        "kind": "gauntlet"
+      },
+      {
+        "globs": [
+          "src/acceptance/**",
+          "src/test/**"
+        ],
+        "group": "tests",
+        "kind": "tests"
+      }
+    ],
+    "remediation": [],
+    "review": [
+      {
+        "conditions": [
+          {
+            "kind": "all-gates-pass"
+          },
+          {
+            "kind": "diff",
+            "lines": 300,
+            "op": "<"
+          }
+        ],
+        "tier": "skim"
+      },
+      {
+        "conditions": [
+          {
+            "kind": "all-gates-pass"
+          },
+          {
+            "kind": "predicate",
+            "name": "tiny"
+          }
+        ],
+        "tier": "auto"
+      },
+      {
+        "conditions": [
+          {
+            "kind": "protected-changed"
+          }
+        ],
+        "tier": "review"
+      },
+      {
+        "conditions": [
+          {
+            "kind": "zone-touched"
+          }
+        ],
+        "tier": "owner"
+      }
+    ],
+    "suites": [
+      {
+        "kind": "suite",
+        "location": "src/acceptance/**",
+        "name": "acceptance"
+      },
+      {
+        "kind": "suite",
+        "location": "src/test/**",
+        "name": "unit"
+      }
+    ],
+    "zones": [
+      {
+        "globs": [
+          "src/**/fx/**",
+          "src/**/settlement/**"
+        ],
+        "name": "money",
+        "owners": [
+          "@payments"
+        ],
+        "rules": []
+      }
+    ]
+  }
+}

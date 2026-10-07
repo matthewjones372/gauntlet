@@ -1,0 +1,20 @@
+gauntlet "clojure-lein"
+use clojure
+mode enforce
+owners @platform
+
+protect {
+  tests "test/**"
+}
+
+suites { unit "test/**" }
+
+gates {
+  fast   { build }
+  verify { unit }
+}
+
+review {
+  review when protected changed
+  auto   when all gates pass
+}

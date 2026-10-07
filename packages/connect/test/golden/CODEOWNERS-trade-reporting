@@ -1,0 +1,14 @@
+# protect config
+*.gradle.kts @platform
+/.github/workflows/ @platform
+/gradle/ @platform
+# protect fixtures
+/src/test/resources/golden/ @platform
+# protect tests
+/src/acceptance/ @platform
+/src/test/ @platform
+# zone money
+/src/**/fx/ @payments
+/src/**/settlement/ @payments
+# The policy, its baseline and self-tests need a policy owner.
+/.gauntlet/ @platform

@@ -1,0 +1,10 @@
+gauntlet "x"
+use jvm
+owners @platform
+
+gates { fast { build } }
+predicate a = b and all gates pass
+predicate b = diff < 10 lines
+review {
+  auto when a
+}

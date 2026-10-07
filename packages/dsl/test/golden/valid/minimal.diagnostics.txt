@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:1:10  info[default-mode]  No `mode` line, so the policy runs in shadow mode: it reports but never blocks.
+  1 | gauntlet "minimal"
+    |          ^^^^^^^^^
+  expected: nothing; this is for information
+  fix: Add `mode enforce` when the shadow period is over.

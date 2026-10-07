@@ -1,0 +1,48 @@
+// Gauntlet's own policy. Enforced since M14: Gauntlet judges its own pull requests.
+gauntlet "gauntlet"
+use typescript
+mode enforce
+owners @gauntlet/maintainers
+
+protect {
+  tests    "packages/*/test/**", "packs/*/test/**"
+  fixtures "examples/**"
+  config   ".github/**"
+}
+
+// The decision itself: what nominates a tier, and what counts as evidence.
+zone decision {
+  paths "packages/core/src/review.ts", "packages/core/src/integrity.ts", "packages/core/src/gate-runner.ts",
+        "packages/core/src/github-status.ts", "packages/author/src/loosening.ts", "packages/author/src/validate.ts",
+        "packages/dsl/src/**", "packages/ir/src/**"
+  owner @gauntlet/maintainers
+}
+
+// Lower layers never import higher ones.
+arch {
+  module ir must not depend on dsl, core, sarif, cli
+  module dsl must not depend on core, cli
+  module sarif must not depend on core, dsl, cli
+  module core must not depend on cli, mcp, author
+  module author must not depend on cli, mcp
+  module mcp must not depend on cli
+}
+
+suites {
+  unit  "packages/*/test/**"
+  packs "packs/*/test/**"
+}
+
+gates {
+  fast   { build, arch }
+  verify { unit, packs, coverage >= 80% on changed }
+}
+
+predicate small = diff < 150 lines and no zone touched
+
+review {
+  owner  when zone touched
+  review when protected changed
+  review when dependency added
+  auto   when small and all gates pass
+}

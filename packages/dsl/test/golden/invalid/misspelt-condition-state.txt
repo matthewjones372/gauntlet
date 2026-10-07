@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:8:19  error[unexpected-token]  Expected one of 'touched', 'changed', 'added', 'missing', 'pass' but found 'toched'.
+  8 |   owner when zone toched
+    |                   ^^^^^^
+  expected: one of 'touched', 'changed', 'added', 'missing', 'pass'
+  fix: Did you mean 'touched'?

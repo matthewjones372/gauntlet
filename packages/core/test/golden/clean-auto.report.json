@@ -1,0 +1,167 @@
+{
+  "agent": {
+    "agent": "claude-code",
+    "model": "claude-sonnet-5-5",
+    "session": "s-123"
+  },
+  "checks": [
+    {
+      "advisory": false,
+      "check": "build",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "assemble"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "assemble.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 12,
+        "file": ".gauntlet/policy.gx",
+        "line": 15,
+        "text": "fast   { build, lint ratchet }"
+      },
+      "status": "passed",
+      "tier": "fast"
+    },
+    {
+      "advisory": false,
+      "check": "lint",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "detekt"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "detekt.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 19,
+        "file": ".gauntlet/policy.gx",
+        "line": 15,
+        "text": "fast   { build, lint ratchet }"
+      },
+      "status": "passed",
+      "tier": "fast"
+    },
+    {
+      "advisory": false,
+      "check": "mutation",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "pitest"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "pitest.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 18,
+        "file": ".gauntlet/policy.gx",
+        "line": 16,
+        "text": "verify { unit, mutation ratchet on changed }"
+      },
+      "status": "passed",
+      "tier": "verify"
+    },
+    {
+      "advisory": false,
+      "check": "unit",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "test"
+        ],
+        "executed": 42,
+        "exitCode": 0,
+        "reports": {
+          "test.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 12,
+        "file": ".gauntlet/policy.gx",
+        "line": 16,
+        "text": "verify { unit, mutation ratchet on changed }"
+      },
+      "status": "passed",
+      "tests": {
+        "errored": 0,
+        "executed": 42,
+        "failed": 0,
+        "passed": 42,
+        "skipped": 0
+      },
+      "tier": "verify"
+    }
+  ],
+  "decision": {
+    "blocking": false,
+    "mode": "enforce",
+    "nominations": [
+      {
+        "blocking": false,
+        "reason": "The policy's auto rule matched.",
+        "rule": "policy",
+        "source": {
+          "column": 3,
+          "file": ".gauntlet/policy.gx",
+          "line": 24,
+          "text": "auto when small and all gates pass"
+        },
+        "tier": "auto"
+      }
+    ],
+    "overrides": [],
+    "owners": [],
+    "tier": "auto",
+    "wouldBlock": false
+  },
+  "facts": {
+    "budgetsChanged": [],
+    "dependencyChanges": [],
+    "files": [
+      {
+        "added": 8,
+        "path": "src/main/Fx.kt",
+        "removed": 4,
+        "status": "modified"
+      }
+    ],
+    "gauntletChanged": false,
+    "linesChanged": 12,
+    "protectedTouched": [],
+    "zonesTouched": []
+  },
+  "gauntletVersion": "0.1.0",
+  "imports": [],
+  "integrity": {
+    "findings": [],
+    "notExecuted": []
+  },
+  "notExecuted": [],
+  "policy": {
+    "baseSha": "1111111111111111111111111111111111111111",
+    "drift": [],
+    "firstAdoption": false,
+    "headSha": "2222222222222222222222222222222222222222",
+    "irHash": "e2dfb6cfa3465bc4a198e01cdab13e2f0a25e2fc449a7b36fa4adbf54a0c2be9",
+    "mode": "enforce",
+    "notes": [],
+    "origin": "base",
+    "owners": [
+      "@platform"
+    ]
+  },
+  "ratchets": [],
+  "remediation": [],
+  "schemaVersion": 1,
+  "violations": []
+}

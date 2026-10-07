@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:7:11  error[duplicate-predicate]  Predicate 'a' is defined more than once.
+  7 | predicate a = diff < 20 lines
+    |           ^
+  expected: unique predicate names
+  fix: Remove or rename one of them.

@@ -1,0 +1,46 @@
+// Strict defaults for a new service, from `gauntlet new kotlin-service`.
+// Agents' changes merge only when they pass everything below.
+gauntlet "{{name}}"
+use jvm
+mode enforce
+owners {{owner}}
+
+protect {
+  tests    "src/test/**"
+  fixtures "src/test/resources/**"
+  config   "*.gradle.kts", "gradle/**", "gradle.properties", ".github/workflows/**"
+}
+
+// A functional core: errors are values, nothing is mutable, money is never
+// floating point. The zone has no owner, so it scopes these rules without
+// routing changes to anyone; add `owner @team` and `owner when zone touched`
+// to zones that need their owners' review.
+zone core {
+  paths "src/main/**"
+  rule kotlin.no-throw, kotlin.no-var, kotlin.no-mutable-collections,
+       kotlin.no-null-assertion, kotlin.no-run-catching, kotlin.no-floating-money
+}
+
+arch {
+  module domain must not depend on app, infra
+  module app must not depend on infra
+}
+
+suites { unit "src/test/**" }
+
+gates {
+  fast   { build, lint ratchet, arch }
+  verify { unit, coverage >= 90% on changed, mutation ratchet >= 80% on changed }
+}
+
+on fail mutation { fix "Kill the surviving mutants listed in the report by adding assertions. Do not delete or weaken tests." }
+on fail coverage { fix "Add tests for the uncovered changed lines listed in the report." }
+
+// The core zone covers all main code, so size alone decides what is small.
+predicate small = diff < 200 lines
+
+review {
+  review when protected changed
+  review when dependency added
+  auto   when small and all gates pass
+}

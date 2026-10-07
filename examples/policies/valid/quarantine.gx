@@ -1,0 +1,27 @@
+gauntlet "payments"
+use jvm
+mode enforce
+owners @platform
+
+protect {
+  tests "src/test/**"
+}
+
+suites { unit "src/test/**" }
+
+gates {
+  fast   { build }
+  verify { unit }
+}
+
+// Known flaky tests, excused by their owners until a date. They still run; a
+// failure doesn't fail the suite until the date has passed.
+quarantine {
+  "svc.CheckoutTest.paysWithASavedCard" until 2026-11-01 owner @payments
+  "svc.FxTest.rounding" until 2026-10-20 owner @payments, @platform
+}
+
+review {
+  review when protected changed
+  auto   when all gates pass
+}

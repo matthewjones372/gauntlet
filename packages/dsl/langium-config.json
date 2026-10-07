@@ -1,0 +1,5 @@
+{
+  "projectName": "Gauntlet",
+  "languages": [{ "id": "gauntlet", "grammar": "src/grammar/gauntlet.langium", "fileExtensions": [".gx"] }],
+  "out": "src/generated"
+}

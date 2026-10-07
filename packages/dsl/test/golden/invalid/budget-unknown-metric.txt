@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:6:3  error[unknown-metric]  Unknown budget metric 'p98'.
+  6 |   p98 < 50ms
+    |   ^^^
+  expected: one of 'p50', 'p90', 'p95', 'p99', 'p999', 'mean', 'max', 'errors', 'throughput', 'regression'
+  fix: Did you mean one of 'p90', 'p95', 'p99'?
+  available: p50, p90, p95, p99, p999, mean, max, errors, throughput, regression

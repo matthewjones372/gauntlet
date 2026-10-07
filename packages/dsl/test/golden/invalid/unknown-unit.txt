@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:5:39  error[unknown-unit]  Unknown unit 'pct'.
+  5 | gates { verify { unit, coverage >= 90 pct } }
+    |                                       ^^^
+  expected: one of 'ms', 's', 'm', 'rps', '%', 'lines'
+  fix: Use one of 'ms', 's', 'm', 'rps', '%', 'lines'. If 'pct' starts a new item, put a comma before it.
+  available: ms, s, m, rps, %, lines

@@ -1,0 +1,8 @@
+gauntlet "x"
+use jvm
+owners @platform
+
+gates { fast { build } }
+review {
+  raise when evidence missing
+}

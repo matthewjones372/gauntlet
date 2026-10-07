@@ -1,0 +1,117 @@
+// Gauntlet's Gradle init script (ADR 0007). Passed with --init-script; it
+// never edits the project's build files. It points the tools the project
+// applies at the output directory Gauntlet created for this check
+// (GAUNTLET_OUT), so no report is ever read from the project's own build
+// directory (ADR 0012). For coverage it brings its own tool when the project
+// has none: Kover's JVM agent and CLI for Kotlin, Gradle's built-in JaCoCo
+// for Java. Both come in as plain dependencies, never as plugins. Dynamic
+// Groovy, so it needs none of the plugins on its own classpath.
+
+def out = System.getenv("GAUNTLET_OUT")
+if (out == null) throw new GradleException("GAUNTLET_OUT is not set")
+
+allprojects { p ->
+    def slug = p.path == ":" ? "root" : p.path.substring(1).replace(":", "-")
+
+    p.tasks.withType(Test).configureEach { t ->
+        t.reports.junitXml.required.set(true)
+        t.reports.junitXml.outputLocation.set(new File(out, "junit/${slug}/${t.name}"))
+        t.reports.html.required.set(false)
+        // A previous run's results never count.
+        t.outputs.upToDateWhen { false }
+        // Reruns that look for flaky tests shuffle classes and methods with a known seed.
+        def seed = System.getenv("GAUNTLET_JUNIT_SEED")
+        if (seed != null) {
+            // A rerun selects classes with --tests across every module; modules without them run nothing.
+            t.filter.failOnNoMatchingTests = false
+            t.systemProperty('junit.jupiter.testclass.order.default', 'org.junit.jupiter.api.ClassOrderer$Random')
+            t.systemProperty('junit.jupiter.testmethod.order.default', 'org.junit.jupiter.api.MethodOrderer$Random')
+            t.systemProperty('junit.jupiter.execution.order.random.seed', seed)
+        }
+    }
+
+    p.plugins.withId("dev.detekt") {
+        p.tasks.matching { it.name == "detekt" }.configureEach { t ->
+            t.reports.sarif.required.set(true)
+            t.reports.sarif.outputLocation.set(new File(out, "detekt/${slug}.sarif"))
+            ["html", "md", "markdown", "checkstyle", "xml"].each { name ->
+                if (t.reports.hasProperty(name)) t.reports."$name".required.set(false)
+            }
+            // Findings are judged against Gauntlet's baseline, not the build's.
+            t.ignoreFailures = true
+            def legacy = System.getenv("GAUNTLET_DETEKT_BASELINE")
+            if (legacy != null) t.baseline.set(new File(legacy))
+        }
+    }
+
+    p.plugins.withId("org.jetbrains.kotlinx.kover") {
+        def kover = p.extensions.getByName("kover")
+        kover.reports.total.xml.xmlFile.set(new File(out, "kover/${slug}.xml"))
+    }
+
+    // One task for the coverage gate in every JVM module, whichever tool measures it.
+    p.plugins.withId("java") {
+        p.afterEvaluate {
+            if (p.plugins.hasPlugin("org.jetbrains.kotlinx.kover")) {
+                p.tasks.register("gauntletCoverage") { it.dependsOn("koverXmlReport") }
+            } else if (p.plugins.hasPlugin("org.jetbrains.kotlin.jvm")) {
+                koverAgent(p, slug, out)
+            } else {
+                jacoco(p, slug, out)
+            }
+        }
+    }
+
+    p.plugins.withId("info.solidsoft.pitest") {
+        def pitest = p.extensions.getByName("pitest")
+        pitest.outputFormats.set(["XML"])
+        pitest.timestampedReports.set(false)
+        pitest.reportDir.set(new File(out, "pitest/${slug}"))
+        def targets = System.getenv("GAUNTLET_PITEST_TARGETS")
+        if (targets != null && targets != "") pitest.targetClasses.set(targets.split(",") as List)
+    }
+}
+
+// Kotlin without the Kover plugin: Kover's agent records each test task, and
+// its CLI writes the same XML report the plugin would.
+def koverAgent(p, String slug, String out) {
+    if (p.repositories.isEmpty()) p.repositories.mavenCentral()
+    def version = "0.9.11"
+    def agent = p.configurations.detachedConfiguration(p.dependencies.create("org.jetbrains.kotlinx:kover-jvm-agent:${version}"))
+    agent.transitive = false
+    def cli = p.configurations.detachedConfiguration(p.dependencies.create("org.jetbrains.kotlinx:kover-cli:${version}"))
+    def dir = new File(out, "kover-data/${slug}")
+    def tests = p.tasks.withType(Test)
+    tests.configureEach { t ->
+        def ic = new File(dir, "${t.name}.ic")
+        def args = new File(dir, "${t.name}.args")
+        t.doFirst { dir.mkdirs(); args.text = "report.file=${ic.absolutePath}\n" }
+        t.jvmArgumentProviders.add({ ["-javaagent:${agent.singleFile.absolutePath}=file:${args.absolutePath}".toString()] } as CommandLineArgumentProvider)
+    }
+    p.tasks.register("gauntletCoverage", JavaExec) { r ->
+        r.dependsOn(tests)
+        r.classpath = cli
+        r.mainClass.set("kotlinx.kover.cli.MainKt")
+        r.doFirst {
+            def data = (dir.listFiles() ?: []).findAll { it.name.endsWith(".ic") }.collect { it.absolutePath }
+            def classes = p.sourceSets.main.output.classesDirs.files.findAll { it.exists() }
+            def sources = p.sourceSets.main.allSource.srcDirs.findAll { it.exists() }
+            r.args = ["report"] + data + classes.collectMany { ["--classfiles", it.absolutePath] } + sources.collectMany { ["--src", it.absolutePath] } +
+                ["--xml", new File(out, "kover/${slug}.xml").absolutePath, "--title", slug]
+        }
+        r.onlyIf { (dir.listFiles() ?: []).any { it.name.endsWith(".ic") } }
+    }
+}
+
+// Java: Gradle's own JaCoCo plugin, so nothing needs resolving as a plugin.
+def jacoco(p, String slug, String out) {
+    p.plugins.apply("jacoco")
+    p.tasks.named("jacocoTestReport") { r ->
+        r.dependsOn(p.tasks.withType(Test))
+        r.reports.xml.required.set(true)
+        r.reports.xml.outputLocation.set(new File(out, "jacoco/${slug}.xml"))
+        r.reports.html.required.set(false)
+        r.reports.csv.required.set(false)
+    }
+    p.tasks.register("gauntletCoverage") { it.dependsOn("jacocoTestReport") }
+}

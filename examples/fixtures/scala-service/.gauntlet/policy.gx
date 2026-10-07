@@ -1,0 +1,32 @@
+gauntlet "scala-service"
+use scala
+mode enforce
+owners @platform
+
+protect {
+  tests  "src/test/**"
+  config "*.sbt"
+}
+
+zone money {
+  paths "src/main/scala/svc/settlement/**"
+  owner @payments
+  rule scala.no-floating-money, scala.no-throw, scala.no-var
+}
+
+arch { module domain must not depend on infra }
+
+suites { unit "src/test/**" }
+
+gates {
+  fast   { build, lint ratchet, arch }
+  verify { unit, coverage >= 50% on changed, mutation ratchet on changed }
+}
+
+predicate small = diff < 150 lines and no zone touched
+
+review {
+  owner  when zone touched
+  review when protected changed
+  auto   when small and all gates pass
+}

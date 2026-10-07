@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:6:9  error[unknown-gate]  `on fail mutation` names a check that no gate tier runs.
+  6 | on fail mutation { fix "add assertions" }
+    |         ^^^^^^^^
+  expected: a check from `gates`: 'build'
+  fix: Use one of 'build'.
+  available: build

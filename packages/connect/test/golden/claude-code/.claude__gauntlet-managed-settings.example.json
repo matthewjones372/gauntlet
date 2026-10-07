@@ -1,0 +1,48 @@
+{
+  "allowManagedHooksOnly": true,
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "gauntlet hook stop",
+            "statusMessage": "Gauntlet is checking the change (build, tests, coverage)…",
+            "timeout": 1800
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "gauntlet hook pre-tool-use"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "deny": [
+      "Edit(*.gradle.kts)",
+      "Write(*.gradle.kts)",
+      "MultiEdit(*.gradle.kts)",
+      "NotebookEdit(*.gradle.kts)",
+      "Edit(.gauntlet/**)",
+      "Write(.gauntlet/**)",
+      "MultiEdit(.gauntlet/**)",
+      "NotebookEdit(.gauntlet/**)",
+      "Edit(gradle/**)",
+      "Write(gradle/**)",
+      "MultiEdit(gradle/**)",
+      "NotebookEdit(gradle/**)",
+      "Edit(settings.gradle.kts)",
+      "Write(settings.gradle.kts)",
+      "MultiEdit(settings.gradle.kts)",
+      "NotebookEdit(settings.gradle.kts)"
+    ]
+  }
+}

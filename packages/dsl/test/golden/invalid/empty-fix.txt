@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:21  error[empty-fix]  The remediation for 'build' is empty.
+  6 | on fail build { fix "" }
+    |                     ^^
+  expected: advice the agent can act on
+  fix: Say how to fix the failure without weakening the check.

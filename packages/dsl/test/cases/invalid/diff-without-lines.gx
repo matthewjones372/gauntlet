@@ -1,0 +1,8 @@
+gauntlet "x"
+use jvm
+owners @platform
+
+gates { fast { build } }
+review {
+  auto when diff < 150 and all gates pass
+}

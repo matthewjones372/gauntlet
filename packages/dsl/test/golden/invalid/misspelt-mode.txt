@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:4:6  error[unknown-mode]  Unknown mode 'enforse'.
+  4 | mode enforse
+    |      ^^^^^^^
+  expected: 'shadow' or 'enforce'
+  fix: Did you mean 'enforce'?
+  available: shadow, enforce

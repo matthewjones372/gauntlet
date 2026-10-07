@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:17  error[invalid-glob]  Invalid path pattern "src/{main,test/**": the '{' and '}' don't match.
+  6 | protect { tests "src/{main,test/**" }
+    |                 ^^^^^^^^^^^^^^^^^^^
+  expected: a relative glob such as "src/test/**"
+  fix: Close every '{' with '}', for example "src/{main,test}/**".

@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:7:6  error[duplicate-zone]  Zone 'm' is declared more than once.
+  7 | zone m { paths "b/**" owner @m }
+    |      ^
+  expected: unique zone names
+  fix: Merge the two 'm' zones or rename one.

@@ -1,0 +1,23 @@
+{
+  "name": "@gauntlet/connect",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@gauntlet/dsl": "workspace:*",
+    "@gauntlet/ir": "workspace:*",
+    "effect": "4.0.1"
+  },
+  "devDependencies": {
+    "@gauntlet/pack-clojure": "workspace:*",
+    "@gauntlet/pack-go": "workspace:*",
+    "@gauntlet/pack-jvm": "workspace:*",
+    "@gauntlet/pack-python": "workspace:*",
+    "@gauntlet/pack-rust": "workspace:*",
+    "@gauntlet/pack-scala": "workspace:*",
+    "@gauntlet/pack-typescript": "workspace:*"
+  }
+}

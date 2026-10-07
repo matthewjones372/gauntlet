@@ -1,0 +1,129 @@
+{
+  "hash": "45a0a4948285d44cc71c78831792f9dc4103e56fc2cae1c4b61ba9f380d6e8c2",
+  "ir": {
+    "arch": [],
+    "budgets": [],
+    "gates": [
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "gate",
+            "name": "build",
+            "ratchet": false,
+            "scope": "all"
+          }
+        ],
+        "name": "fast"
+      },
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "suite",
+            "name": "unit"
+          }
+        ],
+        "name": "verify"
+      }
+    ],
+    "imports": [],
+    "integrity": {
+      "flag": [
+        "catch-all-near-changed-code",
+        "env-branching",
+        "equality-overrides",
+        "flaky-patterns",
+        "mocks-of-class-under-test",
+        "test-special-case-comments"
+      ],
+      "forbid": [
+        "added-retries",
+        "deleted-tests",
+        "exit-in-tests",
+        "new-skips",
+        "new-suppressions",
+        "test-refs-in-main",
+        "weakened-assertions"
+      ],
+      "ratchet": [
+        "assertions-per-test",
+        "executed-tests",
+        "property-tests",
+        "quarantined-tests",
+        "skipped-tests",
+        "suppressions"
+      ]
+    },
+    "irVersion": 1,
+    "mode": "enforce",
+    "name": "payments",
+    "owners": [
+      "@platform"
+    ],
+    "packs": [
+      "jvm"
+    ],
+    "predicates": [],
+    "protect": [
+      {
+        "globs": [
+          ".gauntlet/**"
+        ],
+        "group": "gauntlet",
+        "kind": "gauntlet"
+      },
+      {
+        "globs": [
+          "src/test/**"
+        ],
+        "group": "tests",
+        "kind": "tests"
+      }
+    ],
+    "quarantine": [
+      {
+        "owners": [
+          "@payments"
+        ],
+        "test": "svc.CheckoutTest.paysWithASavedCard",
+        "until": "2026-11-01"
+      },
+      {
+        "owners": [
+          "@payments",
+          "@platform"
+        ],
+        "test": "svc.FxTest.rounding",
+        "until": "2026-10-20"
+      }
+    ],
+    "remediation": [],
+    "review": [
+      {
+        "conditions": [
+          {
+            "kind": "all-gates-pass"
+          }
+        ],
+        "tier": "auto"
+      },
+      {
+        "conditions": [
+          {
+            "kind": "protected-changed"
+          }
+        ],
+        "tier": "review"
+      }
+    ],
+    "suites": [
+      {
+        "kind": "suite",
+        "location": "src/test/**",
+        "name": "unit"
+      }
+    ],
+    "zones": []
+  }
+}

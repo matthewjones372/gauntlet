@@ -1,0 +1,187 @@
+{
+  "file": ".gauntlet/policy.gx",
+  "nodes": {
+    "": {
+      "line": 1,
+      "column": 10,
+      "endLine": 1,
+      "endColumn": 26,
+      "text": "gauntlet \"kotlin-service\""
+    },
+    "/protect/0": {
+      "line": 8,
+      "column": 3,
+      "endLine": 8,
+      "endColumn": 9,
+      "text": "config   \"*.gradle.kts\", \"gradle/**\", \"settings.gradle.kts\", \".github/workflows/**\""
+    },
+    "/protect/1": {
+      "line": 9,
+      "column": 3,
+      "endLine": 9,
+      "endColumn": 11,
+      "text": "fixtures \"src/test/resources/**\""
+    },
+    "/protect/3": {
+      "line": 7,
+      "column": 3,
+      "endLine": 7,
+      "endColumn": 8,
+      "text": "tests    \"src/test/**\""
+    },
+    "/arch/0": {
+      "line": 13,
+      "column": 3,
+      "endLine": 13,
+      "endColumn": 46,
+      "text": "module domain must not depend on infra, web"
+    },
+    "/suites/0": {
+      "line": 17,
+      "column": 3,
+      "endLine": 17,
+      "endColumn": 7,
+      "text": "unit \"src/test/**\""
+    },
+    "/gates/0": {
+      "line": 21,
+      "column": 3,
+      "endLine": 21,
+      "endColumn": 7,
+      "text": "fast   { build, lint ratchet, arch ratchet }"
+    },
+    "/gates/0/checks/0": {
+      "line": 21,
+      "column": 33,
+      "endLine": 21,
+      "endColumn": 45,
+      "text": "fast   { build, lint ratchet, arch ratchet }"
+    },
+    "/gates/0/checks/1": {
+      "line": 21,
+      "column": 12,
+      "endLine": 21,
+      "endColumn": 17,
+      "text": "fast   { build, lint ratchet, arch ratchet }"
+    },
+    "/gates/0/checks/2": {
+      "line": 21,
+      "column": 19,
+      "endLine": 21,
+      "endColumn": 31,
+      "text": "fast   { build, lint ratchet, arch ratchet }"
+    },
+    "/gates/1": {
+      "line": 22,
+      "column": 3,
+      "endLine": 22,
+      "endColumn": 9,
+      "text": "verify { unit, mutation ratchet >= 80% on changed, coverage >= 90% on changed }"
+    },
+    "/gates/1/checks/0": {
+      "line": 22,
+      "column": 54,
+      "endLine": 22,
+      "endColumn": 80,
+      "text": "verify { unit, mutation ratchet >= 80% on changed, coverage >= 90% on changed }"
+    },
+    "/gates/1/checks/1": {
+      "line": 22,
+      "column": 18,
+      "endLine": 22,
+      "endColumn": 52,
+      "text": "verify { unit, mutation ratchet >= 80% on changed, coverage >= 90% on changed }"
+    },
+    "/gates/1/checks/2": {
+      "line": 22,
+      "column": 12,
+      "endLine": 22,
+      "endColumn": 16,
+      "text": "verify { unit, mutation ratchet >= 80% on changed, coverage >= 90% on changed }"
+    },
+    "/remediation/0": {
+      "line": 26,
+      "column": 1,
+      "endLine": 26,
+      "endColumn": 91,
+      "text": "on fail coverage { fix \"Add tests for the uncovered changed lines listed in the report.\" }"
+    },
+    "/remediation/1": {
+      "line": 25,
+      "column": 1,
+      "endLine": 25,
+      "endColumn": 128,
+      "text": "on fail mutation { fix \"Kill the surviving mutants listed in the report by adding assertions. Do not delete or weaken tests.\" }"
+    },
+    "/predicates/0": {
+      "line": 28,
+      "column": 1,
+      "endLine": 28,
+      "endColumn": 55,
+      "text": "predicate small = diff < 150 lines and no zone touched"
+    },
+    "/predicates/0/conditions/0": {
+      "line": 28,
+      "column": 19,
+      "endLine": 28,
+      "endColumn": 35,
+      "text": "predicate small = diff < 150 lines and no zone touched"
+    },
+    "/predicates/0/conditions/1": {
+      "line": 28,
+      "column": 40,
+      "endLine": 28,
+      "endColumn": 55,
+      "text": "predicate small = diff < 150 lines and no zone touched"
+    },
+    "/review/0": {
+      "line": 33,
+      "column": 3,
+      "endLine": 33,
+      "endColumn": 39,
+      "text": "auto   when small and all gates pass"
+    },
+    "/review/0/conditions/0": {
+      "line": 33,
+      "column": 25,
+      "endLine": 33,
+      "endColumn": 39,
+      "text": "auto   when small and all gates pass"
+    },
+    "/review/0/conditions/1": {
+      "line": 33,
+      "column": 15,
+      "endLine": 33,
+      "endColumn": 20,
+      "text": "auto   when small and all gates pass"
+    },
+    "/review/1": {
+      "line": 32,
+      "column": 3,
+      "endLine": 32,
+      "endColumn": 31,
+      "text": "review when dependency added"
+    },
+    "/review/1/conditions/0": {
+      "line": 32,
+      "column": 15,
+      "endLine": 32,
+      "endColumn": 31,
+      "text": "review when dependency added"
+    },
+    "/review/2": {
+      "line": 31,
+      "column": 3,
+      "endLine": 31,
+      "endColumn": 32,
+      "text": "review when protected changed"
+    },
+    "/review/2/conditions/0": {
+      "line": 31,
+      "column": 15,
+      "endLine": 31,
+      "endColumn": 32,
+      "text": "review when protected changed"
+    }
+  }
+}

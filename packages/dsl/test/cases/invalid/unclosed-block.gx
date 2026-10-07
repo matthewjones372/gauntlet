@@ -1,0 +1,5 @@
+gauntlet "x"
+use jvm
+owners @platform
+zone money {
+  paths "src/money/**"

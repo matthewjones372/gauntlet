@@ -1,0 +1,8 @@
+gauntlet "x"
+use jvm
+owners @platform
+suites {
+  hidden "holdout" from env HARNESS_HOLDOUT
+}
+
+gates { fast { build } }

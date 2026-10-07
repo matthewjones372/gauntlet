@@ -1,0 +1,8 @@
+gauntlet "svc"
+use jvm
+owners @platform
+gates { fast { build } }
+quarantine {
+  "svc.FxTest.rounding" until 2026-11-01 owner @payments
+  "svc.FxTest.rounding" until 2026-12-01 owner @payments
+}

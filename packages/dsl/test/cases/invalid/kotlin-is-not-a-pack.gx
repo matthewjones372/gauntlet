@@ -1,0 +1,5 @@
+gauntlet "x"
+use jvm, kotlin
+owners @p
+
+gates { fast { build } }

@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:31  error[invalid-date]  '2026-02-30' isn't a date.
+  6 |   "svc.FxTest.rounding" until 2026-02-30 owner @payments
+    |                               ^^^^^^^^^^
+  expected: a date as YYYY-MM-DD
+  fix: Use a real calendar date, such as 2026-11-01.

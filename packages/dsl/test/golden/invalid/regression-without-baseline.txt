@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:3  error[regression-needs-baseline]  A regression is measured against the baseline.
+  6 |   regression < 5%
+    |   ^^^^^^^^^^^^^^^
+  expected: `vs baseline` after the amount
+  fix: Write: regression < 5% vs baseline

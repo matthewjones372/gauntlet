@@ -1,0 +1,245 @@
+{
+  "agent": {},
+  "checks": [
+    {
+      "advisory": false,
+      "check": "build",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "assemble"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "assemble.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 12,
+        "file": ".gauntlet/policy.gx",
+        "line": 15,
+        "text": "fast   { build, lint ratchet }"
+      },
+      "status": "passed",
+      "tier": "fast"
+    },
+    {
+      "advisory": false,
+      "check": "lint",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "detekt"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "detekt.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 19,
+        "file": ".gauntlet/policy.gx",
+        "line": 15,
+        "text": "fast   { build, lint ratchet }"
+      },
+      "status": "passed",
+      "tier": "fast"
+    },
+    {
+      "advisory": false,
+      "check": "mutation",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "pitest"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "pitest.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "reason": "mutation score 71% is below the baseline 80%",
+      "source": {
+        "column": 18,
+        "file": ".gauntlet/policy.gx",
+        "line": 16,
+        "text": "verify { unit, mutation ratchet on changed }"
+      },
+      "status": "failed",
+      "tier": "verify"
+    },
+    {
+      "advisory": false,
+      "check": "unit",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "test"
+        ],
+        "executed": 42,
+        "exitCode": 0,
+        "reports": {
+          "test.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "reason": "1 test failed",
+      "source": {
+        "column": 12,
+        "file": ".gauntlet/policy.gx",
+        "line": 16,
+        "text": "verify { unit, mutation ratchet on changed }"
+      },
+      "status": "failed",
+      "tests": {
+        "errored": 0,
+        "executed": 42,
+        "failed": 1,
+        "passed": 41,
+        "skipped": 0
+      },
+      "tier": "verify"
+    }
+  ],
+  "decision": {
+    "blocking": true,
+    "mode": "enforce",
+    "nominations": [
+      {
+        "blocking": true,
+        "reason": "mutation failed: mutation score 71% is below the baseline 80%",
+        "rule": "gate-failed",
+        "source": {
+          "column": 18,
+          "file": ".gauntlet/policy.gx",
+          "line": 16,
+          "text": "verify { unit, mutation ratchet on changed }"
+        },
+        "tier": "review"
+      },
+      {
+        "blocking": true,
+        "reason": "unit failed: 1 test failed",
+        "rule": "gate-failed",
+        "source": {
+          "column": 12,
+          "file": ".gauntlet/policy.gx",
+          "line": 16,
+          "text": "verify { unit, mutation ratchet on changed }"
+        },
+        "tier": "review"
+      },
+      {
+        "blocking": true,
+        "reason": "A new @Disabled skips a test. (src/test/FxTest.kt:12)",
+        "rule": "integrity-forbid",
+        "tier": "review"
+      },
+      {
+        "blocking": true,
+        "reason": "New detekt.style.MagicNumber finding from lint (src/main/Fx.kt:5): 1.1 is a magic number",
+        "rule": "new-violation",
+        "tier": "review"
+      },
+      {
+        "blocking": true,
+        "reason": "mutation dropped below the baseline (80 to 71).",
+        "rule": "ratchet-regression",
+        "tier": "review"
+      },
+      {
+        "blocking": false,
+        "reason": "System.getenv is used in a condition. (src/main/Fx.kt:20)",
+        "rule": "integrity-flag",
+        "tier": "review"
+      },
+      {
+        "blocking": false,
+        "reason": "No review rule matched, so the change needs review.",
+        "rule": "no-rule-matched",
+        "tier": "review"
+      }
+    ],
+    "overrides": [],
+    "owners": [],
+    "tier": "review",
+    "wouldBlock": true
+  },
+  "facts": {
+    "budgetsChanged": [],
+    "dependencyChanges": [],
+    "files": [],
+    "gauntletChanged": false,
+    "linesChanged": 12,
+    "protectedTouched": [],
+    "zonesTouched": []
+  },
+  "gauntletVersion": "0.1.0",
+  "imports": [],
+  "integrity": {
+    "findings": [
+      {
+        "check": "env-branching",
+        "detector": "kotlin",
+        "kind": "flag",
+        "line": 20,
+        "message": "System.getenv is used in a condition.",
+        "path": "src/main/Fx.kt"
+      },
+      {
+        "check": "new-skips",
+        "detector": "kotlin",
+        "kind": "forbid",
+        "line": 12,
+        "message": "A new @Disabled skips a test.",
+        "path": "src/test/FxTest.kt"
+      }
+    ],
+    "notExecuted": []
+  },
+  "notExecuted": [],
+  "policy": {
+    "baseSha": "1111111111111111111111111111111111111111",
+    "drift": [],
+    "firstAdoption": false,
+    "headSha": "2222222222222222222222222222222222222222",
+    "irHash": "e2dfb6cfa3465bc4a198e01cdab13e2f0a25e2fc449a7b36fa4adbf54a0c2be9",
+    "mode": "enforce",
+    "notes": [],
+    "origin": "base",
+    "owners": [
+      "@platform"
+    ]
+  },
+  "ratchets": [
+    {
+      "base": 70,
+      "delta": 0,
+      "head": 70,
+      "metric": "coverage",
+      "regressed": false
+    },
+    {
+      "base": 80,
+      "delta": -9,
+      "head": 71,
+      "metric": "mutation",
+      "regressed": true
+    }
+  ],
+  "remediation": [
+    {
+      "check": "mutation",
+      "fix": "Kill the surviving mutants listed in the report. Do not delete or weaken tests."
+    }
+  ],
+  "schemaVersion": 1,
+  "violations": [
+    {
+      "check": "lint",
+      "line": 5,
+      "message": "1.1 is a magic number",
+      "path": "src/main/Fx.kt",
+      "ruleId": "detekt.style.MagicNumber"
+    }
+  ]
+}

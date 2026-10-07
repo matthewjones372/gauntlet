@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:1  error[duplicate-header]  A policy has exactly one `gauntlet` header.
+  4 | gauntlet "y"
+    | ^^^^^^^^
+  expected: a top-level block: use, mode, owners, protect, zone, arch, suites, integrity, import, budget, gates, on fail, predicate, review, stack, quarantine
+  fix: Remove this second `gauntlet` line.

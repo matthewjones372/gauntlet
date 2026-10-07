@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:7:3  error[rule-never-wins]  This auto rule needs 'evidence missing', which always nominates review, so auto can never win.
+  7 |   auto when evidence missing
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  expected: conditions that don't imply review
+  fix: Remove 'evidence missing' from the rule.

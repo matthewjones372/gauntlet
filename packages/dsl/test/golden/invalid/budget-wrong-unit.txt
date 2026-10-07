@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:6:9  error[wrong-unit]  In budget 'api', 'p99' can't be measured in '%'.
+  6 |   p99 < 5%
+    |         ^^
+  expected: a unit from 'ms', 's', 'm'
+  fix: Write the amount with a unit, for example 5ms.
+  available: ms, s, m

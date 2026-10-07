@@ -1,0 +1,4 @@
+gauntlet "x"
+use lintonly
+owners @p
+gates { verify { coverage >= 80% } }

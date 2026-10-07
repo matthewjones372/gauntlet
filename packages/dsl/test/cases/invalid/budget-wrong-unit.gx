@@ -1,0 +1,8 @@
+gauntlet "x"
+use jvm
+owners @platform
+budget api {
+  command "./perf.sh"
+  p99 < 5%
+}
+gates { fast { build } perf { budget api } }

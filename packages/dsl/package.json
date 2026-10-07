@@ -1,0 +1,14 @@
+{
+  "name": "@gauntlet/dsl",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "generate": "langium generate" },
+  "dependencies": {
+    "@gauntlet/ir": "workspace:*",
+    "chevrotain": "13.2.0",
+    "effect": "4.0.1",
+    "langium": "4.4.0"
+  }
+}

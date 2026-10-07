@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:18  error[holdout-not-ci-only]  Holdout 'secret' must say `ci only`: holdouts never run in the agent's sandbox.
+  4 | suites { holdout "secret" }
+    |                  ^^^^^^^^
+  expected: `ci only` after the holdout name
+  fix: Write: holdout "secret" ci only

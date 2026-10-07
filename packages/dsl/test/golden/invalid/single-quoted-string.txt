@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:1:10  error[unexpected-character]  Unexpected character "'".
+  1 | gauntlet 'x'
+    |          ^
+  expected: a name, a quoted string, a number, an owner such as @team, or one of { } ( ) , . < <= > >= == != -> %
+  fix: Use double quotes for strings, for example "src/test/**".

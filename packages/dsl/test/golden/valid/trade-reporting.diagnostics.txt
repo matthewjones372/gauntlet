@@ -1,0 +1,23 @@
+.gauntlet/policy.gx:23:14  info[not-executed-in-v1]  Holdout 'trade-holdout' runs only in CI and shows as "holdout pending" locally. It is parsed and validated but not executed in v1, so it is reported as missing evidence and nominates review.
+  23 |   holdout    "trade-holdout" ci only
+     |              ^^^^^^^^^^^^^^^
+  expected: nothing; this is for information
+  fix: Nothing to fix. Remove the holdout if changes should be able to reach auto or skim in v1.
+
+.gauntlet/policy.gx:34:8  info[not-executed-in-v1]  Budget 'ingest' is a perf budget. It is parsed and validated but not executed in v1, so it is reported as missing evidence and nominates review.
+  34 | budget ingest {
+     |        ^^^^^^
+  expected: nothing; this is for information
+  fix: Nothing to fix. Remove the budget if changes should be able to reach auto or skim in v1.
+
+.gauntlet/policy.gx:46:15  info[not-executed-in-v1]  `llm review` is caution-only. It is parsed and validated but not executed in v1, so it is reported as missing evidence and nominates review.
+  46 |   advisory  { llm review x3 }
+     |               ^^^^^^^^^^^^^
+  expected: nothing; this is for information
+  fix: Nothing to fix. Remove it if changes should be able to reach auto or skim in v1.
+
+.gauntlet/policy.gx:61:1  info[not-executed-in-v1]  The stack block describes stacked changes. It is parsed and validated but not executed in v1, so it is reported as missing evidence and nominates review.
+  61 | stack {
+     | ^^^^^
+  expected: nothing; this is for information
+  fix: Nothing to fix. Remove the block if changes should be able to reach auto or skim in v1.

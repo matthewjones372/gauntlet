@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:7:9  error[unexpected-token]  Expected 'when' in a review rule (<owner|review|skim|auto> when <condition>) but found 'zone'.
+  7 |   owner zone touched
+    |         ^^^^
+  expected: 'when'
+  fix: Insert 'when' before 'zone'.

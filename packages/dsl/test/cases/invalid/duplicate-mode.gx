@@ -1,0 +1,7 @@
+gauntlet "x"
+use jvm
+owners @platform
+mode shadow
+mode enforce
+
+gates { fast { build } }

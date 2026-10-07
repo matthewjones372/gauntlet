@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:5:18  error[suite-with-modifiers]  'unit' is a suite: it passes or fails, so it takes no ratchet, threshold or scope.
+  5 | gates { verify { unit >= 90% } }
+    |                  ^^^^^^^^^^^
+  expected: just 'unit'
+  fix: Write 'unit' on its own. Coverage and mutation thresholds go on the coverage and mutation gates.

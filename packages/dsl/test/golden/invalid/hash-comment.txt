@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:1  error[unexpected-character]  Unexpected character '#'.
+  4 | # a comment
+    | ^
+  expected: a name, a quoted string, a number, an owner such as @team, or one of { } ( ) , . < <= > >= == != -> %
+  fix: Comments start with //.

@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:7:20  error[wrong-unit]  A diff size is counted in lines.
+  7 |   auto when diff < 150 and all gates pass
+    |                    ^^^
+  expected: 'lines'
+  fix: Write: diff < 150 lines
+  available: lines

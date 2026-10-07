@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:5:1  error[duplicate-block]  `mode` appears more than once; the first is on line 4.
+  5 | mode enforce
+    | ^^^^
+  expected: a single `mode`
+  fix: Merge this into the `mode` on line 4.

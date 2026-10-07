@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:16  error[no-threshold]  'lint' doesn't produce a number, so it can't take '<= 3%'.
+  4 | gates { fast { lint <= 3% } }
+    |                ^^^^^^^^^^
+  expected: 'lint' or 'lint ratchet'
+  fix: Use `ratchet` to stop new violations, and remove the threshold.

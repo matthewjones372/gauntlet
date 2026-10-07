@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:13  error[unexpected-character]  Unexpected character ';'.
+  4 | mode enforce;
+    |             ^
+  expected: a name, a quoted string, a number, an owner such as @team, or one of { } ( ) , . < <= > >= == != -> %
+  fix: Remove the ';'. Statements end at the line break or at a comma.

@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:38  error[unknown-budget]  Unknown budget 'ingest'.
+  4 | gates { fast { build } perf { budget ingest } }
+    |                                      ^^^^^^
+  expected: a declared budget: 
+  fix: Declare it: budget ingest { command "..." }

@@ -1,0 +1,32 @@
+{
+  "name": "@gauntlet/cli",
+  "version": "0.1.0-rc.2",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "gauntlet": "./src/main.ts"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "4.0.1",
+    "@gauntlet/author": "workspace:*",
+    "@gauntlet/connect": "workspace:*",
+    "@gauntlet/core": "workspace:*",
+    "@gauntlet/dsl": "workspace:*",
+    "@gauntlet/ir": "workspace:*",
+    "@gauntlet/mcp": "workspace:*",
+    "@gauntlet/pack-clojure": "workspace:*",
+    "@gauntlet/pack-go": "workspace:*",
+    "@gauntlet/pack-jvm": "workspace:*",
+    "@gauntlet/pack-python": "workspace:*",
+    "@gauntlet/pack-rust": "workspace:*",
+    "@gauntlet/pack-scala": "workspace:*",
+    "@gauntlet/pack-typescript": "workspace:*",
+    "@gauntlet/sarif": "workspace:*",
+    "@gauntlet/templates": "workspace:*",
+    "effect": "4.0.1"
+  }
+}

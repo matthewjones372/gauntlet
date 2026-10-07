@@ -1,0 +1,31 @@
+gauntlet "go-service"
+use go
+mode enforce
+owners @platform
+
+protect {
+  tests "**/*_test.go"
+}
+
+zone money {
+  paths "settlement/**"
+  owner @payments
+  rule go.no-floating-money, go.no-panic
+}
+
+arch { module domain must not depend on infra }
+
+suites { unit "**/*_test.go" }
+
+gates {
+  fast   { build, lint ratchet, arch }
+  verify { unit, coverage >= 50% on changed, mutation ratchet on changed }
+}
+
+predicate small = diff < 150 lines and no zone touched
+
+review {
+  owner  when zone touched
+  review when protected changed
+  auto   when small and all gates pass
+}

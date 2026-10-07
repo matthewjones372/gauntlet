@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:5:23  error[unclosed-block]  The block opened on line 4 is never closed.
+  5 |   paths "src/money/**"
+    |                       ^
+  expected: '}'
+  fix: Add '}' to close the block opened on line 4.

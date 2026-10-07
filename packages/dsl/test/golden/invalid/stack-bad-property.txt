@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:7:20  error[unknown-layer-property]  Unknown stack layer property 'tests frozen'.
+  7 |   layer refactor { tests frozen }
+    |                    ^^^^^^^^^^^^
+  expected: one of: <subject> unchanged (tests, results, perf); additive; reversible; <suite> red -> green; touches <names>; <names> only
+  fix: Rewrite it in one of the accepted forms, for example `tests unchanged` or `acceptance red -> green`.
+  available: <subject> unchanged (tests, results, perf), additive, reversible, <suite> red -> green, touches <names>, <names> only

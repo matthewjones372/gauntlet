@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:5:42  error[unknown-zone]  Unknown zone 'mony'.
+  5 | gates { verify { coverage >= 90% in zone mony } }
+    |                                          ^^^^
+  expected: a declared zone: 'money'
+  fix: Did you mean 'money'?
+  available: money

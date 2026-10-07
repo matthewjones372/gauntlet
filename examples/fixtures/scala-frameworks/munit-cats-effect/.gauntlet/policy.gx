@@ -1,0 +1,20 @@
+gauntlet "munit-cats-effect"
+use scala
+mode enforce
+owners @platform
+
+protect {
+  tests "src/test/**"
+}
+
+suites { unit "src/test/**" }
+
+gates {
+  fast   { build }
+  verify { unit }
+}
+
+review {
+  review when protected changed
+  auto   when all gates pass
+}

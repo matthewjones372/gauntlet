@@ -1,0 +1,6 @@
+gauntlet "x"
+use jvm
+owners @platform
+mode lax
+
+gates { fast { build } }

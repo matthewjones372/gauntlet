@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:26  error[import-without-sarif]  The import command must write its SARIF to {sarif}, the path Gauntlet creates for it.
+  6 | import semgrep { command "semgrep scan --json" }
+    |                          ^^^^^^^^^^^^^^^^^^^^^
+  expected: a command containing {sarif}
+  fix: Pass {sarif} as the tool's output path, for example: --output {sarif}

@@ -1,0 +1,68 @@
+gauntlet "trade-reporting"
+use jvm
+mode shadow // shadow: report only, never block. enforce: block on failure.
+owners @platform
+
+protect {
+  tests    "src/test/**", "src/acceptance/**"
+  config   "*.gradle.kts", "gradle/**", ".github/workflows/**"
+  fixtures "src/test/resources/golden/**"
+}
+
+zone money {
+  paths "src/**/settlement/**", "src/**/fx/**"
+  owner @payments
+  rule kotlin.no-floating-money
+}
+
+arch { module domain must not depend on infra }
+
+suites {
+  unit       "src/test/**"
+  acceptance "src/acceptance/**"
+  holdout    "trade-holdout" ci only
+}
+
+integrity {
+  ratchet executed tests, assertions per test
+  forbid  new skips, new suppressions, test refs in main, exit in tests
+  flag    equality overrides, catch-all near changed code, env branching
+}
+
+import semgrep { command "semgrep scan --sarif --output {sarif}" }
+
+budget ingest {
+  command "./perf/ingest.sh"
+  p99 < 50ms
+  errors < 0.1%
+  regression < 5% vs baseline
+}
+
+gates {
+  fast      { build, lint, arch ratchet }
+  verify    { unit, mutation ratchet on changed, coverage >= 90% on changed in zone money }
+  behaviour { acceptance, trade-holdout }
+  perf      { budget ingest }
+  advisory  { llm review x3 }
+}
+
+on fail mutation { fix "Add assertions that kill the surviving mutants listed in the report. Do not delete or weaken tests." }
+
+predicate small = diff < 150 lines and no zone touched
+
+review {
+  owner  when zone touched
+  review when protected changed
+  review when dependency added
+  review when budget changed
+  auto   when small and all gates pass
+}
+
+stack {
+  layer refactor { tests unchanged, results unchanged, perf unchanged }
+  layer migration { additive, reversible }
+  layer feature { acceptance red -> green }
+  layer wiring { touches config, di only }
+  max layer diff 300 lines
+  review stack when cumulative >= review
+}

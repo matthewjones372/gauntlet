@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:16  error[cannot-ratchet]  'build' only passes or fails, so there is nothing to ratchet.
+  4 | gates { fast { build ratchet } }
+    |                ^^^^^^^^^^^^^
+  expected: 'build' without `ratchet`
+  fix: Remove `ratchet`.

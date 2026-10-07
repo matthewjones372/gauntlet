@@ -1,0 +1,7 @@
+gauntlet "x"
+use jvm
+owners @platform
+
+gates { fast { build } }
+zone money { paths "src/**/money/**" }
+protect { tests "src/test/**" }

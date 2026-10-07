@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:7:1  error[unexpected-token]  Expected 'owner' in a quarantine entry ("<test id>" until <YYYY-MM-DD> owner @team) but found '}'.
+  7 | }
+    | ^
+  expected: 'owner'
+  fix: Insert 'owner' before '}'.

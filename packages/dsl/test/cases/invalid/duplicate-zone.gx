@@ -1,0 +1,7 @@
+gauntlet "x"
+use jvm
+owners @platform
+
+gates { fast { build } }
+zone m { paths "a/**" owner @m }
+zone m { paths "b/**" owner @m }

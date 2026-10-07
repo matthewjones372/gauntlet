@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:8  error[import-without-command]  Import 'semgrep' has no command. Gauntlet runs every import itself and never reads existing files.
+  6 | import semgrep { caution }
+    |        ^^^^^^^
+  expected: a `command` line containing {sarif}
+  fix: Add a line such as: command "semgrep --sarif --output {sarif}"

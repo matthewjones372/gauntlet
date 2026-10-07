@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:1  error[advisory-only]  Every gate tier is advisory, so nothing deterministic can fail a change.
+  4 | gates { advisory { llm review x3 } }
+    | ^^^^^
+  expected: at least one required tier
+  fix: Add a required tier, for example: verify { build, unit }

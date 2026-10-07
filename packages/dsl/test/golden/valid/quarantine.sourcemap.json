@@ -1,0 +1,96 @@
+{
+  "file": ".gauntlet/policy.gx",
+  "nodes": {
+    "": {
+      "line": 1,
+      "column": 10,
+      "endLine": 1,
+      "endColumn": 20,
+      "text": "gauntlet \"payments\""
+    },
+    "/protect/1": {
+      "line": 7,
+      "column": 3,
+      "endLine": 7,
+      "endColumn": 8,
+      "text": "tests \"src/test/**\""
+    },
+    "/suites/0": {
+      "line": 10,
+      "column": 10,
+      "endLine": 10,
+      "endColumn": 14,
+      "text": "suites { unit \"src/test/**\" }"
+    },
+    "/gates/0": {
+      "line": 13,
+      "column": 3,
+      "endLine": 13,
+      "endColumn": 7,
+      "text": "fast   { build }"
+    },
+    "/gates/0/checks/0": {
+      "line": 13,
+      "column": 12,
+      "endLine": 13,
+      "endColumn": 17,
+      "text": "fast   { build }"
+    },
+    "/gates/1": {
+      "line": 14,
+      "column": 3,
+      "endLine": 14,
+      "endColumn": 9,
+      "text": "verify { unit }"
+    },
+    "/gates/1/checks/0": {
+      "line": 14,
+      "column": 12,
+      "endLine": 14,
+      "endColumn": 16,
+      "text": "verify { unit }"
+    },
+    "/review/0": {
+      "line": 26,
+      "column": 3,
+      "endLine": 26,
+      "endColumn": 29,
+      "text": "auto   when all gates pass"
+    },
+    "/review/0/conditions/0": {
+      "line": 26,
+      "column": 15,
+      "endLine": 26,
+      "endColumn": 29,
+      "text": "auto   when all gates pass"
+    },
+    "/review/1": {
+      "line": 25,
+      "column": 3,
+      "endLine": 25,
+      "endColumn": 32,
+      "text": "review when protected changed"
+    },
+    "/review/1/conditions/0": {
+      "line": 25,
+      "column": 15,
+      "endLine": 25,
+      "endColumn": 32,
+      "text": "review when protected changed"
+    },
+    "/quarantine/0": {
+      "line": 20,
+      "column": 3,
+      "endLine": 20,
+      "endColumn": 40,
+      "text": "\"svc.CheckoutTest.paysWithASavedCard\" until 2026-11-01 owner @payments"
+    },
+    "/quarantine/1": {
+      "line": 21,
+      "column": 3,
+      "endLine": 21,
+      "endColumn": 24,
+      "text": "\"svc.FxTest.rounding\" until 2026-10-20 owner @payments, @platform"
+    }
+  }
+}

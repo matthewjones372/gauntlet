@@ -1,0 +1,5 @@
+gauntlet "x"
+use jvm
+owners @platform
+zone money { paths "m/**" owner @m }
+gates { verify { coverage >= 90% in zone mony } }

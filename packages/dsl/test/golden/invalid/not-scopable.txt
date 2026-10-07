@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:16  error[not-scopable]  'build' always runs on the whole project; it can't be limited with `on changed`.
+  4 | gates { fast { build on changed } }
+    |                ^^^^^^^^^^^^^^^^
+  expected: 'build' without `on changed`
+  fix: Remove `on changed`.

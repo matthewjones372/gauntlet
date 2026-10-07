@@ -1,0 +1,5 @@
+{
+  "projectName": "Harness",
+  "languages": [{ "id": "harness", "grammar": "src/language/harness.langium", "fileExtensions": [".hx"] }],
+  "out": "src/language/generated"
+}

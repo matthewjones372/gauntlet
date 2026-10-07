@@ -1,0 +1,230 @@
+{
+  "agent": {},
+  "checks": [
+    {
+      "advisory": false,
+      "check": "build",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "assemble"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "assemble.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 12,
+        "file": ".gauntlet/policy.gx",
+        "line": 15,
+        "text": "fast   { build, lint ratchet }"
+      },
+      "status": "passed",
+      "tier": "fast"
+    },
+    {
+      "advisory": false,
+      "check": "lint",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "detekt"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "detekt.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 19,
+        "file": ".gauntlet/policy.gx",
+        "line": 15,
+        "text": "fast   { build, lint ratchet }"
+      },
+      "status": "passed",
+      "tier": "fast"
+    },
+    {
+      "advisory": false,
+      "check": "mutation",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "pitest"
+        ],
+        "exitCode": 0,
+        "reports": {
+          "pitest.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 18,
+        "file": ".gauntlet/policy.gx",
+        "line": 16,
+        "text": "verify { unit, mutation ratchet on changed }"
+      },
+      "status": "passed",
+      "tier": "verify"
+    },
+    {
+      "advisory": false,
+      "check": "unit",
+      "proof": {
+        "command": [
+          "./gradlew",
+          "test"
+        ],
+        "executed": 42,
+        "exitCode": 0,
+        "reports": {
+          "test.xml": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "source": {
+        "column": 12,
+        "file": ".gauntlet/policy.gx",
+        "line": 16,
+        "text": "verify { unit, mutation ratchet on changed }"
+      },
+      "status": "passed",
+      "tests": {
+        "errored": 0,
+        "executed": 42,
+        "failed": 0,
+        "passed": 42,
+        "skipped": 0
+      },
+      "tier": "verify"
+    }
+  ],
+  "decision": {
+    "blocking": false,
+    "mode": "enforce",
+    "nominations": [
+      {
+        "blocking": false,
+        "reason": ".gauntlet/policy.gx is under .gauntlet/; policy, baseline and self-test changes need an owner.",
+        "rule": "gauntlet-changed",
+        "tier": "owner"
+      },
+      {
+        "blocking": false,
+        "reason": "The policy's owner rule matched.",
+        "rule": "policy",
+        "source": {
+          "column": 3,
+          "file": ".gauntlet/policy.gx",
+          "line": 22,
+          "text": "owner when zone touched"
+        },
+        "tier": "owner"
+      },
+      {
+        "blocking": false,
+        "reason": "build.gradle.kts is protected (config); the change is undone for the run and needs review.",
+        "rule": "protected-changed",
+        "source": {
+          "column": 3,
+          "file": ".gauntlet/policy.gx",
+          "line": 7,
+          "text": "config \"*.gradle.kts\""
+        },
+        "tier": "review"
+      },
+      {
+        "blocking": false,
+        "reason": "The policy's review rule matched.",
+        "rule": "policy",
+        "source": {
+          "column": 3,
+          "file": ".gauntlet/policy.gx",
+          "line": 23,
+          "text": "review when protected changed"
+        },
+        "tier": "review"
+      }
+    ],
+    "overrides": [],
+    "owners": [
+      "@payments",
+      "@platform"
+    ],
+    "tier": "owner",
+    "wouldBlock": false
+  },
+  "facts": {
+    "budgetsChanged": [],
+    "dependencyChanges": [
+      {
+        "added": [
+          "evil:lib:6.6.6"
+        ],
+        "manifest": "build.gradle.kts",
+        "removed": [],
+        "unparsed": false
+      }
+    ],
+    "files": [],
+    "gauntletChanged": true,
+    "linesChanged": 12,
+    "protectedTouched": [
+      {
+        "action": "restored",
+        "change": "modified",
+        "group": "gauntlet",
+        "kind": "gauntlet",
+        "path": ".gauntlet/policy.gx"
+      },
+      {
+        "action": "restored",
+        "change": "modified",
+        "group": "config",
+        "kind": "config",
+        "path": "build.gradle.kts"
+      }
+    ],
+    "zonesTouched": [
+      {
+        "files": [
+          "src/main/money/Fx.kt"
+        ],
+        "owners": [
+          "@payments"
+        ],
+        "zone": "money"
+      }
+    ]
+  },
+  "gauntletVersion": "0.1.0",
+  "imports": [],
+  "integrity": {
+    "findings": [],
+    "notExecuted": []
+  },
+  "notExecuted": [],
+  "policy": {
+    "baseSha": "1111111111111111111111111111111111111111",
+    "drift": [
+      {
+        "change": "modified",
+        "path": ".gauntlet/policy.gx"
+      }
+    ],
+    "firstAdoption": false,
+    "headSha": "2222222222222222222222222222222222222222",
+    "irHash": "e2dfb6cfa3465bc4a198e01cdab13e2f0a25e2fc449a7b36fa4adbf54a0c2be9",
+    "mode": "enforce",
+    "notes": [
+      "This change edits .gauntlet/; it is judged by the policy at 111111111111 and the edit nominates owner."
+    ],
+    "origin": "base",
+    "owners": [
+      "@platform"
+    ]
+  },
+  "ratchets": [],
+  "remediation": [],
+  "schemaVersion": 1,
+  "violations": []
+}

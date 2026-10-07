@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:1  error[unexpected-statement]  Unexpected 'zoen' at the top level.
+  4 | zoen money { paths "a/**" }
+    | ^^^^
+  expected: a top-level block: use, mode, owners, protect, zone, arch, suites, integrity, import, budget, gates, on fail, predicate, review, stack, quarantine
+  fix: Did you mean 'zone'?

@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:7:3  error[retired-syntax]  `require` was renamed: rules now name the tier they nominate.
+  7 |   require when protected changed
+    |   ^^^^^^^
+  expected: `owner`, `review`, `skim` or `auto`
+  fix: Write `review when ...`.

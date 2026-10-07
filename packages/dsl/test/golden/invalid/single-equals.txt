@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:24  error[unexpected-token]  Expected one of '<', '<=', '>', '>=', '==', '!=' but found '='.
+  6 | predicate small = diff = 10 lines
+    |                        ^
+  expected: one of '<', '<=', '>', '>=', '==', '!='
+  fix: Replace '=' with one of '<', '<=', '>', '>=', '==', '!='.

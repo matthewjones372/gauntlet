@@ -1,0 +1,31 @@
+gauntlet "rust-service"
+use rust
+mode enforce
+owners @platform
+
+protect {
+  tests "tests/**"
+}
+
+zone money {
+  paths "src/settlement/**"
+  owner @payments
+  rule rust.no-floating-money, rust.no-panic, rust.no-unwrap
+}
+
+arch { module domain must not depend on infra }
+
+suites { unit "tests/**" }
+
+gates {
+  fast   { build, lint ratchet, arch }
+  verify { unit, coverage >= 50% on changed, mutation ratchet on changed }
+}
+
+predicate small = diff < 150 lines and no zone touched
+
+review {
+  owner  when zone touched
+  review when protected changed
+  auto   when small and all gates pass
+}

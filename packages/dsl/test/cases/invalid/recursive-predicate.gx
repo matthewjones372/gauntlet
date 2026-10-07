@@ -1,0 +1,9 @@
+gauntlet "x"
+use jvm
+owners @platform
+
+gates { fast { build } }
+predicate a = a and all gates pass
+review {
+  auto when a
+}

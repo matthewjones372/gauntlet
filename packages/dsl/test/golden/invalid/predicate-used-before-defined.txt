@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:15  error[predicate-order]  Predicate 'a' uses 'b', which is defined later.
+  6 | predicate a = b and all gates pass
+    |               ^
+  expected: predicates defined before they are used
+  fix: Move `predicate b` above `predicate a`.

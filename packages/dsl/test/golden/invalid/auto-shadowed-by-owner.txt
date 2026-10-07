@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:9:3  error[rule-never-wins]  Whenever this auto rule holds, the owner rule on line 8 holds too, so auto can never win.
+  9 |   auto when zone touched and all gates pass
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  expected: a rule that can win
+  fix: Narrow the rule on line 8, or remove this one.

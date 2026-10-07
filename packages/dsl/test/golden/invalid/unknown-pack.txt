@@ -1,0 +1,12 @@
+.gauntlet/policy.gx:1:10  warning[no-gates]  The policy has no `gates` block, so no evidence is collected and every change is missing evidence.
+  1 | gauntlet "x"
+    |          ^^^
+  expected: a `gates` block
+  fix: Add gates, for example: gates { fast { build }, verify { unit } }
+
+.gauntlet/policy.gx:2:5  error[unknown-pack]  Unknown pack 'jvmm'.
+  2 | use jvmm
+    |     ^^^^
+  expected: an installed pack: 'jvm', 'lintonly'
+  fix: Did you mean 'jvm'?
+  available: jvm, lintonly

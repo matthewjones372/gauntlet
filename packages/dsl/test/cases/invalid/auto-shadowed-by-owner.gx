@@ -1,0 +1,10 @@
+gauntlet "x"
+use jvm
+owners @platform
+
+gates { fast { build } }
+zone m { paths "m/**" owner @m }
+review {
+  owner when zone touched
+  auto when zone touched and all gates pass
+}

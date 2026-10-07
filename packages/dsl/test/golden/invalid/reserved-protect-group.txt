@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:6:11  error[reserved-word]  'gauntlet' is a reserved word and can't appear here in `protect`.
+  6 | protect { gauntlet ".gauntlet/**" }
+    |           ^^^^^^^^
+  expected: '}'
+  fix: If it is meant as a name, choose a different name.

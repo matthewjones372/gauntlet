@@ -1,0 +1,6 @@
+.gauntlet/policy.gx:4:38  error[unknown-scope]  Unknown scope 'touched'.
+  4 | gates { verify { mutation ratchet on touched } }
+    |                                      ^^^^^^^
+  expected: 'changed' or 'all'
+  fix: Write `on changed` to check only what the change touches, or `on all` for the whole project.
+  available: changed, all

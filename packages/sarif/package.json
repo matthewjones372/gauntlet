@@ -1,0 +1,12 @@
+{
+  "name": "@gauntlet/sarif",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@gauntlet/ir": "workspace:*",
+    "effect": "4.0.1",
+    "fast-xml-parser": "5.11.2"
+  }
+}
