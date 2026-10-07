@@ -3,7 +3,9 @@
   <img src="assets/gauntlet-logo/gauntlet-lockup-light.svg" width="280" alt="gauntlet">
 </picture>
 
-**Trust AI-written code. Verify it first.**
+**Trust AI-written code. Verify the verifier.**
+
+The agent can write the code. It can't redefine what "done" means.
 
 ## Get started in 3 steps
 
@@ -32,6 +34,120 @@ and it can't weaken your tests or the rules to get there. Nothing is blocked
 until you say so: Gauntlet starts by only reporting.
 
 > Release candidate (v0.1.0-rc.2). Works end to end; expect rough edges.
+
+## Why Gauntlet
+
+AI coding agents are getting very good at changing code. But a typical agent
+can also:
+
+1. change the implementation,
+2. change the tests,
+3. change the test configuration,
+4. run the tests,
+5. see whether they pass.
+
+So the agent isn't only writing the solution. It can also change the machinery
+that decides whether the solution is correct. If the goal is "make the tests
+pass", deleting a test, weakening an assertion, adding a skip, changing the test
+runner or making the test exit early can be much easier than fixing the bug.
+
+This is a version of an old problem in AI research: **reward hacking**. An agent
+optimised against a proxy for what we want can learn to exploit the proxy
+instead. In coding, the tests and the CI result are that proxy, and research on
+agentic systems describes modifying tests and interfering with evaluation as
+this kind of reward hacking.
+
+So the interesting question isn't "can an agent make the tests pass?" It's:
+
+> Can an agent make the tests pass **without being able to weaken the evidence
+> used to judge it**?
+
+That's what Gauntlet is for.
+
+## What Gauntlet does
+
+Gauntlet is a verification integrity layer for AI-assisted development. It sits
+between a code change and the decision to trust it. Instead of only asking
+"did the tests pass?", it asks:
+
+```text
+          ┌──────────────────────────────────┐
+          │           Code change            │
+          └────────────────┬─────────────────┘
+                           │
+          ┌────────────────▼─────────────────┐
+          │           Verification           │
+          │                                  │
+          │  • Did the checks actually run?  │
+          │  • Can we trust the results?     │
+          │  • Were tests weakened?          │
+          │  • Did coverage drop?            │
+          │  • Did mutation strength drop?   │
+          │  • Did the architecture slip?    │
+          └────────────────┬─────────────────┘
+                           │
+          ┌────────────────▼─────────────────┐
+          │         Review decision          │
+          │                                  │
+          │   auto / skim / review / owner   │
+          └──────────────────────────────────┘
+```
+
+Gauntlet doesn't decide whether your code is correct. Your own tests, linters,
+architecture rules and other checks still define that. Gauntlet makes sure
+those checks stay trustworthy.
+
+### The central invariant
+
+Everything in Gauntlet follows from one question:
+
+> Can the agent weaken this check and still pass?
+
+If the answer is yes, the check isn't strong enough. That leads to these rules:
+
+- **The policy comes from the base branch,** so an agent can't loosen the rules
+  and then pass under the weaker ones.
+- **Protected tests and test configuration come from the base,** so editing
+  them doesn't change the evidence the change is judged by.
+- **Gauntlet only trusts evidence it produced:** it creates fresh output
+  directories and reads results only from the processes it started.
+- **A silent green is a failure.** A suite that runs zero tests, or missing
+  evidence, is never a pass.
+- **Verification only gets stronger.** Coverage, mutation strength and other
+  metrics can't quietly drop.
+- **Integrity checks look for weakened verification:** skipped or deleted
+  tests, weakened assertions, new suppressions, test-only code paths and added
+  retries.
+- **Flaky tests are failures,** not something to retry until it happens to pass.
+- **Probabilistic signals can raise suspicion, never lower it.** Nothing a model
+  says can make a change look safer.
+
+Gauntlet doesn't make agents trustworthy by trusting them more. It makes the
+evidence harder to manipulate.
+
+### Why not just CI?
+
+CI answers "did these commands return success?" Gauntlet asks "should we
+believe the success?" Take a change where an agent writes:
+
+```diff
+- assertEquals(expected, actual)
++ assertTrue(true)
+```
+
+The test passes, CI is green, and the agent reports success, but the evidence
+has been weakened. The same goes for:
+
+```diff
++ @Disabled
+  class PaymentTest { ... }
+```
+
+or a test runner changed so the suite never runs, a retry added so a flaky test
+eventually goes green, or an old result file left in the workspace and mistaken
+for this run's. None of these are failures of the test framework. They're
+failures of the verification boundary, and that boundary is what Gauntlet
+guards.
 
 ## How it works
 
@@ -116,6 +232,58 @@ review {
 `gauntlet explain` describes your policy in plain English, `gauntlet validate`
 checks it, and `gauntlet selftest` tries known cheats against your code to prove
 the policy catches each one.
+
+### What happens to a change
+
+Without Gauntlet:
+
+```text
+agent writes code → tests pass → CI green → merge
+```
+
+With Gauntlet:
+
+```text
+agent writes code
+      ↓
+the policy is taken from the base branch
+      ↓
+protected tests and configuration are restored from the base
+      ↓
+checks run in fresh evidence directories
+      ↓
+Gauntlet confirms the evidence is genuine
+      ↓
+integrity checks look for weakened verification
+      ↓
+tests, coverage, mutation and architecture are evaluated
+      ↓
+the review level is decided
+      ↓
+GitHub checks the required approval exists (with `gauntlet connect github`)
+```
+
+The result isn't another AI reviewer saying "LGTM". It's a deterministic
+decision backed by evidence: the same change always gets the same answer.
+
+### The research behind it
+
+Gauntlet draws on a few converging ideas:
+
+- **Reward hacking.** Systems can optimise a measurable proxy while missing the
+  real objective, and agents can go further and manipulate the environment that
+  produces the score. For coding agents the proxy is usually "the tests pass",
+  and if the agent can change the tests, their configuration or the evidence,
+  the proxy itself is attackable.
+- **Verification is a moving target.** A verifier that holds against today's
+  agent may be exploitable by tomorrow's. The generator and the verifier need to
+  evolve together, so Gauntlet treats verification strength as something to test
+  and ratchet: `gauntlet selftest` tries known cheats against your own policy.
+- **Software testing research.** Gauntlet builds on established techniques
+  rather than replacing them: mutation testing, coverage, architecture rules,
+  static analysis, flaky-test detection, baseline ratchets and adversarial
+  testing (hidden holdout tests are planned). What's new is putting them behind
+  an integrity boundary designed for an agent that can edit the repository.
 
 ## More
 
