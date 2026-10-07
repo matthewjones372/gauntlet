@@ -75,6 +75,16 @@ const hasFinding = (r: Report, check: string) => r.integrity.findings.some((f) =
 const nominated = (r: Report, rule: string) => r.decision.nominations.some((n) => n.rule === rule)
 
 /** How each built-in fixture counts as caught. */
+/**
+ * Fixtures whose verdict needs no gate to run: they're caught by a static
+ * integrity detector (skips, suppressions, test references in main code,
+ * weakened assertions) or by the policy decision itself (a lowered threshold,
+ * an edited baseline). Their checks skip the gates, which keeps selftest fast
+ * without changing what it proves. A deleted test stays a full check, since
+ * some packs find it only from the tests that ran.
+ */
+const CAUGHT_WITHOUT_EXECUTION: ReadonlySet<string> = new Set(["added-skip", "added-suppression", "test-id-in-main", "weakened-assertion", "lowered-threshold", "edited-baseline"])
+
 const EXPECT: Record<BuiltInFixture, (r: Report, control: Report) => { caught: boolean; why: string }> = {
   "deleted-test": (r) => ({ caught: hasFinding(r, "deleted-tests"), why: "a deleted-tests forbid" }),
   "weakened-assertion": (r) => ({ caught: hasFinding(r, "weakened-assertions"), why: "a weakened-assertions forbid" }),
@@ -212,8 +222,8 @@ export const runSelftest = (request: SelftestRequest) =>
           ? fs.remove(path.join(dir, e.path), { force: true })
           : fs.makeDirectory(path.dirname(path.join(dir, e.path)), { recursive: true }).pipe(Effect.flatMap(() => fs.writeFileString(path.join(dir, e.path), e.content!)))
       , { discard: true })
-    const judge = (name: string, head: string) =>
-      runCheck({ repo: request.repo, policyRef: base, head, outDir: path.join(request.outDir, name), gauntletVersion: request.gauntletVersion, record: false })
+    const judge = (name: string, head: string, skipGates = false) =>
+      runCheck({ repo: request.repo, policyRef: base, head, outDir: path.join(request.outDir, name), gauntletVersion: request.gauntletVersion, record: false, skipGates })
 
     const controlSha = yield* commitWith("control", () => Effect.void)
     const control = (yield* judge("control", controlSha)).report
@@ -222,16 +232,19 @@ export const runSelftest = (request: SelftestRequest) =>
     const projectFiles = files.filter((f) => f.startsWith(".gauntlet/selftest/") && f.endsWith(".patch")).sort()
     const wanted = (name: string) => request.only === undefined || request.only.includes(name)
 
-    const results: FixtureResult[] = []
     // Built-in fixtures in a fixed order; a pack's version wins over a generic one of the same name.
-    for (const fixture of BUILT_IN_FIXTURES) {
+    // Each runs in its own worktree and output directory, so two run at once; results keep the order.
+    const builtIn = BUILT_IN_FIXTURES.flatMap((fixture) => {
       const t = [...tamperings].reverse().find((x) => x.fixture === fixture)
-      if (!t || !wanted(fixture)) continue
-      const sha = yield* commitWith(fixture, applyEdits(t.edits))
-      const report = (yield* judge(fixture, sha)).report
-      const verdict = EXPECT[fixture](report, control)
-      results.push({ fixture, description: t.description, tier: report.decision.tier, caught: verdict.caught, why: verdict.caught ? `caught by ${verdict.why}` : `expected ${verdict.why}` })
-    }
+      return t && wanted(fixture) ? [{ fixture, t }] : []
+    })
+    const results: FixtureResult[] = [...yield* Effect.forEach(builtIn, ({ fixture, t }) =>
+      Effect.gen(function*() {
+        const sha = yield* commitWith(fixture, applyEdits(t.edits))
+        const report = (yield* judge(fixture, sha, CAUGHT_WITHOUT_EXECUTION.has(fixture))).report
+        const verdict = EXPECT[fixture](report, control)
+        return { fixture, description: t.description, tier: report.decision.tier, caught: verdict.caught, why: verdict.caught ? `caught by ${verdict.why}` : `expected ${verdict.why}` } satisfies FixtureResult
+      }), { concurrency: 2 })]
     for (const file of projectFiles) {
       const name = file.slice(".gauntlet/selftest/".length).replace(/\.patch$/, "")
       if (!wanted(name)) continue

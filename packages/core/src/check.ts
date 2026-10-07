@@ -4,7 +4,7 @@ import type { MetricDelta, Run } from "@gauntlet/sarif"
 import { Clock, Data, Effect, Option } from "effect"
 import { BaselineStore, renamesOf } from "./baseline-store.ts"
 import { diffFacts } from "./diff-facts.ts"
-import { runGates } from "./gate-runner.ts"
+import { type GateRunnerOutput, runGates } from "./gate-runner.ts"
 import { Git } from "./git.ts"
 import { inferZones } from "./infer.ts"
 import { runImports } from "./imports.ts"
@@ -40,6 +40,12 @@ export interface CheckRequest {
   readonly blocked?: { readonly reason: string }
   /** Append a shadow record as a git note (default true). */
   readonly record?: boolean
+  /**
+   * Judge without running any gate: only what needs no execution (diff facts,
+   * policy and integrity detectors) is evaluated, and every gate is reported as
+   * not executed. `selftest` uses it for fixtures caught that way.
+   */
+  readonly skipGates?: boolean
 }
 
 export interface CheckResult {
@@ -167,8 +173,12 @@ export const runCheck = (request: CheckRequest) =>
       const workspace = yield* (yield* Workspace).prepare({ repo: request.repo, base: p.base, head: p.head, protect: p.ir.protect, runnerConfig: p.runnerConfig })
       const files = yield* git.listWorkingFiles(workspace.dir)
       const today = yield* git.commitDate(request.repo, p.head)
-      const gates = yield* runGates({ ir: p.ir, facts: p.facts, workspace, packs: p.used, baseline: p.baseline, renames: p.renames, files, today })
-      const imports = yield* runImports(p.ir, workspace, p.baseline, p.renames)
+      const gates: GateRunnerOutput = request.skipGates
+        ? { checks: [], newViolations: [], regressions: [], ratchets: [], runs: [], metrics: {}, durationsMs: {} }
+        : yield* runGates({ ir: p.ir, facts: p.facts, workspace, packs: p.used, baseline: p.baseline, renames: p.renames, files, today })
+      const imports = request.skipGates
+        ? { checks: [], newViolations: [], runs: [], caution: [], records: [] }
+        : yield* runImports(p.ir, workspace, p.baseline, p.renames)
       const executed: Executed = {
         checks: [...gates.checks, ...imports.checks],
         newViolations: [...gates.newViolations, ...imports.newViolations],

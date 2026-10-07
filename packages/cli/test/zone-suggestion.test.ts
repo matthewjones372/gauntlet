@@ -8,6 +8,8 @@ import { cli } from "./harness.ts"
 // After setup, a change that adds a sensitive-looking area no zone covers gets
 // a note suggesting the policy be reviewed. It never changes the decision.
 
+// Each test runs real builds and tests (setup, apply, check), so it gets a minute, not Bun's 5-second default.
+const TIMEOUT = 60_000
 const repos: TempRepo[] = []
 afterEach(() => repos.splice(0).forEach((r) => r.cleanup()))
 
@@ -32,8 +34,9 @@ const appliedProject = async () => {
   repos.push(r)
   r.write(GO)
   r.commit("existing project")
+  // The note needs only the policy, not a recorded baseline, so the draft is committed as it is.
   await gauntlet(r, "setup", "--owner", "@alice")
-  await gauntlet(r, "apply")
+  r.commit("Add Gauntlet")
   return { r, base: r.git("rev-parse", "HEAD").trim() }
 }
 
@@ -51,11 +54,11 @@ describe("a new area that may need a zone", () => {
     const { r, base } = await appliedProject()
     const notes = await notesAfter(r, base, { "billing/total.go": "package billing\n\nfunc Total(a, b int64) int64 {\n\treturn a + b\n}\n" })
     expect(notes).toContain("This change adds billing/**, which looks like payments, billing and money code but isn't in a zone. To protect it, run /gauntlet-setup in Claude Code (or add a zone to .gauntlet/policy.gx).")
-  })
+  }, TIMEOUT)
 
   test("files added inside an existing zone get no note", async () => {
     const { r, base } = await appliedProject()
     const notes = await notesAfter(r, base, { "settlement/rates.go": "package settlement\n\nconst Basis = 10000\n" })
     expect(notes.filter((n) => n.includes("/gauntlet-setup"))).toEqual([])
-  })
+  }, TIMEOUT)
 })

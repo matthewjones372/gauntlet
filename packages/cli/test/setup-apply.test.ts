@@ -8,6 +8,8 @@ import { cli } from "./harness.ts"
 // The three-step start: `gauntlet setup`, `/gauntlet-setup` in Claude Code
 // (simulated by writing its proposal), and `gauntlet apply`.
 
+// Each test runs real builds and tests (setup, apply, check), so it gets a minute, not Bun's 5-second default.
+const TIMEOUT = 60_000
 const repos: TempRepo[] = []
 afterEach(() => repos.splice(0).forEach((r) => r.cleanup()))
 
@@ -47,7 +49,7 @@ describe("gauntlet setup", () => {
     expect(read(r, "CLAUDE.md")).toStartWith("# My project\n\nRun make lint first.\n")
     expect(res.out).toContain("type /gauntlet-setup")
     expect((await gauntlet(r, "setup")).out).toContain("already exists; keeping it")
-  })
+  }, TIMEOUT)
 })
 
 describe("gauntlet apply", () => {
@@ -63,7 +65,7 @@ describe("gauntlet apply", () => {
     expect(again.out).toContain("is already recorded")
     expect(subjects(r)[0]).toBe("Record Gauntlet baseline")
     expect(r.git("status", "--porcelain").trim()).toBe("")
-  })
+  }, TIMEOUT)
 
   test("a proposal is shown before it's applied, with what loosens it marked, then removed", async () => {
     const r = project()
@@ -77,7 +79,7 @@ describe("gauntlet apply", () => {
     expect(res.out).toContain("  - Loosens: gate coverage threshold changes from >= 80% to >= 70%")
     expect(read(r, ".gauntlet/policy.gx")).toContain("owners @alice")
     expect(existsSync(join(r.dir, "gauntlet.proposal.gx"))).toBe(false)
-  })
+  }, TIMEOUT)
 
   test("an invalid proposal changes and commits nothing", async () => {
     const r = project()
@@ -89,7 +91,7 @@ describe("gauntlet apply", () => {
     expect(res.err).toContain("isn't a valid policy, so nothing was changed")
     expect(subjects(r)).toEqual(before)
     expect(existsSync(join(r.dir, ".gauntlet/baseline.sarif"))).toBe(false)
-  })
+  }, TIMEOUT)
 
   test("--dry-run shows the changes and touches nothing", async () => {
     const r = project()
@@ -99,5 +101,5 @@ describe("gauntlet apply", () => {
     expect(res.out).toContain("Mode: enforce (failing changes are blocked)")
     expect(read(r, ".gauntlet/policy.gx")).toContain("mode shadow")
     expect(existsSync(join(r.dir, "gauntlet.proposal.gx"))).toBe(true)
-  })
+  }, TIMEOUT)
 })
