@@ -7,71 +7,93 @@
 
 Gauntlet is a verification integrity layer for AI-written code.
 
+[![Release](https://img.shields.io/github/v/release/matthewjones372/gauntlet?include_prereleases&sort=semver)](https://github.com/matthewjones372/gauntlet/releases)
+[![CI](https://github.com/matthewjones372/gauntlet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/matthewjones372/gauntlet/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/matthewjones372/gauntlet)](LICENSE)
+
+An AI coding agent can edit the tests, the test configuration and the result
+files, not just the code. So "the tests passed" can be true while the evidence
+has been weakened. Gauntlet makes sure the checks that judged a change are the
+real ones, unweakened, and that their results came from this run.
+
+![An agent weakens a protected test; Gauntlet runs the original, flags the change and names the real bug](assets/screenshots/blocked-change.png)
+
+*Real output from the Kotlin example: the agent replaced an assertion with
+`assertTrue(true)`. Gauntlet ran the original protected test, flagged the
+change, and found the bug the edit was hiding.*
+
+## Get started
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/matthewjones372/gauntlet/main/install.sh | sh
+gauntlet setup
+```
+
+Run `gauntlet setup` in your project, on its main branch. Then open Claude Code
+there, type `/gauntlet-setup`, answer its questions, and run the `gauntlet apply`
+it gives you. Gauntlet starts in **shadow mode**: it reports, and blocks nothing
+until you switch it on. Details are in [Getting started in detail](#getting-started-in-detail).
+
+## Contents
+
+- [Who this is for](#who-this-is-for)
+- [The problem](#the-problem)
+- [What Gauntlet does](#what-gauntlet-does)
+- [What it protects](#what-it-protects)
+- [Why CI, coverage and AI review aren't enough on their own](#why-ci-coverage-and-ai-review-arent-enough-on-their-own)
+- [Getting started in detail](#getting-started-in-detail)
+- [The policy](#the-policy)
+- [Evidence](#evidence) and [testing the verifier](#testing-the-verifier)
+- [Coding agents](#coding-agents) and [GitHub](#github)
+- [Supported languages](#supported-languages)
+- [FAQ](#faq)
+- [Architecture](#architecture) and [development](#development)
+- [Research](#research)
+- [Status](#status)
+
+## Who this is for
+
+- Teams letting AI coding agents (Claude Code today) change code that matters,
+  who want to merge agent changes without re-reading every line.
+- Anyone who has seen an agent "fix" a failing test by changing the test.
+- Maintainers who want a review rule they can state, such as "payments code
+  always needs its owner", enforced the same way for agents and people.
+
+You probably don't need it for throwaway prototypes, or if every change already
+gets a careful human review.
+
 ## The problem
 
 An AI coding agent working in your repository can edit more than the
 implementation. It can also edit the things that decide whether the
-implementation is correct:
+implementation is correct: the tests and their assertions, fixtures, the test
+runner and its configuration, coverage and lint configuration, CI workflows,
+and the result files those tools write.
 
-- the tests and their assertions
-- fixtures and test data
-- the test runner and its configuration
-- coverage and lint configuration
-- CI workflows
-- the result files those tools write
+So "the tests passed" is weaker evidence than it looks. Traditional CI asks:
+**did the checks pass?** Gauntlet asks: **can I trust the checks that passed?**
 
-So "the tests passed" is weaker evidence than it looks. A change that deletes a
-failing test, replaces `assertEquals(expected, actual)` with `assertTrue(true)`,
-adds `@Disabled`, or points the runner at an empty directory also produces a
-green build.
+The concern isn't that agents are malicious. An agent optimising against a
+verification signal will find that signal's weaknesses, because exploiting
+them is often the cheapest way to make it say "done". This is **reward
+hacking**, and recent research documents it in agentic and coding settings:
 
-Traditional CI asks: **did the checks pass?**
-Gauntlet asks: **can I trust the checks that passed?**
+- A 2026 survey describes reward hacking escalating from gaming the evaluator
+  to manipulating the environment, and lists test modification among the
+  environment-level hacks [1].
+- For coding agents, verifying solutions has become harder than generating
+  them, and every verifier, tests included, is only a proxy for intent [2].
+- Agents change test files more often than other commits do, and add mocks
+  more often [3].
 
-## Why this happens: reward hacking
+More detail and the references are in [Research](#research).
 
-The concern isn't that agents are malicious. It's that an agent optimising
-against a verification signal will find the weaknesses in that signal, because
-exploiting them is often the cheapest way to make the signal say "done".
-
-This is reward hacking, and recent research documents it in agentic and coding
-settings:
-
-- **Reward hacking escalates from the score to the environment.** A 2026 survey
-  of reward hacking in agentic LLM systems [1] describes levels that escalate
-  from exploiting features of a reward, to gaming the evaluator or verifier, to
-  manipulating the environment that produces the result. It lists test
-  modification as an environment-level hack, and argues for layered defences
-  across verification, isolation and monitoring rather than a single fix.
-- **For coding agents, verification is now the hard part.** *The Verification
-  Horizon* [2] argues that generating candidate solutions has become easier
-  than verifying them, that every verifier (tests included) is only a proxy for
-  intent, and that no fixed reward stays effective as agents get more capable.
-- **Agents edit tests more, and differently.** A study of over 1.2 million
-  commits [3] found that agent commits touched test files more often than other
-  commits (23% against 13%) and added mocks more often (36% against 26%), which
-  the authors note may make those tests less effective at checking real
-  behaviour.
-- **Models can game their own checks.** A preprint on specification gaming in
-  generated code [4] documents code that passes its own assertions while missing
-  what the test was meant to establish, for example by dropping the branch that
-  could falsify it. In its experiments, counter-tests run by a separate party the
-  generator couldn't influence caught every case, while LLM judges were
-  sometimes fooled.
-- **Detecting a hack after the fact is unreliable.** On a benchmark of reward
-  hacks in code environments [5], the best model spotted 63% of hacks when it
-  could compare against a benign trajectory, and 45% when judging one alone.
-
-None of these papers evaluates Gauntlet. They establish the problem: in coding
-environments, the verifier is part of the attack surface, and weakening it is a
-particularly direct way to game it.
-
-## The question
+### The question
 
 > Can an AI agent change the code without being able to change what counts as
 > evidence that the code is correct?
 
-Gauntlet's design test for every check follows from it:
+Every check in Gauntlet is designed against one test:
 
 > **Can the agent delete or weaken this check and still pass? The answer must be no.**
 
@@ -182,7 +204,7 @@ evaluate the submitted code or its results:
 Gauntlet is concerned with the step before all of these: whether the
 verification process itself stayed trustworthy for this change.
 
-## Get started in 3 steps
+## Getting started in detail
 
 **1. Install**
 
@@ -208,34 +230,6 @@ gauntlet apply
 Claude Code now runs Gauntlet before it says a task is done, and its deny rules
 stop it editing protected files or the policy. Nothing is blocked until you say
 so: Gauntlet starts in shadow mode, which only reports.
-
-### A quick example
-
-An agent is asked to change a currency conversion. Its change breaks the
-conversion, and instead of fixing it, it weakens the test:
-
-```diff
-  @Test
-  fun converts() {
--     assertEquals(Money(110, "USD"), Fx(11_000, "USD").convert(Money(100, "EUR")))
-+     assertTrue(true)
-  }
-```
-
-CI would be green. Gauntlet restores the protected test from the base branch, so
-the original assertion still runs, and reports (this is real output from the
-Kotlin example project):
-
-```text
-Gauntlet would block this change:
-- unit failed: 1 of 4 tests failed
-- assertTrue(true) can't fail. (src/test/kotlin/svc/settlement/FxTest.kt:11)
-Failing in unit:
-  - svc.settlement.FxTest.converts(): org.opentest4j.AssertionFailedError:
-    expected: <Money(minor=110, currency=USD)> but was: <Money(minor=1100, currency=USD)>
-```
-
-The weakened test is flagged, and the bug it was hiding is still found.
 
 ## The policy
 
@@ -391,6 +385,44 @@ repository and an org ruleset instead. See
 Each language pack brings its own zone rules, integrity detectors and tamper
 fixtures. .NET, Ruby, PHP, Maven and frontend packs are planned.
 
+## FAQ
+
+**Does Gauntlet replace my tests?**
+No. Your tests, linters and other checks still decide whether the code is
+correct. Gauntlet makes sure they ran, unweakened, and that their results are
+genuine.
+
+**How is this different from mutation testing or coverage ratchets?**
+Those measure how strong your tests are, and Gauntlet uses them as checks. The
+difference is that Gauntlet also protects them: their configuration comes from
+the base branch, their results are read only from runs Gauntlet started, and
+their numbers can't drop below the baseline.
+
+**What happens in shadow mode?**
+Every check runs and every change gets a result, but nothing is blocked. Each
+result is recorded, and `gauntlet report shadow` summarises what would have
+been blocked, so you can tune the policy before switching to `mode enforce`.
+
+**Do I need an AI model or an API key?**
+No. Decisions are deterministic and need no model. `/gauntlet-setup` runs in
+your own Claude Code session; only the optional authoring agent
+(`gauntlet author`) uses a separate model key.
+
+**Which coding agents does it work with?**
+Claude Code today. Codex, Cursor, Copilot and Gemini adapters are planned.
+Without an agent, Gauntlet still works as a CLI and as a GitHub check.
+
+**Can the agent just turn Gauntlet off?**
+Locally, the hooks and deny rules live in `.claude/settings.json`; teams can
+copy the generated managed-settings example so agents can't disable them. On
+GitHub the check uses the base branch's policy and workflow, so a pull request
+can't weaken the rules it's judged by.
+
+**Is it slow?**
+A check runs your real build and tests, so it takes about as long as they do,
+plus mutation testing where you gate it. A repeated check of an unchanged
+working tree reuses the last result.
+
 ## More
 
 - **Check a branch yourself:** `gauntlet check` (add `--working-tree` for
@@ -458,7 +490,50 @@ To release, set the version in `packages/cli/src/version.ts` and push a
 matching tag such as `v0.1.0`. The release workflow builds, tests and publishes
 the binaries. A tag with a suffix, such as `v0.1.0-rc.2`, becomes a prerelease.
 
+### Adding a language pack
+
+Language support lives in `packs/<language>`, compiled into the binary (ADR
+0006). A pack implements the `Pack` interface from `packages/core`: detection,
+onboarding defaults, gates (build, lint, arch, coverage, mutation), a suite
+runner that writes JUnit XML into Gauntlet's output directory, integrity
+detectors, tamper fixtures for `selftest`, and dependency parsing. It's
+registered in `packages/cli/src/packs.ts` and gets a real-tool end-to-end test
+against a fixture in `examples/fixtures`. The Go and Rust packs are the
+smallest complete examples, and [PLAN.md](PLAN.md) lists the packs still to
+build.
+
 ## Research
+
+The concern isn't that agents are malicious. It's that an agent optimising
+against a verification signal will find the weaknesses in that signal. The
+research below documents that in agentic and coding settings.
+
+- **Reward hacking escalates from the score to the environment.** A 2026 survey
+  of reward hacking in agentic LLM systems [1] describes levels that escalate
+  from exploiting features of a reward, to gaming the evaluator or verifier, to
+  manipulating the environment that produces the result. It lists test
+  modification as an environment-level hack, and argues for layered defences
+  across verification, isolation and monitoring rather than a single fix.
+- **For coding agents, verification is now the hard part.** *The Verification
+  Horizon* [2] argues that generating candidate solutions has become easier
+  than verifying them, that every verifier (tests included) is only a proxy for
+  intent, and that no fixed reward stays effective as agents get more capable.
+- **Agents edit tests more, and differently.** A study of over 1.2 million
+  commits [3] found that agent commits touched test files more often than other
+  commits (23% against 13%) and added mocks more often (36% against 26%), which
+  the authors note may make those tests less effective at checking real
+  behaviour.
+- **Models can game their own checks.** A preprint on specification gaming in
+  generated code [4] documents code that passes its own assertions while missing
+  what the test was meant to establish, for example by dropping the branch that
+  could falsify it. In its experiments, counter-tests run by a separate party the
+  generator couldn't influence caught every case, while LLM judges were
+  sometimes fooled.
+- **Detecting a hack after the fact is unreliable.** On a benchmark of reward
+  hacks in code environments [5], the best model spotted 63% of hacks when it
+  could compare against a benign trajectory, and 45% when judging one alone.
+
+### References
 
 1. Morampudi, A., Irrinki, U., Grandhi, R., Pagadala, V. and Maddula, M.
    *A survey of reward hacking in agentic large language model systems.*
