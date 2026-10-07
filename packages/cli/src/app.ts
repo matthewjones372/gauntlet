@@ -675,7 +675,12 @@ class StepFailed extends Data.TaggedError("StepFailed")<{ readonly message: stri
 const runGit = (root: string, args: ReadonlyArray<string>) =>
   Effect.gen(function*() {
     const r = yield* (yield* ProcessRunner).run({ command: "git", args, cwd: root })
-    if (r.exitCode !== 0) return yield* Effect.fail(new StepFailed({ message: `git ${args[0]} failed: ${r.stderr.trim()}` }))
+    if (r.exitCode !== 0) {
+      const message = /Author identity unknown|Please tell me who you are|unable to auto-detect email/.test(r.stderr)
+        ? "git doesn't know who you are, so it can't commit. Set your name and email, then run this again:\n  git config --global user.name \"Your Name\"\n  git config --global user.email \"you@example.com\""
+        : `git ${args[0]} failed: ${r.stderr.trim()}`
+      return yield* Effect.fail(new StepFailed({ message }))
+    }
     return r.stdout
   })
 

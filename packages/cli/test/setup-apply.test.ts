@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { TempRepo } from "../../core/test/temp-repo.ts"
@@ -10,6 +10,15 @@ import { cli } from "./harness.ts"
 
 const repos: TempRepo[] = []
 afterEach(() => repos.splice(0).forEach((r) => r.cleanup()))
+
+// `gauntlet apply` commits as the person running it; CI runners have no git identity, so the tests give it one.
+const IDENTITY = { GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.invalid", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.invalid" }
+const saved = Object.fromEntries(Object.keys(IDENTITY).map((k) => [k, process.env[k]]))
+beforeAll(() => Object.assign(process.env, IDENTITY))
+afterAll(() => {
+  for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]
+  else process.env[k] = v
+})
 
 const GO = {
   "go.mod": "module example.com/svc\n\ngo 1.25\n",
