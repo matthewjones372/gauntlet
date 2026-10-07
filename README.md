@@ -81,26 +81,24 @@ Gauntlet's design test for every check follows from it:
 
 Gauntlet sits between a change and the decision to trust it.
 
-```text
-        AI agent (or a person)
-                 │
-                 ▼
-     code + tests + configuration
-                 │
-                 ▼
- ┌───────────────────────────────────┐
- │             Gauntlet              │
- │                                   │
- │  • protects the verification      │
- │  • runs the checks itself         │
- │  • detects tampering              │
- │  • compares verification strength │
- │    with the baseline              │
- │  • produces deterministic evidence│
- └─────────────────┬─────────────────┘
-                   │
-                   ▼
-   review decision: auto · skim · review · owner
+```mermaid
+flowchart TD
+    A["AI agent (or a person)"] --> B["Code + tests + configuration"]
+    B --> G
+    subgraph G["Gauntlet"]
+        direction TB
+        G1["Protects the verification:<br/>policy, tests and runner config come from the base"]
+        G2["Runs the checks itself,<br/>in fresh evidence directories"]
+        G3["Detects tampering:<br/>deleted, skipped or weakened tests, suppressions"]
+        G4["Compares verification strength<br/>with the baseline"]
+        G5["Produces deterministic evidence"]
+        G1 --> G2 --> G3 --> G4 --> G5
+    end
+    G --> D{"Review decision"}
+    D --> T1["auto"]
+    D --> T2["skim"]
+    D --> T3["review"]
+    D --> T4["owner"]
 ```
 
 It doesn't decide whether your code is correct. Your tests, linters,
@@ -112,38 +110,27 @@ from this run.
 
 Without it, one change can do all of this and still produce a green build:
 
-```text
-change implementation
-        +
-weaken an assertion
-        +
-disable a test
-        +
-change the test runner configuration
-        +
-leave a passing report file in the workspace
-        =
-green CI
+```mermaid
+flowchart LR
+    I["Change the implementation"] --> X(("+"))
+    W["Weaken an assertion"] --> X
+    S["Disable a test"] --> X
+    C["Change the runner config"] --> X
+    R["Leave a passing report file"] --> X
+    X --> OK["Green CI"]
 ```
 
 With it, the verification machinery itself needs integrity guarantees:
 
-```text
-the policy is read from the base branch
-      ↓
-protected tests and runner configuration are restored from the base
-      ↓
-checks run in a fresh worktree, writing to fresh evidence directories
-      ↓
-only output from processes Gauntlet started is read
-      ↓
-integrity checks compare the change with the base for weakened verification
-      ↓
-tests, coverage, mutation and architecture are compared with the baseline
-      ↓
-every rule that matches nominates a review level; the strictest wins
-      ↓
-on GitHub, the required approval is checked for that exact commit
+```mermaid
+flowchart TD
+    P["Policy read from the base branch"] --> R["Protected tests and runner config<br/>restored from the base"]
+    R --> F["Checks run in a fresh worktree,<br/>writing to fresh evidence directories"]
+    F --> O["Only output from processes<br/>Gauntlet started is read"]
+    O --> I["Integrity checks compare the change<br/>with the base for weakened verification"]
+    I --> B["Tests, coverage, mutation and architecture<br/>compared with the baseline"]
+    B --> N["Every matching rule nominates a review level;<br/>the strictest wins"]
+    N --> GH["On GitHub, the required approval<br/>is checked for that exact commit"]
 ```
 
 The result isn't another AI reviewer saying "LGTM". It's a deterministic
