@@ -31,6 +31,8 @@ export interface GateRunnerInput {
   readonly files: ReadonlyArray<string>
   /** The judged commit's date (YYYY-MM-DD), for quarantines. */
   readonly today?: string
+  /** Run holdouts that name their files (`check --holdouts`, the evidence job only; ADR 0019). */
+  readonly holdouts?: boolean
 }
 
 export interface GateRunnerOutput {
@@ -57,6 +59,22 @@ const MAX_FAILURES = 10
 
 const checkName = (c: Check) => (c.kind === "budget" ? `budget ${c.budget}` : c.kind === "llm-review" ? "llm review" : c.name)
 const dirName = (tier: number, index: number, c: Check) => `${tier}-${index}-${checkName(c).replace(/[^A-Za-z0-9._-]+/g, "-")}`
+
+/** The directory every holdout glob sits under ("" for the whole project), for the suite runner. */
+export const holdoutDir = (globs: ReadonlyArray<string>): string => {
+  const dirs = globs.map((g) => {
+    const parts = g.split("/")
+    const literal: string[] = []
+    for (const part of parts.slice(0, -1)) {
+      if (/[*?[{]/.test(part)) break
+      literal.push(part)
+    }
+    return literal
+  })
+  const common: string[] = []
+  for (let i = 0; dirs.every((d) => i < d.length && d[i] === dirs[0]![i]); i++) common.push(dirs[0]![i]!)
+  return common.join("/")
+}
 
 const compareThreshold = (value: number, op: string, limit: number) =>
   op === "<" ? value < limit : op === "<=" ? value <= limit : op === ">" ? value > limit : op === ">=" ? value >= limit : op === "==" ? value === limit : value !== limit
@@ -93,6 +111,16 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           record({ status: "not-executed", reason: `tier '${stoppedBy}' failed, so later tiers didn't run` })
           continue
         }
+        if (check.kind === "holdout" && input.holdouts) {
+          const started = yield* Clock.currentTimeMillis
+          const outcome = yield* runHoldout(check.name, dirName(t, i, check))
+          if (outcome) {
+            durationsMs[base.check] = (yield* Clock.currentTimeMillis) - started
+            record(outcome)
+            if (outcome.status === "failed") tierFailed = true
+            continue
+          }
+        }
         const notInV1 = NOT_IN_V1[check.kind]
         if (notInV1) {
           record({ status: "not-executed", reason: notInV1 })
@@ -126,6 +154,69 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         const made = yield* Effect.exit(workspace.outputDir(`${dir}-${label}`))
         if (made._tag === "Failure") return { command: [], exitCode: -1, runs: [], error: "couldn't create an output directory" } satisfies GateRun
         return yield* s.runner(s.suite, { ...ctx, outputDir: made.value, collect: workspace.collect(`${dir}-${label}`).pipe(Effect.orElseSucceed(() => [])) }, subset)
+      })
+    }
+
+    /**
+     * A holdout with files (ADR 0019): the base commit's holdout files are put
+     * into the checkout, the suite runner runs over their directory, and they
+     * are taken out again. Output is cut down to test names (invariant 11).
+     * Undefined when the holdout can't run here, which leaves it pending.
+     */
+    function runHoldout(name: string, dir: string): Effect.Effect<Omit<CheckRecord, "tier" | "check" | "pointer" | "advisory"> | undefined, never, ProcessRunner | FileSystem.FileSystem | Path.Path> {
+      return Effect.gen(function*() {
+        const suite = ir.suites.find((s) => s.name === name)
+        if (!suite || suite.kind !== "holdout" || suite.globs === undefined || suite.globs.length === 0 || !workspace.withHoldout) return undefined
+        const runner = packs.find((p) => p.runSuite)?.runSuite
+        if (!runner) return { status: "not-executed", reason: "no used pack runs test suites" }
+        const made = yield* Effect.exit(workspace.outputDir(dir))
+        if (made._tag === "Failure") return { status: "errored", reason: "couldn't create an output directory" }
+        const ctx: GateContext = {
+          dir: workspace.dir,
+          outputDir: made.value,
+          collect: workspace.collect(dir).pipe(Effect.orElseSucceed(() => [])),
+          ir,
+          facts,
+          files: input.files,
+          legacy: [],
+        }
+        const location = holdoutDir(suite.globs)
+        const ran = yield* Effect.exit(workspace.withHoldout(suite.globs, (paths) =>
+          paths.length === 0 ? Effect.succeed(undefined) : runner({ name, location }, ctx)))
+        if (ran._tag === "Failure") return { status: "errored", reason: "couldn't put the holdout's files from the base commit in place" }
+        const run = ran.value
+        if (run === undefined) return { status: "failed", reason: "the base commit has no files matching the holdout's paths" }
+        const files = yield* ctx.collect
+        const placeholder = (arg: string) => arg.replaceAll(ctx.outputDir, "{out}").replaceAll(ctx.dir, "{checkout}")
+        const proof: Proof = {
+          command: run.command.map(placeholder),
+          exitCode: run.exitCode,
+          reports: Object.fromEntries(files.map((f) => [f.path, sha256(f.content)])),
+          ...(run.tests ? { executed: run.tests.counts.executed } : {}),
+        }
+        // Only test names leave a holdout run.
+        runs.push(...run.runs.map((r): Run => ({
+          ...r,
+          results: r.results.map((x) => ({ ...x, message: { text: "holdout test failed" } })),
+          properties: { ...r.properties, gauntlet: { ...r.properties?.gauntlet, check: name, proof } },
+        })))
+        if (run.error !== undefined) return { status: "errored", reason: run.error, proof }
+        if (!run.tests || files.length === 0) return { status: "failed", reason: "no test report was produced (a silent green fails)", proof }
+        const c = run.tests.counts
+        if (c.executed === 0) return { status: "failed", reason: "no tests ran (a silent green fails)", proof, tests: c }
+        const failing = [...new Set(failuresOf(run).map((f) => f.id))].sort()
+        if (failing.length === 0) return { status: "passed", proof, tests: c }
+        const suiteNames = new Set(ir.suites.filter((s) => s.kind === "suite").map((s) => s.name))
+        const visiblePassed = checks.filter((r) => suiteNames.has(r.check)).every((r) => r.status === "passed")
+        const failed = `${failing.length} test${failing.length === 1 ? "" : "s"} failed with the holdout's files in place`
+        return {
+          status: "failed",
+          reason: visiblePassed ? `holdout gap: ${failed}, while the visible suites passed` : failed,
+          proof,
+          tests: c,
+          failures: failing.slice(0, MAX_FAILURES),
+          ...(visiblePassed ? { holdoutGap: true as const } : {}),
+        }
       })
     }
 

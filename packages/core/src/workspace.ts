@@ -1,5 +1,5 @@
 import { globMatches } from "@gauntlet/dsl"
-import type { ProtectGroup, ProtectKind } from "@gauntlet/ir"
+import type { PolicyIR, ProtectGroup, ProtectKind } from "@gauntlet/ir"
 import { Context, Data, Effect, FileSystem, Layer, Path, type PlatformError, Scope } from "effect"
 import { type ChangeStatus, Git, type GitFailure } from "./git.ts"
 
@@ -32,7 +32,24 @@ export interface PreparedWorkspace {
   readonly outputDir: (check: string) => Effect.Effect<string, OutputDirUnavailable>
   /** Regular files written into a check's output directory. Nothing else is ever read as evidence. */
   readonly collect: (check: string) => Effect.Effect<ReadonlyArray<OutputFile>, OutputDirUnavailable>
+  /**
+   * Runs `use` with the base commit's files matching `globs` put into the
+   * checkout, then takes them out again (ADR 0019). Gets the paths put in.
+   */
+  readonly withHoldout?: <A, E, R>(globs: ReadonlyArray<string>, use: (paths: ReadonlyArray<string>) => Effect.Effect<A, E, R>) => Effect.Effect<A, E | GitFailure, R>
 }
+
+/** A holdout's files (ADR 0019): left out of every checkout, run only with `check --holdouts`. */
+export interface HoldoutFiles {
+  readonly name: string
+  readonly globs: ReadonlyArray<string>
+}
+
+/** The policy's holdouts that name their files. */
+export const holdoutsOf = (ir: PolicyIR): HoldoutFiles[] =>
+  ir.suites.flatMap((s) => (s.kind === "holdout" && s.globs !== undefined && s.globs.length > 0 ? [{ name: s.name, globs: s.globs }] : []))
+
+const holdoutFor = (path: string, holdouts: ReadonlyArray<HoldoutFiles>) => holdouts.find((h) => h.globs.some((g) => globMatches(g, path)))
 
 export class OutputDirUnavailable extends Data.TaggedError("OutputDirUnavailable")<{ readonly check: string; readonly reason: string }> {}
 
@@ -42,6 +59,8 @@ export interface PrepareRequest {
   readonly head: string
   readonly protect: ReadonlyArray<ProtectGroup>
   readonly runnerConfig: ReadonlyArray<string>
+  /** Files taken out of the checkout entirely (ADR 0019). */
+  readonly holdouts?: ReadonlyArray<HoldoutFiles>
 }
 
 export class Workspace extends Context.Service<Workspace, {
@@ -67,15 +86,30 @@ export const protectionFor = (path: string, protect: ReadonlyArray<ProtectGroup>
 /**
  * Decides what to do with each changed protected path. New files in a `tests`
  * group run; every other head-side change to protected content is undone.
+ * A change under a holdout path is left out, whatever it is: holdout files
+ * never join an ordinary run (ADR 0019).
  */
 export const planMaterialisation = (
   changes: ReadonlyArray<{ readonly status: ChangeStatus; readonly path: string; readonly oldPath?: string }>,
   protect: ReadonlyArray<ProtectGroup>,
   runnerConfig: ReadonlyArray<string>,
+  holdouts: ReadonlyArray<HoldoutFiles> = [],
 ): Materialised[] => {
   const out: Materialised[] = []
   const at = (path: string) => protectionFor(path, protect, runnerConfig)
   for (const c of changes) {
+    const held = [c.path, ...(c.status === "renamed" && c.oldPath !== undefined ? [c.oldPath] : [])].flatMap((p) => {
+      const h = holdoutFor(p, holdouts)
+      return h ? [{ path: p, group: `holdout ${h.name}` }] : []
+    })
+    if (held.length > 0) {
+      for (const h of held) out.push({ ...h, kind: "tests", change: c.status, action: "removed" })
+      if (c.status === "renamed" && c.oldPath !== undefined && !held.some((h) => h.path === c.oldPath)) {
+        const from = at(c.oldPath)
+        if (from) out.push({ path: c.oldPath, ...from, change: "renamed", action: "restored" })
+      }
+      continue
+    }
     if (c.status === "renamed" && c.oldPath !== undefined) {
       const from = at(c.oldPath)
       const to = at(c.path)
@@ -116,11 +150,15 @@ export const WorkspaceLive = Layer.effect(
           )
 
           const changes = yield* git.diff(request.repo, request.base, request.head)
-          const materialised = planMaterialisation(changes, request.protect, request.runnerConfig)
+          const holdouts = request.holdouts ?? []
+          const materialised = planMaterialisation(changes, request.protect, request.runnerConfig, holdouts)
           yield* git.restore(dir, request.base, materialised.filter((m) => m.action === "restored").map((m) => m.path))
           for (const m of materialised) {
             if (m.action === "removed") yield* fs.remove(path.join(dir, m.path), { force: true })
           }
+          // Holdout files go from the index too, so nothing that lists the checkout finds them.
+          const held = (yield* git.listWorkingFiles(dir)).filter((p) => holdoutFor(p, holdouts) !== undefined)
+          if (held.length > 0) yield* git.remove(dir, held)
 
           const checkDir = (check: string) =>
             CHECK_NAME.test(check)
@@ -156,7 +194,18 @@ export const WorkspaceLive = Layer.effect(
               return files
             }).pipe(Effect.mapError((e) => e._tag === "OutputDirUnavailable" ? e : new OutputDirUnavailable({ check, reason: String(e) })))
 
-          return { dir, base: request.base, head: request.head, materialised, outputDir, collect }
+          const withHoldout = <A, E, R>(globs: ReadonlyArray<string>, use: (paths: ReadonlyArray<string>) => Effect.Effect<A, E, R>) =>
+            Effect.acquireUseRelease(
+              Effect.gen(function*() {
+                const paths = (yield* git.listTree(dir, request.base)).filter((p) => globs.some((g) => globMatches(g, p)))
+                yield* git.restore(dir, request.base, paths)
+                return paths
+              }),
+              use,
+              (paths) => git.remove(dir, paths).pipe(Effect.ignore),
+            )
+
+          return { dir, base: request.base, head: request.head, materialised, outputDir, collect, withHoldout }
         }),
     }
   }),

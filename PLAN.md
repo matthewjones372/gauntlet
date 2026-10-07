@@ -214,7 +214,7 @@ Changes by block:
 - **Header:** `gauntlet "<name>"`.
 - **`protect { <group> <globs> }`:** replaces the flat list. A flat `protect "a", "b"` is still accepted as group `default`. Group behaviour is in section 9 (Q-P1).
 - **`integrity`:** new, with a fixed vocabulary (section 10). Defaults are always on, and the block can only add or tighten (Q-G1).
-- **`holdout "<name>" ci only`:** replaces `hidden "<x>" from env VAR`. Parse-only in v1.
+- **`holdout "<name>" ci only`:** replaces `hidden "<x>" from env VAR`. Parse-only in v1. With `paths "<glob>"` (ADR 0019, spec 0003) it names its files and runs in the CI evidence job.
 - **`advisory { llm review x<N> }`:** an advisory tier. It is caution-only, never the sole gate, and parse-only in v1.
 - **`on fail <gate> { fix "<text>" }`:** remediation text, included in the report, the Stop hook output and MCP results.
 - **`predicate <name> = <cond> (and <cond>)*`:** a named condition. Predicates can use earlier predicates. Cycles and unknown names are errors.
@@ -560,3 +560,18 @@ Every pack follows the JVM pack's shape (ADR 0006, ADR 0013): the project's own 
 **Functional-programming rules.** Each pack offers FP rules a zone can name, for example the JVM pack's `kotlin.no-var`, `kotlin.no-mutable-collections`, `kotlin.no-throw`, `kotlin.no-null-assertion` and `kotlin.no-run-catching`. They are deterministic syntax checks, grandfathered and ratcheted like any lint finding, and the `new suppressions` forbid stops an agent from suppressing them. The `property tests` ratchet (on by default) counts property-based tests, so they can't be swapped for example tests.
 
 **Dogfooding.** Gauntlet is TypeScript, so the TypeScript pack is what lets Gauntlet judge its own pull requests (this replaces Q17's generic pack). The repo's policy starts in shadow mode as soon as that pack lands. A bug in Gauntlet could pass its own check, so the packs' own tests remain the real guard; the dogfood run adds evidence, not trust.
+
+## 22. Specs 0001 to 0003 (three stacked changes)
+
+| Spec | Change | Status |
+|---|---|---|
+| [0001](docs/specs/0001-protect-only.md) | `check --protect-only` and `connect github --protect-only`; the two-line integrity-then-gates summary on every check run | done |
+| [0002](docs/specs/0002-tamper-corpus.md) | `corpus/tamper/` and `gauntlet corpus`: measured detection and false-positive rates per pack (35/35 detected, 7/21 false positives) | done; protecting `corpus/**` needs `docs/specs/patches/0002-protect-corpus.patch` applied by an owner |
+| [0003](docs/specs/0003-holdouts.md) | Holdout `paths` (ADR 0019): left out of every checkout, run only by the evidence job from base, a failure after passing visible suites is a holdout gap | done |
+
+**Not in this change:**
+- **Red-team set.** Adversarial tampering written by people and agents trying to get past the detectors, kept apart from the corpus's generated positives.
+- **Shadow-mode friction report.** How often shadow mode would have blocked or raised a change, and why, to decide when to switch to enforce.
+- **Rename-aware `deleted tests`.** The corpus measures that a renamed test with an unchanged body reads as a deleted test (one false positive per pack). Matching test bodies across a rename is a detector change.
+- **Holdouts from outside the repository** (Q-H1's `--holdout name=<dir>`), so people with read access can't see them either.
+

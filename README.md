@@ -166,7 +166,7 @@ Two rules keep the decision honest:
 
 | Parsed and validated, not yet executed | Status |
 | --- | --- |
-| Holdout suites (tests the agent never sees) | Reported as pending, which counts as missing evidence |
+| Holdout suites without `paths` | Reported as pending, which counts as missing evidence |
 | Performance budgets | Reported as not executed; planned for M17 |
 | `llm review` checks | Reported as not executed |
 
@@ -310,6 +310,31 @@ The pieces:
   never blocks a change.
 - **Shadow mode** only reports. Switch to `mode enforce` when
   `gauntlet report shadow` looks right.
+
+### Holdouts
+
+A holdout is a set of tests the agent never sees. Name its files with `paths`:
+
+```
+suites {
+  unit    "**/*_test.go"
+  holdout "acceptance" paths "**/*_holdout_test.go" ci only
+}
+gates {
+  verify    { unit }
+  behaviour { acceptance }
+}
+```
+
+Holdout files are taken out of every checkout Gauntlet builds, and
+`gauntlet connect claude-code` stops the agent reading or editing them. They
+run only in the GitHub evidence job (`check --holdouts`, which
+`connect github` adds), from the base commit; everywhere else they show as
+"holdout pending". A change that passes the visible tests but fails a holdout
+fails the check as a **holdout gap**, counted on its own line in the summary,
+and the report names only the failing tests. Holdouts live in the repository,
+so they're hidden from the agent, not secret from people with read access. See
+[ADR 0019](docs/adr/0019-holdout-paths.md).
 
 `gauntlet explain` describes a policy in plain English and `gauntlet validate`
 checks it. The DSL compiles to a canonical, hashed policy IR, so two policies
@@ -618,7 +643,7 @@ benchmarks, mined commits, debate logs), not from Gauntlet's.
 
 Release candidate (v0.1.0-rc.2). The policy language, evidence model, integrity
 checks, seven language packs, flaky-test handling, Claude Code and GitHub
-integration all work end to end. Not yet done: holdout execution, performance
+integration all work end to end. Not yet done: performance
 budgets, faster cached checks, .NET, Ruby, PHP, Maven and frontend packs, other
 coding agents and native Windows. See [PLAN.md](PLAN.md).
 

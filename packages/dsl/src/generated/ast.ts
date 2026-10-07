@@ -301,12 +301,14 @@ export interface HoldoutSuite extends langium.AstNode {
     readonly $container: Suites;
     readonly $type: 'HoldoutSuite';
     ciOnly: boolean;
+    globs: Array<string>;
     name: string;
 }
 
 export const HoldoutSuite = {
     $type: 'HoldoutSuite',
     ciOnly: 'ciOnly',
+    globs: 'globs',
     name: 'name'
 } as const;
 
@@ -1172,6 +1174,11 @@ export class GauntletAstReflection extends langium.AbstractAstReflection {
                 ciOnly: {
                     name: HoldoutSuite.ciOnly,
                     defaultValue: false,
+                    optional: true
+                },
+                globs: {
+                    name: HoldoutSuite.globs,
+                    defaultValue: [],
                     optional: true
                 },
                 name: {

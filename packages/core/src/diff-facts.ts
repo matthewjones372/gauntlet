@@ -5,7 +5,7 @@ import { type AddedLine, type ChangeStatus, type FileChange, Git, type GitFailur
 import type { Pack } from "./pack-registry.ts"
 import { BASELINE_PATH } from "./baseline-store.ts"
 import { GAUNTLET_DIR, POLICY_PATH } from "./policy-source.ts"
-import { planMaterialisation } from "./workspace.ts"
+import { holdoutsOf, planMaterialisation } from "./workspace.ts"
 
 // What a change did, as facts the review policy and integrity checks read.
 // Everything here comes from git and the policy IR; nothing is probabilistic.
@@ -96,7 +96,7 @@ export const computeFacts = (input: FactsInput): DiffFacts => {
     head: input.head,
     files,
     linesChanged: files.reduce((n, f) => n + f.added + f.removed, 0),
-    protectedTouched: planMaterialisation(changes, ir.protect, input.runnerConfig),
+    protectedTouched: planMaterialisation(changes, ir.protect, input.runnerConfig, holdoutsOf(ir)),
     zonesTouched,
     dependencyChanges: input.dependencyChanges,
     budgetsChanged,

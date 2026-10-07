@@ -69,6 +69,8 @@ export const ReportCheck = Schema.Struct({
   failures: Schema.optionalKey(Schema.Array(Schema.String)),
   flaky: Schema.optionalKey(Schema.Array(Schema.String)),
   quarantined: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** A holdout failed while the visible suites passed (ADR 0019). */
+  holdoutGap: Schema.optionalKey(Schema.Literal(true)),
   source: Schema.optionalKey(SourceRef),
 })
 export type ReportCheck = typeof ReportCheck.Type

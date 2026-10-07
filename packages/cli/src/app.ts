@@ -98,12 +98,14 @@ const check = Command.make("check", {
   noRecord: Flag.Boolean("no-record").pipe(Flag.withDefault(false), Flag.withDescription("don't append a shadow record (git note) for this check")),
   workingTree: Flag.Boolean("working-tree").pipe(Flag.withDefault(false), Flag.withDescription("judge the working tree, uncommitted and new files included, instead of a commit (never recorded)")),
   protectOnly: Flag.Boolean("protect-only").pipe(Flag.withDefault(false), Flag.withDescription("check only the verification boundary: the base commit's policy, protected files restored, gates run fresh; no zones, review levels, mutation or ratchets; pass or fail")),
-}, ({ repo, policyRef, base, head, out, json, noRecord, workingTree, protectOnly }) =>
+  holdouts: Flag.Boolean("holdouts").pipe(Flag.withDefault(false), Flag.withDescription("also run holdouts that name their files, from the base commit (for the CI evidence job; elsewhere they show as pending)")),
+}, ({ repo, policyRef, base, head, out, json, noRecord, workingTree, protectOnly, holdouts }) =>
   Effect.gen(function*() {
     const output = yield* Output
     const root = yield* absolute(repo)
     const outDir = Option.isSome(out) ? yield* absolute(out.value) : `${yield* (yield* Git).gitDir(root)}/gauntlet/report`
     if (workingTree && protectOnly) return yield* fail("--working-tree and --protect-only can't be combined: protect-only judges a commit against its base.")
+    if (workingTree && holdouts) return yield* fail("--working-tree and --holdouts can't be combined: holdouts run only against a commit, in CI.")
     if (workingTree) {
       const r = yield* checkWorkingTree({ repo: root, outDir, gauntletVersion: GAUNTLET_VERSION, agent: agentFromEnv(process.env) })
       yield* output.out(json ? renderJson(r.report) : renderMarkdown(r.report))
@@ -119,6 +121,7 @@ const check = Command.make("check", {
       agent: agentFromEnv(process.env),
       record: !noRecord,
       ...(protectOnly ? { protectOnly: true } : {}),
+      ...(holdouts ? { holdouts: true } : {}),
     })
     yield* output.out(json ? renderJson(result.report) : renderMarkdown(result.report))
     yield* output.err(`Report written to ${outDir}`)

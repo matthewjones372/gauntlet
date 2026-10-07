@@ -176,11 +176,14 @@ export const verdictLines = (r: Report): [string, string] => {
     : "Integrity: no forbidden changes."
   const gates = (r.checks ?? []).filter((c) => !c.advisory)
   const by = (s: ReadonlyArray<ReportCheck["status"]>) => gates.filter((c) => s.includes(c.status))
-  const failed = by(["failed"])
+  // A holdout gap is its own outcome, never folded into ordinary failures (ADR 0019).
+  const gaps = by(["failed"]).filter((c) => c.holdoutGap === true)
+  const failed = by(["failed"]).filter((c) => c.holdoutGap !== true)
   const missing = by(["not-executed", "errored"])
   const parts = [
     `${by(["passed"]).length} passed`,
     ...(failed.length > 0 ? [`${failed.length} failed (${failed.map((c) => c.check).join(", ")})`] : []),
+    ...(gaps.length > 0 ? [`${plural(gaps.length, "holdout gap")} (${gaps.map((c) => c.check).join(", ")})`] : []),
     ...(missing.length > 0 ? [`${missing.length} not executed (${missing.map((c) => c.check).join(", ")})`] : []),
   ]
   return [integrity, gates.length > 0 ? `Gates: ${parts.join(", ")}.` : "Gates: none ran."]

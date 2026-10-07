@@ -8,7 +8,7 @@ import { runImports } from "./imports.ts"
 import { runIntegrity, testPathMatcher } from "./integrity.ts"
 import { PackRegistry, runnerConfigFor } from "./pack-registry.ts"
 import type { CheckRecord } from "./report/build.ts"
-import { Workspace } from "./workspace.ts"
+import { holdoutsOf, Workspace } from "./workspace.ts"
 
 // `gauntlet baseline`: run every gate over the whole project at a trunk
 // commit and record what it found, so later changes are compared with it.
@@ -33,7 +33,7 @@ export const recordBaseline = (repo: string, commit: string, ir: PolicyIR) =>
     const metricGates = new Set(used.flatMap((p) => p.spec.gates.filter((g) => g.produces === "metric").map((g) => g.name)))
 
     return yield* Effect.scoped(Effect.gen(function*() {
-      const workspace = yield* (yield* Workspace).prepare({ repo, base: commit, head: commit, protect: ir.protect, runnerConfig })
+      const workspace = yield* (yield* Workspace).prepare({ repo, base: commit, head: commit, protect: ir.protect, runnerConfig, holdouts: holdoutsOf(ir) })
       const files = yield* git.listWorkingFiles(workspace.dir)
       const gates = yield* runGates({ ir, facts, workspace, packs: used, baseline: Option.none(), renames: new Map(), recording: true, files })
       const imports = yield* runImports(ir, workspace, Option.none(), new Map())

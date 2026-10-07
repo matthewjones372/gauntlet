@@ -26,7 +26,12 @@ const WRITE_TOOLS = ["Edit", "Write", "MultiEdit", "NotebookEdit"] as const
 export const denyRules = (ir: PolicyIR, runnerConfig: ReadonlyArray<string>): string[] => {
   // New test files may be added (they run in CI); existing ones are guarded by the hook, not a blanket rule.
   const guarded = [...ir.protect.filter((g) => g.kind !== "tests").flatMap((g) => g.globs), ...runnerConfig]
-  return [...new Set(guarded)].sort().flatMap((glob) => WRITE_TOOLS.map((tool) => `${tool}(${glob})`))
+  // Holdouts (ADR 0019) are out of the agent's reach altogether: Read rules also cover Grep and Glob.
+  const holdouts = ir.suites.flatMap((s) => (s.kind === "holdout" ? s.globs ?? [] : []))
+  return [
+    ...[...new Set([...guarded, ...holdouts])].sort().flatMap((glob) => WRITE_TOOLS.map((tool) => `${tool}(${glob})`)),
+    ...[...new Set(holdouts)].sort().map((glob) => `Read(${glob})`),
+  ]
 }
 
 const claudeHooks = () => ({
@@ -43,7 +48,7 @@ export const mergeSettings = (existing: Record<string, unknown>, ir: PolicyIR, r
   const mergedHooks: Record<string, unknown[]> = { ...hooks }
   for (const [event, entries] of Object.entries(ours)) mergedHooks[event] = [...(hooks[event] ?? []).filter((e) => !isGauntlet(e)), ...entries]
   const permissions = (existing.permissions ?? {}) as Record<string, unknown>
-  const deny = ((permissions.deny ?? []) as string[]).filter((r) => !/^(Edit|Write|MultiEdit|NotebookEdit)\(/.test(r) || !denyRules(ir, runnerConfig).includes(r))
+  const deny = ((permissions.deny ?? []) as string[]).filter((r) => !/^(Edit|Write|MultiEdit|NotebookEdit|Read)\(/.test(r) || !denyRules(ir, runnerConfig).includes(r))
   const allow = [...new Set([...((permissions.allow ?? []) as string[]), ...ALLOWED_TOOLS])].sort()
   return { ...existing, hooks: mergedHooks, permissions: { ...permissions, allow, deny: [...new Set([...deny, ...denyRules(ir, runnerConfig)])].sort() } }
 }

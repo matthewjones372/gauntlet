@@ -16,6 +16,8 @@ export interface CheckRecord extends CheckOutcome {
   readonly flaky?: ReadonlyArray<string>
   /** Failures a quarantine in the policy excused. */
   readonly quarantined?: ReadonlyArray<string>
+  /** A holdout failed while the visible suites passed (ADR 0019). */
+  readonly holdoutGap?: true
 }
 
 export interface ImportRecord {
@@ -78,6 +80,7 @@ export const buildReport = (input: ReportInput): Report => {
       ...(c.failures && c.failures.length > 0 ? { failures: [...c.failures] } : {}),
       ...(c.flaky && c.flaky.length > 0 ? { flaky: [...c.flaky] } : {}),
       ...(c.quarantined && c.quarantined.length > 0 ? { quarantined: [...c.quarantined] } : {}),
+      ...(c.holdoutGap ? { holdoutGap: true as const } : {}),
       ...opt("source", sourceRef(sourceMap, c.pointer)),
     }))
 

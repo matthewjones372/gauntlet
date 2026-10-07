@@ -80,7 +80,10 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
       error("suite-shadows-gate", spanOfNode(suite)!, `Suite '${suite.name}' has the same name as a gate from pack '${clash.pack}'.`,
         "a suite name that isn't a gate name", `Rename the suite, for example '${suite.name}-tests'.`)
     }
-    if (suite.kind === "holdout") {
+    if (suite.kind === "holdout" && suite.globs !== undefined) {
+      info("holdout-ci-only", spanOfNode(suite)!, `Holdout '${suite.name}' runs only in the CI evidence job (\`gauntlet check --holdouts\`) and shows as "holdout pending" everywhere else. Its files are left out of every other run.`,
+        "Nothing to fix.")
+    } else if (suite.kind === "holdout") {
       info("not-executed-in-v1", spanOfNode(suite)!, `Holdout '${suite.name}' runs only in CI and shows as "holdout pending" locally. ${NOT_EXECUTED}`,
         "Nothing to fix. Remove the holdout if changes should be able to reach auto or skim in v1.")
     }

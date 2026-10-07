@@ -128,7 +128,7 @@ ${indent([...toolchainSteps(o), installStep(o, refs.base, toolchainSteps(o).some
         BASE: ${refs.base}
         HEAD: ${refs.head}
       run: |
-        "$RUNNER_TEMP/gauntlet" check --policy-ref "$BASE" --head "$HEAD" --out gauntlet-out --no-record${o.protectOnly ? " --protect-only" : ""} || true
+        "$RUNNER_TEMP/gauntlet" check --policy-ref "$BASE" --head "$HEAD" --out gauntlet-out --no-record${o.protectOnly ? " --protect-only" : runsHoldouts(o) ? " --holdouts" : ""} || true
         # When the change edits .gauntlet/, prove the proposed policy still catches tampering.
         if ! git diff --quiet "$BASE" "$HEAD" -- .gauntlet; then
           "$RUNNER_TEMP/gauntlet" selftest --base "$HEAD" --json > gauntlet-out/selftest.json || true
@@ -367,6 +367,9 @@ Org required workflows run on \`pull_request\` and \`merge_group\`, so merge que
 - **Team owners.** Approval by a member of an \`@org/team\` owner can only be checked with a token that may read org teams. Add it as the \`GAUNTLET_TEAMS_TOKEN\` secret; without it, only individual owners' approvals count.
 - **Overrides.** \`gauntlet override\` records a note; the status job honours it only if the named approver is an owner and has approved the exact head commit. Push notes with \`git push origin refs/notes/gauntlet-overrides\`.
 `
+
+/** The policy has holdouts with files, which only the evidence job runs (ADR 0019). */
+const runsHoldouts = (o: GithubOptions) => o.ir.suites.some((s) => s.kind === "holdout" && (s.globs?.length ?? 0) > 0)
 
 export const github = (o: GithubOptions): ReadonlyArray<GeneratedFile> => [
   ...(o.mode === "repo"

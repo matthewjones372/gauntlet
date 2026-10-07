@@ -54,7 +54,13 @@ export type ArchRule = typeof ArchRule.Type
 
 export const Suite = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("suite"), name: Schema.String, location: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal("holdout"), name: Schema.String, ciOnly: Schema.Boolean }),
+  Schema.Struct({
+    kind: Schema.Literal("holdout"),
+    name: Schema.String,
+    ciOnly: Schema.Boolean,
+    /** The holdout's files (ADR 0019). Without them the holdout is pending. */
+    globs: Schema.optionalKey(Schema.Array(Schema.String)),
+  }),
 ])
 export type Suite = typeof Suite.Type
 

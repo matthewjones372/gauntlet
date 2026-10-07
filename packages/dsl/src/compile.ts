@@ -136,7 +136,7 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
     return undefined
   }
 
-  const globsOf = (node: AstNode, values: ReadonlyArray<string>, owner: { protect: string } | { zone: string }): string[] => {
+  const globsOf = (node: AstNode, values: ReadonlyArray<string>, owner: { protect: string } | { zone: string } | undefined): string[] => {
     const spans = itemSpans(node, "globs")
     return values.flatMap((raw, i) => {
       const span = spans[i] ?? nodeSpan(node)
@@ -146,7 +146,7 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
         error("invalid-glob", span, `Invalid path pattern "${raw}": ${problem.message}`, "a relative glob such as \"src/test/**\"", problem.fix)
         return []
       }
-      refs.push({ kind: "glob", owner, glob, span })
+      if (owner) refs.push({ kind: "glob", owner, glob, span })
       return [glob]
     })
   }
@@ -339,7 +339,7 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
           error("holdout-not-ci-only", span, `Holdout '${suite.name}' must say \`ci only\`: holdouts never run in the agent's sandbox.`,
             "`ci only` after the holdout name", `Write: holdout "${suite.name}" ci only`)
         }
-        addSuite(at({ kind: "holdout", name: suite.name, ciOnly: suite.ciOnly }, span))
+        addSuite(at({ kind: "holdout", name: suite.name, ciOnly: suite.ciOnly, ...(suite.globs.length > 0 ? { globs: globsOf(suite, suite.globs, undefined) } : {}) }, span))
         continue
       }
       const span = propertySpan(suite, "kind")

@@ -60,7 +60,7 @@ Suites:
     'suites' '{' suites+=(HoldoutSuite | TestSuite)* '}';
 
 HoldoutSuite:
-    'holdout' name=STRING ('ci' ciOnly?='only')? ','?;
+    'holdout' name=STRING ('paths' globs+=STRING (','? globs+=STRING)*)? ('ci' ciOnly?='only')? ','?;
 
 TestSuite:
     kind=Name location=STRING ('from' 'env' env=Name)? ','?;

@@ -18,7 +18,7 @@ import { Reporter } from "./report/reporter.ts"
 import type { Report, ReportAgent, RunRecord } from "./report/schema.ts"
 import { type CautionSignal, decide, type Evidence, type NewViolation, type Regression } from "./review.ts"
 import { ShadowLog, shadowRecordOf } from "./shadow-log.ts"
-import { Workspace } from "./workspace.ts"
+import { holdoutsOf, Workspace } from "./workspace.ts"
 
 // `gauntlet check`: load the policy, run the evidence, decide, report.
 // The same steps without running anything back the trusted half of the
@@ -53,6 +53,8 @@ export interface CheckRequest {
    * verdict is pass or fail, always enforced.
    */
   readonly protectOnly?: boolean
+  /** Run holdouts that name their files (the GitHub evidence job only; ADR 0019). */
+  readonly holdouts?: boolean
 }
 
 export interface CheckResult {
@@ -186,12 +188,12 @@ export const runCheck = (request: CheckRequest) =>
     const git = yield* Git
     const p = yield* prepare(request)
     const { report, executed } = yield* Effect.scoped(Effect.gen(function*() {
-      const workspace = yield* (yield* Workspace).prepare({ repo: request.repo, base: p.base, head: p.head, protect: p.ir.protect, runnerConfig: p.runnerConfig })
+      const workspace = yield* (yield* Workspace).prepare({ repo: request.repo, base: p.base, head: p.head, protect: p.ir.protect, runnerConfig: p.runnerConfig, holdouts: holdoutsOf(p.ir) })
       const files = yield* git.listWorkingFiles(workspace.dir)
       const today = yield* git.commitDate(request.repo, p.head)
       const gates: GateRunnerOutput = request.skipGates
         ? { checks: [], newViolations: [], regressions: [], ratchets: [], runs: [], metrics: {}, durationsMs: {} }
-        : yield* runGates({ ir: p.ir, facts: p.facts, workspace, packs: p.used, baseline: p.baseline, renames: p.renames, files, today })
+        : yield* runGates({ ir: p.ir, facts: p.facts, workspace, packs: p.used, baseline: p.baseline, renames: p.renames, files, today, ...(request.holdouts ? { holdouts: true } : {}) })
       const imports = request.skipGates
         ? { checks: [], newViolations: [], runs: [], caution: [], records: [] }
         : yield* runImports(p.ir, workspace, p.baseline, p.renames)
@@ -247,7 +249,7 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
       const base = { tier: t.name, check: name, pointer: `/gates/${ti}/checks/${ci}`, advisory: t.advisory }
       const got = claimed(t.name, name)
       checks.push(got
-        ? { ...base, status: got.status, ...(got.reason !== undefined ? { reason: got.reason } : {}), ...(got.proof ? { proof: got.proof } : {}), ...(got.tests ? { tests: got.tests } : {}), ...(got.failures ? { failures: got.failures } : {}), ...(got.flaky ? { flaky: got.flaky } : {}), ...(got.quarantined ? { quarantined: got.quarantined } : {}) }
+        ? { ...base, status: got.status, ...(got.reason !== undefined ? { reason: got.reason } : {}), ...(got.proof ? { proof: got.proof } : {}), ...(got.tests ? { tests: got.tests } : {}), ...(got.failures ? { failures: got.failures } : {}), ...(got.flaky ? { flaky: got.flaky } : {}), ...(got.quarantined ? { quarantined: got.quarantined } : {}), ...(got.holdoutGap ? { holdoutGap: true as const } : {}) }
         : { ...base, status: "not-executed", reason: "the evidence job reported no outcome for this check" })
     }))
     p.ir.imports.forEach((imp, i) => {
@@ -273,7 +275,7 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
     }
     // A checkout of the head to read files from; nothing in it is executed.
     const report = yield* Effect.scoped(Effect.gen(function*() {
-      const workspace = yield* (yield* Workspace).prepare({ repo: request.repo, base: p.base, head: p.head, protect: p.ir.protect, runnerConfig: p.runnerConfig })
+      const workspace = yield* (yield* Workspace).prepare({ repo: request.repo, base: p.base, head: p.head, protect: p.ir.protect, runnerConfig: p.runnerConfig, holdouts: holdoutsOf(p.ir) })
       return yield* judge(request.repo, p, { gauntletVersion: request.gauntletVersion, ...(request.protectOnly ? { protectOnly: true } : {}) }, executed, workspace.dir)
     }))
     const finished = yield* Clock.currentTimeMillis

@@ -83,6 +83,8 @@ export class Git extends Context.Service<Git, {
   readonly applyPatch: (worktree: string, patchFile: string) => Effect.Effect<void, GitFailure>
   /** Restore paths in a worktree to their content at `ref`. */
   readonly restore: (worktree: string, ref: string, paths: ReadonlyArray<string>) => Effect.Effect<void, GitFailure>
+  /** Removes paths from a worktree and its index, so listings no longer show them. Missing paths are ignored. */
+  readonly remove: (worktree: string, paths: ReadonlyArray<string>) => Effect.Effect<void, GitFailure>
 }>()("@gauntlet/core/Git") {}
 
 const splitZ = (out: string) => out.split("\0").filter((s) => s !== "")
@@ -202,6 +204,8 @@ export const GitLive = Layer.effect(
       removeWorktree: (repo, dir) => git(repo, ["worktree", "remove", "--force", dir]).pipe(Effect.asVoid),
       restore: (worktree, ref, paths) =>
         Effect.forEach(chunks(paths, 200), (batch) => git(worktree, ["checkout", ref, "--", ...batch]), { discard: true }),
+      remove: (worktree, paths) =>
+        Effect.forEach(chunks(paths, 200), (batch) => git(worktree, ["rm", "-r", "-q", "-f", "--ignore-unmatch", "--", ...batch]), { discard: true }),
     }
   }),
 )
