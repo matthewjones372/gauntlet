@@ -2,7 +2,7 @@
 gauntlet "gauntlet"
 use typescript
 mode enforce
-owners @gauntlet/maintainers
+owners @matthewjones372
 
 protect {
   tests    "packages/*/test/**", "packs/*/test/**"
@@ -15,7 +15,7 @@ zone decision {
   paths "packages/core/src/review.ts", "packages/core/src/integrity.ts", "packages/core/src/gate-runner.ts",
         "packages/core/src/github-status.ts", "packages/author/src/loosening.ts", "packages/author/src/validate.ts",
         "packages/dsl/src/**", "packages/ir/src/**"
-  owner @gauntlet/maintainers
+  owner @matthewjones372
 }
 
 // Lower layers never import higher ones.
