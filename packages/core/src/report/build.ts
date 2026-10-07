@@ -43,6 +43,8 @@ export interface ReportInput {
   readonly violations: ReadonlyArray<NewViolation>
   readonly imports: ReadonlyArray<ImportRecord>
   readonly decision: Decision
+  /** Set for `check --protect-only` (spec 0001). */
+  readonly scope?: "protect-only"
   readonly overrides?: ReadonlyArray<{ readonly approver: string; readonly reason: string; readonly requestedBy: string; readonly honoured: boolean; readonly note: string }>
 }
 
@@ -135,6 +137,7 @@ export const buildReport = (input: ReportInput): Report => {
     notExecuted,
     remediation,
     decision: {
+      ...opt("scope", input.scope),
       tier: decision.tier,
       mode: decision.mode,
       wouldBlock: decision.wouldBlock,

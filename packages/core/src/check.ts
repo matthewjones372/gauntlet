@@ -12,6 +12,7 @@ import { runIntegrity, type TestRecord, testPathMatcher } from "./integrity.ts"
 import { Overrides } from "./overrides.ts"
 import { PackRegistry, runnerConfigFor } from "./pack-registry.ts"
 import { PolicySource } from "./policy-source.ts"
+import { protectOnlyDecision, protectOnlyIr } from "./protect-only.ts"
 import { buildReport, type CheckRecord, type ImportRecord } from "./report/build.ts"
 import { Reporter } from "./report/reporter.ts"
 import type { Report, ReportAgent, RunRecord } from "./report/schema.ts"
@@ -46,6 +47,12 @@ export interface CheckRequest {
    * not executed. `selftest` uses it for fixtures caught that way.
    */
   readonly skipGates?: boolean
+  /**
+   * The verification boundary only (spec 0001): the base commit's policy,
+   * reduced to checks that need no baseline, zones or review ladder; the
+   * verdict is pass or fail, always enforced.
+   */
+  readonly protectOnly?: boolean
 }
 
 export interface CheckResult {
@@ -71,11 +78,12 @@ interface Executed {
   readonly durationsMs: Readonly<Record<string, number>>
 }
 
-const prepare = (request: { readonly repo: string; readonly policyRef?: string; readonly baseRef?: string; readonly head?: string }) =>
+const prepare = (request: { readonly repo: string; readonly policyRef?: string; readonly baseRef?: string; readonly head?: string; readonly protectOnly?: boolean }) =>
   Effect.gen(function*() {
     const git = yield* Git
     const registry = yield* PackRegistry
-    const loaded = yield* (yield* PolicySource).load({
+    const source = yield* PolicySource
+    let loaded = yield* source.load({
       repo: request.repo,
       ...(request.policyRef !== undefined ? { policyRef: request.policyRef } : {}),
       ...(request.baseRef !== undefined ? { baseRef: request.baseRef } : {}),
@@ -83,7 +91,12 @@ const prepare = (request: { readonly repo: string; readonly policyRef?: string; 
     if (Option.isNone(loaded.baseSha)) {
       return yield* new CheckFailed({ message: "No base commit to compare with. Pass --base <ref> (locally) or --policy-ref <sha> (in CI)." })
     }
-    const { ir } = loaded.compiled
+    // Protect-only takes the policy from the base commit locally too, as CI always does.
+    if (request.protectOnly && request.policyRef === undefined) loaded = yield* source.load({ repo: request.repo, policyRef: loaded.baseSha.value })
+    if (Option.isNone(loaded.baseSha)) {
+      return yield* new CheckFailed({ message: "No base commit to compare with. Pass --base <ref> (locally) or --policy-ref <sha> (in CI)." })
+    }
+    const ir = request.protectOnly ? protectOnlyIr(loaded.compiled.ir) : loaded.compiled.ir
     const base = loaded.baseSha.value
     const head = yield* git.revParse(request.repo, request.head ?? "HEAD")
     const runnerConfig = runnerConfigFor(registry.packs, ir.packs)
@@ -99,7 +112,7 @@ type Prepared = Effect.Success<ReturnType<typeof prepare>>
 const judge = (
   repo: string,
   p: Prepared,
-  request: { readonly gauntletVersion: string; readonly agent?: ReportAgent; readonly blocked?: { readonly reason: string } },
+  request: { readonly gauntletVersion: string; readonly agent?: ReportAgent; readonly blocked?: { readonly reason: string }; readonly protectOnly?: boolean },
   executed: Executed,
   dir: string,
 ) =>
@@ -126,8 +139,10 @@ const judge = (
       caution: executed.caution,
       ...(request.blocked ? { blocked: request.blocked } : {}),
     }
-    const { ir, sourceMap, hash } = p.loaded.compiled
-    const decision = decide({ ir, sourceMap, facts: p.facts, evidence, mode: p.loaded.effectiveMode })
+    const { sourceMap, hash } = p.loaded.compiled
+    const ir = p.ir
+    const decided = decide({ ir, sourceMap, facts: p.facts, evidence, mode: p.loaded.effectiveMode })
+    const decision = request.protectOnly ? protectOnlyDecision(decided) : decided
     const overrides = (yield* (yield* Overrides).forHead(repo, p.head)).map((o) => ({
       approver: o.approver,
       reason: o.reason,
@@ -146,6 +161,7 @@ const judge = (
       violations: executed.newViolations,
       imports: executed.imports,
       decision,
+      ...(request.protectOnly ? { scope: "protect-only" as const } : {}),
       overrides,
     })
   })
@@ -208,6 +224,8 @@ export interface JudgeRequest {
   readonly outDir: string
   readonly gauntletVersion: string
   readonly record?: boolean
+  /** Judge as `check --protect-only` (spec 0001). */
+  readonly protectOnly?: boolean
 }
 
 /**
@@ -220,7 +238,7 @@ export interface JudgeRequest {
 export const judgeWithEvidence = (request: JudgeRequest) =>
   Effect.gen(function*() {
     const started = yield* Clock.currentTimeMillis
-    const p = yield* prepare({ repo: request.repo, policyRef: request.policyRef, head: request.head })
+    const p = yield* prepare({ repo: request.repo, policyRef: request.policyRef, head: request.head, ...(request.protectOnly ? { protectOnly: true } : {}) })
     const ev = request.evidence ?? { checks: [], violations: [], ratchets: [], imports: [] } as unknown as Report
     const claimed = (tier: string, check: string) => ev.checks.find((c) => c.tier === tier && c.check === check)
     const checks: CheckRecord[] = []
@@ -256,7 +274,7 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
     // A checkout of the head to read files from; nothing in it is executed.
     const report = yield* Effect.scoped(Effect.gen(function*() {
       const workspace = yield* (yield* Workspace).prepare({ repo: request.repo, base: p.base, head: p.head, protect: p.ir.protect, runnerConfig: p.runnerConfig })
-      return yield* judge(request.repo, p, { gauntletVersion: request.gauntletVersion }, executed, workspace.dir)
+      return yield* judge(request.repo, p, { gauntletVersion: request.gauntletVersion, ...(request.protectOnly ? { protectOnly: true } : {}) }, executed, workspace.dir)
     }))
     const finished = yield* Clock.currentTimeMillis
     yield* (yield* Reporter).write(request.outDir, report, [], { startedAt: iso(started), finishedAt: iso(finished), durationsMs: { total: finished - started } })

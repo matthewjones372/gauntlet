@@ -27,6 +27,8 @@ export interface GithubOptions {
    * pull request's source, which would let a change rewrite its own judge.
    */
   readonly fromSource?: boolean
+  /** Judge pull requests with `--protect-only` (spec 0001): the verification boundary, pass or fail. */
+  readonly protectOnly?: boolean
 }
 
 const indent = (text: string, spaces: number) => text.split("\n").map((l) => (l === "" ? l : `${" ".repeat(spaces)}${l}`)).join("\n")
@@ -126,7 +128,7 @@ ${indent([...toolchainSteps(o), installStep(o, refs.base, toolchainSteps(o).some
         BASE: ${refs.base}
         HEAD: ${refs.head}
       run: |
-        "$RUNNER_TEMP/gauntlet" check --policy-ref "$BASE" --head "$HEAD" --out gauntlet-out --no-record || true
+        "$RUNNER_TEMP/gauntlet" check --policy-ref "$BASE" --head "$HEAD" --out gauntlet-out --no-record${o.protectOnly ? " --protect-only" : ""} || true
         # When the change edits .gauntlet/, prove the proposed policy still catches tampering.
         if ! git diff --quiet "$BASE" "$HEAD" -- .gauntlet; then
           "$RUNNER_TEMP/gauntlet" selftest --base "$HEAD" --json > gauntlet-out/selftest.json || true
@@ -190,7 +192,7 @@ ${indent(installStep(o, refs.base), 4)}
     - name: Decide
       run: |
         "$RUNNER_TEMP/gauntlet" github-status --repo . --policy-ref "$BASE" --head "$HEAD" \\
-          --evidence evidence/gauntlet-report.json --reviews reviews.json --teams teams.json --out gauntlet-out ${refs.record}
+          --evidence evidence/gauntlet-report.json --reviews reviews.json --teams teams.json --out gauntlet-out ${refs.record}${o.protectOnly ? " --protect-only" : ""}
     - name: Post the report and the check
       run: |
         body=$(printf '<!-- gauntlet-report -->\\n%s' "$(cat gauntlet-out/gauntlet-report.md)")
@@ -239,7 +241,7 @@ ${indent(installStep(o, refs.base), 4)}
         echo '[]' > reviews.json
         echo '{}' > teams.json
         "$RUNNER_TEMP/gauntlet" github-status --repo . --policy-ref "$BASE" --head "$HEAD" \\
-          --evidence evidence/gauntlet-report.json --reviews reviews.json --teams teams.json --out gauntlet-out
+          --evidence evidence/gauntlet-report.json --reviews reviews.json --teams teams.json --out gauntlet-out${o.protectOnly ? " --protect-only" : ""}
         cat gauntlet-out/gauntlet-report.md >> "$GITHUB_STEP_SUMMARY"
         # Review and owner tiers are enforced by the ruleset's code owner review; only blocking fails here.
         test "$(jq -r .conclusion gauntlet-out/status.json)" != failure`

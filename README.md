@@ -24,15 +24,23 @@ change, and found the bug the edit was hiding.*
 
 ## Get started
 
+**GitHub only, in five minutes.** In your repository, on its main branch:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/matthewjones372/gauntlet/main/install.sh | sh
-gauntlet setup
+gauntlet init
+gauntlet connect github --protect-only
+git add .gauntlet .github && git commit -m "Add Gauntlet" && git push
 ```
 
-Run `gauntlet setup` in your project, on its main branch. Then open Claude Code
-there, type `/gauntlet-setup`, answer its questions, and run the `gauntlet apply`
-it gives you. Gauntlet starts in **shadow mode**: it reports, and blocks nothing
-until you switch it on. Details are in [Getting started in detail](#getting-started-in-detail).
+Require the `gauntlet` check in your branch's ruleset, then open a pull request
+that replaces an assertion with `assertTrue(true)` (or your language's
+equivalent). The check fails. Details are in
+[the five-minute path](#the-five-minute-path-github-only).
+
+**With Claude Code**, so the agent checks its own work before it finishes, run
+`gauntlet setup` instead, then `/gauntlet-setup` in Claude Code. See
+[With Claude Code](#with-claude-code).
 
 ## Contents
 
@@ -180,30 +188,74 @@ verification process itself stayed trustworthy for this change.
 
 ## Getting started in detail
 
-**1. Install**
+### The five-minute path (GitHub only)
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/matthewjones372/gauntlet/main/install.sh | sh
-```
+This uses `--protect-only` ([spec 0001](docs/specs/0001-protect-only.md)): the
+verification boundary and nothing else. The policy, protected tests and test
+configuration come from the base commit and are restored before anything runs;
+the gates run in fresh evidence directories; and only output from processes
+Gauntlet started counts. There are no zones, review levels, mutation testing or
+ratchets, and no baseline to record. The check passes or fails, even if the
+policy says `mode shadow`.
 
-**2. Set up your project.** In its folder, on your main branch:
+1. **Install** (see [Installing by hand](#more) if you'd rather not pipe to `sh`):
 
-```bash
-gauntlet setup
-```
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/matthewjones372/gauntlet/main/install.sh | sh
+   ```
 
-**3. Agree the rules with Claude.** Open Claude Code in the same folder and type
-`/gauntlet-setup`. It describes what your project already has, recommends a
-policy and asks you about each decision. When you're done, run the command it
-gives you:
+2. **Draft a policy and the workflow:**
 
-```bash
-gauntlet apply
-```
+   ```bash
+   gauntlet init
+   gauntlet connect github --protect-only
+   ```
+
+   `init` writes `.gauntlet/policy.gx` for your language: which tests to
+   protect and which checks to run. `connect github` writes a two-job workflow:
+   one job runs the pull request's code with a read-only token and no secrets;
+   the other never runs pull request code and posts the `gauntlet` check.
+
+3. **Commit and push** `.gauntlet` and `.github`, then in your repository's
+   settings, add the `gauntlet` check to the default branch's ruleset as a
+   required status check.
+
+4. **Try to cheat.** Open a pull request that replaces an assertion in a test
+   with `assertTrue(true)` (in Go, delete the `t.Errorf`; in Python, `assert
+   True`). The check fails. Its summary starts with two lines that can't merge
+   into one green badge:
+
+   ```text
+   Integrity: 1 forbidden change (weakened assertions).
+   Gates: 2 passed, 1 failed (unit).
+   ```
+
+   The original test ran, because protected tests are restored from the base,
+   so the bug the edit was hiding is still reported.
+
+### With Claude Code
+
+1. **Install**, as above.
+
+2. **Set up your project.** In its folder, on your main branch:
+
+   ```bash
+   gauntlet setup
+   ```
+
+3. **Agree the rules with Claude.** Open Claude Code in the same folder and type
+   `/gauntlet-setup`. It describes what your project already has, recommends a
+   policy and asks you about each decision. When you're done, run the command
+   it gives you:
+
+   ```bash
+   gauntlet apply
+   ```
 
 Claude Code now runs Gauntlet before it says a task is done, and its deny rules
 stop it editing protected files or the policy. Nothing is blocked until you say
-so: Gauntlet starts in shadow mode, which only reports.
+so: this path starts in shadow mode, which only reports. Add
+`gauntlet connect github` to check pull requests too.
 
 ## The policy
 
@@ -371,6 +423,11 @@ Those measure how strong your tests are, and Gauntlet uses them as checks. The
 difference is that Gauntlet also protects them: their configuration comes from
 the base branch, their results are read only from runs Gauntlet started, and
 their numbers can't drop below the baseline.
+
+**What's the smallest thing I can try?**
+`gauntlet check --protect-only`, or the five-minute GitHub path above. It
+checks only that the tests and their configuration weren't weakened and that
+the results are genuine, with no zones, review levels, mutation or baseline.
 
 **What happens in shadow mode?**
 Every check runs and every change gets a result, but nothing is blocked. Each

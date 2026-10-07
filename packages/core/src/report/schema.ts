@@ -118,6 +118,8 @@ export const ReportNomination = Schema.Struct({
 })
 
 export const ReportDecision = Schema.Struct({
+  /** `"protect-only"` for `check --protect-only` (spec 0001): the verdict is `blocking`, and the tier isn't a review decision. Absent otherwise. */
+  scope: Schema.optionalKey(Schema.Literal("protect-only")),
   tier: Tier,
   mode: Mode,
   wouldBlock: Schema.Boolean,

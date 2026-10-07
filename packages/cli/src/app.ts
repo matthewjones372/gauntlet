@@ -1,6 +1,6 @@
 import {
   agentSummary, BASELINE_PATH, BLOCKED_ACK, CheckFailed, checkWorkingTree, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
-  ProcessRunner, recordBaseline, recordBlocked, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, Report, Review, runnerConfigFor, Teams,
+  ProcessRunner, protectOnlyIr, recordBaseline, recordBlocked, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, Report, Review, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
@@ -96,11 +96,13 @@ const check = Command.make("check", {
   json: jsonFlag,
   noRecord: Flag.Boolean("no-record").pipe(Flag.withDefault(false), Flag.withDescription("don't append a shadow record (git note) for this check")),
   workingTree: Flag.Boolean("working-tree").pipe(Flag.withDefault(false), Flag.withDescription("judge the working tree, uncommitted and new files included, instead of a commit (never recorded)")),
-}, ({ repo, policyRef, base, head, out, json, noRecord, workingTree }) =>
+  protectOnly: Flag.Boolean("protect-only").pipe(Flag.withDefault(false), Flag.withDescription("check only the verification boundary: the base commit's policy, protected files restored, gates run fresh; no zones, review levels, mutation or ratchets; pass or fail")),
+}, ({ repo, policyRef, base, head, out, json, noRecord, workingTree, protectOnly }) =>
   Effect.gen(function*() {
     const output = yield* Output
     const root = yield* absolute(repo)
     const outDir = Option.isSome(out) ? yield* absolute(out.value) : `${yield* (yield* Git).gitDir(root)}/gauntlet/report`
+    if (workingTree && protectOnly) return yield* fail("--working-tree and --protect-only can't be combined: protect-only judges a commit against its base.")
     if (workingTree) {
       const r = yield* checkWorkingTree({ repo: root, outDir, gauntletVersion: GAUNTLET_VERSION, agent: agentFromEnv(process.env) })
       yield* output.out(json ? renderJson(r.report) : renderMarkdown(r.report))
@@ -115,6 +117,7 @@ const check = Command.make("check", {
       gauntletVersion: GAUNTLET_VERSION,
       agent: agentFromEnv(process.env),
       record: !noRecord,
+      ...(protectOnly ? { protectOnly: true } : {}),
     })
     yield* output.out(json ? renderJson(result.report) : renderMarkdown(result.report))
     yield* output.err(`Report written to ${outDir}`)
@@ -583,6 +586,7 @@ const connectGithub = Command.make("github", {
   sha256: Flag.optional(Flag.String("sha256").pipe(Flag.withDescription("the binary's sha256, pinned in the workflow"))),
   java: Flag.optional(Flag.String("java").pipe(Flag.withDescription("JDK version for the jvm pack (default 21)"))),
   fromSource: Flag.Boolean("from-source").pipe(Flag.withDefault(false), Flag.withDescription("build Gauntlet from the base commit's source instead of downloading it (for the Gauntlet repository itself)")),
+  protectOnly: Flag.Boolean("protect-only").pipe(Flag.withDefault(false), Flag.withDescription("judge pull requests with check --protect-only: the verification boundary, pass or fail")),
   dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false), Flag.withDescription("print the files instead of writing them")),
 }, (args) =>
   Effect.gen(function*() {
@@ -591,8 +595,10 @@ const connectGithub = Command.make("github", {
     const files = yield* (yield* Git).listWorkingFiles(root)
     yield* writeGenerated(root, github({
       fromSource: args.fromSource,
+      ...(args.protectOnly ? { protectOnly: true } : {}),
       mode: args.mode,
-      ir: loaded.compiled.ir,
+      // Protect-only CI sets up only the tools its checks use (no mutation tools, for example).
+      ir: args.protectOnly ? protectOnlyIr(loaded.compiled.ir) : loaded.compiled.ir,
       files,
       gauntletVersion: GAUNTLET_VERSION,
       downloadUrl: Option.getOrElse(args.downloadUrl, () => DEFAULT_DOWNLOAD(GAUNTLET_VERSION)),
@@ -747,6 +753,7 @@ const githubStatusCommand = Command.make("github-status", {
   teams: Flag.optional(Flag.String("teams").pipe(Flag.withDescription("owner team members as {\"@org/team\": [logins]}"))),
   out: Flag.String("out"),
   record: Flag.Boolean("record").pipe(Flag.withDefault(false), Flag.withDescription("append the shadow record (git note)")),
+  protectOnly: Flag.Boolean("protect-only").pipe(Flag.withDefault(false), Flag.withDescription("judge as check --protect-only")),
 }, (args) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
@@ -759,6 +766,7 @@ const githubStatusCommand = Command.make("github-status", {
     const head = yield* (yield* Git).revParse(root, args.head)
     const report = yield* judgeWithEvidence({
       repo: root, policyRef: args.policyRef, head, outDir: path.resolve(root, args.out), gauntletVersion: GAUNTLET_VERSION, record: args.record,
+      ...(args.protectOnly ? { protectOnly: true } : {}),
       ...(Option.isSome(evidence) ? { evidence: evidence.value } : {}),
     })
     const reviews = Option.getOrElse(Option.flatMap(yield* read(args.reviews), decodeReviews), () => [])

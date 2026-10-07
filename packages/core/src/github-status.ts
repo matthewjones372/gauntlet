@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import type { OverrideRecord } from "./overrides.ts"
+import { verdictLines } from "./report/render.ts"
 import type { Report } from "./report/schema.ts"
 
 // The `gauntlet` check on a pull request (ADR 0015 layer d), from the trusted
@@ -40,7 +41,26 @@ const isOwner = (login: string, owners: ReadonlyArray<string>, teams: Teams) =>
     return name.includes("/") ? (teams[o] ?? []).some((m) => m.toLowerCase() === login.toLowerCase()) : name === login.toLowerCase()
   })
 
+/**
+ * The check run for a report. Its summary always starts with two lines, the
+ * integrity verdict and then the gate results, so a passing check can't hide
+ * a weakened test behind one green badge (spec 0001).
+ */
 export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>): GithubStatus => {
+  const s = report.decision.scope === "protect-only" ? protectOnlyStatus(report, reviews) : tierStatus(report, reviews, teams, overrides)
+  return { ...s, summary: [...verdictLines(report), "", s.summary].join("\n") }
+}
+
+/** Protect-only is pass or fail; approvals don't change it. */
+const protectOnlyStatus = (report: Report, reviews: ReadonlyArray<Review>): GithubStatus => {
+  const approvers = approvalsOn(reviews, report.policy.headSha)
+  const first = report.decision.nominations.find((n) => n.blocking)
+  return report.decision.blocking
+    ? { conclusion: "failure", title: "Protect-only: failed", summary: first ? first.reason : "A check failed.", approvedBy: approvers, honouredOverrides: [] }
+    : { conclusion: "success", title: "Protect-only: passed", summary: "The verification boundary held. Review the change as usual.", approvedBy: approvers, honouredOverrides: [] }
+}
+
+const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>): GithubStatus => {
   const head = report.policy.headSha
   const approvers = approvalsOn(reviews, head)
   const d = report.decision

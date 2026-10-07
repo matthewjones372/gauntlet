@@ -1,7 +1,7 @@
 import { prettyCanonicalJson, type SourceRef } from "@gauntlet/ir"
 import { type Log, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Schema } from "effect"
-import { Report } from "./schema.ts"
+import { Report, type ReportCheck } from "./schema.ts"
 
 /** The report as canonical JSON: sorted keys, two-space indent, trailing newline. */
 export const renderJson = (report: Report): string => prettyCanonicalJson(Schema.encodeSync(Report)(report))
@@ -52,14 +52,25 @@ const proofText = (c: Report["checks"][number]) => {
 export const renderMarkdown = (r: Report): string => {
   const d = r.decision
   const verdict = d.blocking ? "blocks this change" : d.wouldBlock ? "would block this change in enforce mode" : "doesn't block"
-  const lines: string[] = [
-    `## Gauntlet: ${d.tier}`,
-    "",
-    `**Tier ${d.tier}.** Gauntlet ${verdict}. Mode ${d.mode}${r.policy.firstAdoption ? " (first adoption)" : ""}.`,
-    "",
+  const lines: string[] = d.scope === "protect-only"
+    ? [
+      `## Gauntlet protect-only: ${d.blocking ? "failed" : "passed"}`,
+      "",
+      `**Protect-only ${d.blocking ? "failed" : "passed"}.** Only the verification boundary was checked: no zones, review levels, mutation or ratchets.`,
+      "",
+      ...verdictLines(r).map((l) => `${l}  `),
+      "",
+    ]
+    : [
+      `## Gauntlet: ${d.tier}`,
+      "",
+      `**Tier ${d.tier}.** Gauntlet ${verdict}. Mode ${d.mode}${r.policy.firstAdoption ? " (first adoption)" : ""}.`,
+      "",
+    ]
+  lines.push(
     `Policy ${code(r.policy.irHash.slice(0, 12))} from the ${r.policy.origin === "base" ? "base" : "working copy"}; base ${code(r.policy.baseSha.slice(0, 12))}, head ${code(r.policy.headSha.slice(0, 12))}.`,
     "",
-  ]
+  )
   if (d.owners.length > 0) lines.push(`Suggested reviewers: ${d.owners.join(", ")}`, "")
 
   lines.push("### Why", "")
@@ -142,4 +153,35 @@ export const renderMarkdown = (r: Report): string => {
   if (agent.length > 0) lines.push(`<sub>Written by ${agent.join(", ")}. Recorded only; agent identity never changes the decision.</sub>`, "")
 
   return `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/**
+ * Two lines that can't collapse into one green badge: the integrity verdict,
+ * then the gate results. The GitHub check summary starts with them, and so does
+ * a protect-only report (spec 0001).
+ */
+export const verdictLines = (r: Report): [string, string] => {
+  // Integrity ratchets that dropped block like forbids, so they count with them.
+  // Partial reports (hand-built in tests) may lack sections; a real report always has them.
+  const findings = r.integrity?.findings ?? []
+  const forbids = findings.filter((f) => f.kind === "forbid" || f.kind === "ratchet")
+  const flags = findings.filter((f) => f.kind === "flag")
+  const names = (fs: ReadonlyArray<{ readonly check: string }>) => [...new Set(fs.map((f) => f.check.replaceAll("-", " ")))].join(", ")
+  const integrity = forbids.length > 0
+    ? `Integrity: ${plural(forbids.length, "forbidden change")} (${names(forbids)})${flags.length > 0 ? `; ${plural(flags.length, "flag")} (${names(flags)})` : ""}.`
+    : flags.length > 0
+    ? `Integrity: no forbidden changes; ${plural(flags.length, "flag")} (${names(flags)}).`
+    : "Integrity: no forbidden changes."
+  const gates = (r.checks ?? []).filter((c) => !c.advisory)
+  const by = (s: ReadonlyArray<ReportCheck["status"]>) => gates.filter((c) => s.includes(c.status))
+  const failed = by(["failed"])
+  const missing = by(["not-executed", "errored"])
+  const parts = [
+    `${by(["passed"]).length} passed`,
+    ...(failed.length > 0 ? [`${failed.length} failed (${failed.map((c) => c.check).join(", ")})`] : []),
+    ...(missing.length > 0 ? [`${missing.length} not executed (${missing.map((c) => c.check).join(", ")})`] : []),
+  ]
+  return [integrity, gates.length > 0 ? `Gates: ${parts.join(", ")}.` : "Gates: none ran."]
 }
