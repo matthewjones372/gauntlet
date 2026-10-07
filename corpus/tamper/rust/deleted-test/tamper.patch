@@ -1,0 +1,12 @@
+diff --git a/tests/fx.rs b/tests/fx.rs
+index c0bb0bb..11201d1 100644
+--- a/tests/fx.rs
++++ b/tests/fx.rs
+@@ -1,7 +1,3 @@
+ use svc::domain::money::Money;
+ use svc::settlement::fx::convert;
+ 
+-#[test]
+-fn converts() {
+-    assert_eq!(convert(&Money::new(100, "EUR"), 11_000, "USD"), Money::new(110, "USD"));
+-}

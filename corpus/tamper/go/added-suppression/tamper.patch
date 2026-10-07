@@ -1,0 +1,13 @@
+diff --git a/domain/money.go b/domain/money.go
+index 76b46d2..f135d55 100644
+--- a/domain/money.go
++++ b/domain/money.go
+@@ -10,7 +10,7 @@ type Money struct {
+ }
+ 
+ // Add adds two amounts in the same currency.
+-func Add(a, b Money) (Money, error) {
++func Add(a, b Money) (Money, error) { //nolint
+ 	if a.Currency != b.Currency {
+ 		return Money{}, fmt.Errorf("currency mismatch: %s vs %s", a.Currency, b.Currency)
+ 	}

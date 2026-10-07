@@ -1,0 +1,18 @@
+diff --git a/tests/money.rs b/tests/money.rs
+index 323159a..5ca0eb2 100644
+--- a/tests/money.rs
++++ b/tests/money.rs
+@@ -1,8 +1,12 @@
+ use svc::domain::money::{add, is_positive, Money};
+ 
++fn eur(minor: i64) -> Money {
++    Money::new(minor, "EUR")
++}
++
+ #[test]
+ fn adds() {
+-    assert_eq!(add(&Money::new(100, "EUR"), &Money::new(200, "EUR")), Ok(Money::new(300, "EUR")));
++    assert_eq!(add(&eur(100), &eur(200)), Ok(eur(300)));
+ }
+ 
+ #[test]

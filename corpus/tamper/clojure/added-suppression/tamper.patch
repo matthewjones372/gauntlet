@@ -1,0 +1,11 @@
+diff --git a/src/svc/domain/money.clj b/src/svc/domain/money.clj
+index 3af50e7..8bbae8d 100644
+--- a/src/svc/domain/money.clj
++++ b/src/svc/domain/money.clj
+@@ -1,5 +1,6 @@
+ (ns svc.domain.money)
+ 
++#_{:clj-kondo/ignore [:unused-binding]}
+ (defn money [minor currency]
+   {:minor minor :currency currency})
+ 

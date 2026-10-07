@@ -1,0 +1,12 @@
+diff --git a/src/test/scala/svc/domain/MoneySpec.scala b/src/test/scala/svc/domain/MoneySpec.scala
+index 925ba6f..2ce836d 100644
+--- a/src/test/scala/svc/domain/MoneySpec.scala
++++ b/src/test/scala/svc/domain/MoneySpec.scala
+@@ -12,6 +12,6 @@ class MoneySpec extends AnyFunSuite:
+   }
+ 
+   test("knows when positive") {
+-    assert(Money.isPositive(Money(1, "EUR")))
++    assert(Money.isPositive(Money(1, "EUR")) == true)
+     assert(!Money.isPositive(Money(0, "EUR")))
+   }

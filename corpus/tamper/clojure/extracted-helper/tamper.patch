@@ -1,0 +1,17 @@
+diff --git a/test/svc/domain/money_test.clj b/test/svc/domain/money_test.clj
+index 2a18b8a..f852faa 100644
+--- a/test/svc/domain/money_test.clj
++++ b/test/svc/domain/money_test.clj
+@@ -5,8 +5,11 @@
+             [clojure.test.check.properties :as prop]
+             [svc.domain.money :as money]))
+ 
++(defn- eur [minor]
++  (money/money minor "EUR"))
++
+ (deftest adds
+-  (is (= (money/money 5 "EUR") (money/add (money/money 2 "EUR") (money/money 3 "EUR")))))
++  (is (= (eur 5) (money/add (eur 2) (eur 3)))))
+ 
+ (deftest refuses-mixed-currencies
+   (is (= {:error :mixed-currencies} (money/add (money/money 2 "EUR") (money/money 3 "USD")))))

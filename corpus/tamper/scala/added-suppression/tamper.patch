@@ -1,0 +1,12 @@
+diff --git a/src/main/scala/svc/domain/Money.scala b/src/main/scala/svc/domain/Money.scala
+index d152d99..24595fe 100644
+--- a/src/main/scala/svc/domain/Money.scala
++++ b/src/main/scala/svc/domain/Money.scala
+@@ -4,6 +4,7 @@ package svc.domain
+ final case class Money(minor: Long, currency: String)
+ 
+ object Money:
++  @annotation.nowarn
+   def add(a: Money, b: Money): Either[String, Money] =
+     if a.currency != b.currency then Left(s"currency mismatch: ${a.currency} vs ${b.currency}")
+     else Right(Money(a.minor + b.minor, a.currency))

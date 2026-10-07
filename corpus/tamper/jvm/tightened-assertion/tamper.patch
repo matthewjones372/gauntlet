@@ -1,0 +1,13 @@
+diff --git a/src/test/kotlin/svc/domain/MoneyTest.kt b/src/test/kotlin/svc/domain/MoneyTest.kt
+index e4395c0..c42a4b6 100644
+--- a/src/test/kotlin/svc/domain/MoneyTest.kt
++++ b/src/test/kotlin/svc/domain/MoneyTest.kt
+@@ -19,7 +19,7 @@ class MoneyTest {
+ 
+     @Test
+     fun knowsWhenPositive() {
+-        assertTrue(Money(1, "EUR").isPositive())
++        assertEquals(true, Money(1, "EUR").isPositive())
+         assertFalse(Money(0, "EUR").isPositive())
+     }
+ }

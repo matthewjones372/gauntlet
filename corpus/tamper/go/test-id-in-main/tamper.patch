@@ -1,0 +1,11 @@
+diff --git a/domain/gauntlet_selftest_probe.go b/domain/gauntlet_selftest_probe.go
+new file mode 100644
+index 0000000..c6abf4e
+--- /dev/null
++++ b/domain/gauntlet_selftest_probe.go
+@@ -0,0 +1,5 @@
++package domain
++
++import "testing"
++
++var gauntletSelftestProbe = testing.Testing()

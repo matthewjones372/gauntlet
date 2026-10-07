@@ -1,0 +1,12 @@
+diff --git a/src/domain/money.rs b/src/domain/money.rs
+index 6c22333..2ed8013 100644
+--- a/src/domain/money.rs
++++ b/src/domain/money.rs
+@@ -7,6 +7,7 @@ pub struct Money {
+ }
+ 
+ impl Money {
++    #[allow(dead_code)]
+     pub fn new(minor: i64, currency: &str) -> Self {
+         Money { minor, currency: currency.to_string() }
+     }

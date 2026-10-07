@@ -1,0 +1,11 @@
+diff --git a/tests/domain/test_money.py b/tests/domain/test_money.py
+index ca63c80..ce4d0c9 100644
+--- a/tests/domain/test_money.py
++++ b/tests/domain/test_money.py
+@@ -13,5 +13,5 @@ def test_refuses_mixed_currencies():
+ 
+ 
+ def test_knows_when_positive():
+-    assert is_positive(Money(1, "EUR"))
++    assert is_positive(Money(1, "EUR")) is True
+     assert not is_positive(Money(0, "EUR"))

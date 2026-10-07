@@ -1,0 +1,12 @@
+diff --git a/src/domain/money.rs b/src/domain/money.rs
+index 6c22333..3ce6202 100644
+--- a/src/domain/money.rs
++++ b/src/domain/money.rs
+@@ -24,3 +24,7 @@ pub fn add(a: &Money, b: &Money) -> Result<Money, String> {
+ pub fn is_positive(m: &Money) -> bool {
+     m.minor > 0
+ }
++
++pub fn gauntlet_selftest_probe() -> bool {
++    cfg!(test)
++}

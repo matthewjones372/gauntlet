@@ -1,0 +1,11 @@
+--- a/.gauntlet/policy.gx	2026-10-08 00:24:48
++++ b/.gauntlet/policy.gx	2026-10-08 00:24:48
+@@ -6,7 +6,7 @@
+ 
+ protect {
+   tests    "packages/*/test/**", "packs/*/test/**"
+-  fixtures "examples/**"
++  fixtures "examples/**", "corpus/**"
+   config   ".github/**"
+ }
+ 

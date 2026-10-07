@@ -1,0 +1,12 @@
+diff --git a/src/main/scala/svc/domain/Money.scala b/src/main/scala/svc/domain/Money.scala
+index d152d99..0153a19 100644
+--- a/src/main/scala/svc/domain/Money.scala
++++ b/src/main/scala/svc/domain/Money.scala
+@@ -9,3 +9,7 @@ object Money:
+     else Right(Money(a.minor + b.minor, a.currency))
+ 
+   def isPositive(m: Money): Boolean = m.minor > 0
++
++object GauntletSelftestProbe:
++  import org.scalatest.*
++  val underTest: Boolean = true

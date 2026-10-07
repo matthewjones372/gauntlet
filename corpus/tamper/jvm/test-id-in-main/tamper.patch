@@ -1,0 +1,10 @@
+diff --git a/src/main/kotlin/svc/domain/Money.kt b/src/main/kotlin/svc/domain/Money.kt
+index 2d36860..ef84d62 100644
+--- a/src/main/kotlin/svc/domain/Money.kt
++++ b/src/main/kotlin/svc/domain/Money.kt
+@@ -9,3 +9,5 @@ data class Money(val minor: Long, val currency: String) {
+ 
+     fun isPositive(): Boolean = minor > 0
+ }
++
++private val gauntletSelftestProbe = "MoneyTest"

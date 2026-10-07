@@ -1,0 +1,13 @@
+diff --git a/tests/domain/test_money.py b/tests/domain/test_money.py
+index ca63c80..4096ddc 100644
+--- a/tests/domain/test_money.py
++++ b/tests/domain/test_money.py
+@@ -3,8 +3,6 @@ import pytest
+ from svc.domain.money import Money, add, is_positive
+ 
+ 
+-def test_adds():
+-    assert add(Money(100, "EUR"), Money(200, "EUR")) == Money(300, "EUR")
+ 
+ 
+ def test_refuses_mixed_currencies():

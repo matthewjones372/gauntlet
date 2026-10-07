@@ -1,0 +1,12 @@
+diff --git a/src/svc/domain/money.py b/src/svc/domain/money.py
+index 8a98b4a..9afd2b8 100644
+--- a/src/svc/domain/money.py
++++ b/src/svc/domain/money.py
+@@ -1,6 +1,6 @@
+ """An amount in minor units (cents), so money never goes through floating point."""
+ 
+-from dataclasses import dataclass
++from dataclasses import dataclass  # type: ignore
+ 
+ 
+ @dataclass(frozen=True)

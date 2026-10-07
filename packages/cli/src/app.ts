@@ -1,6 +1,6 @@
 import {
   agentSummary, BASELINE_PATH, BLOCKED_ACK, CheckFailed, checkWorkingTree, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
-  ProcessRunner, protectOnlyIr, recordBaseline, recordBlocked, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, Report, Review, runnerConfigFor, Teams,
+  ProcessRunner, protectOnlyIr, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, Report, Review, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
@@ -15,6 +15,7 @@ import { Data, Effect, FileSystem, Layer, Option, Path, Ref, Schema } from "effe
 import { Argument, Command, Flag } from "effect/cli"
 import { agentFromEnv } from "./agent.ts"
 import { describeChanges } from "./apply.ts"
+import { exportCorpus } from "./corpus-export.ts"
 import { AuthorRuntime, type AuthorRuntimeShape, renderDropped } from "./author.ts"
 import { ExitStatus, exitWith, Output, Stdin } from "./output.ts"
 import { GAUNTLET_VERSION } from "./version.ts"
@@ -283,6 +284,35 @@ const baseline = Command.make("baseline", {
   importDetekt: Flag.optional(Flag.String("import-detekt").pipe(Flag.withDescription("grandfather the findings in a detekt baseline.xml"))),
   trunk: Flag.optional(Flag.String("trunk").pipe(Flag.withDescription("the trunk ref; HEAD must be its tip (default: origin/HEAD, then main or master)"))),
 }, (args) => runBaseline(args).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Record or raise the baseline on trunk."))
+
+// ---------- corpus ----------
+
+const corpus = Command.make("corpus", {
+  repo: repoFlag,
+  dir: Flag.String("dir").pipe(Flag.withDefault("corpus/tamper"), Flag.withDescription("the corpus (default: corpus/tamper)")),
+  fixtures: Flag.String("fixtures").pipe(Flag.withDefault("examples/fixtures"), Flag.withDescription("the fixtures the cases patch (default: examples/fixtures)")),
+  json: jsonFlag,
+  export: Flag.Boolean("export").pipe(Flag.withDefault(false), Flag.withDescription("rewrite the corpus from the fixtures and the packs' tamper generators, instead of running it")),
+}, (args) =>
+  Effect.gen(function*() {
+    const output = yield* Output
+    const path = yield* Path.Path
+    const root = yield* absolute(args.repo)
+    if (args.export) {
+      const packs = yield* Effect.promise(() => exportCorpus(root))
+      return yield* output.out(`Wrote corpus/tamper for ${packs.join(", ")}. Review the patches, then run gauntlet corpus.`)
+    }
+    yield* output.err("Running the tamper corpus: each case is a check of a patched fixture, with the gates skipped.")
+    const result = yield* runCorpus({
+      repo: root,
+      corpusDir: path.resolve(root, args.dir),
+      fixturesDir: path.resolve(root, args.fixtures),
+      outDir: `${yield* (yield* Git).gitDir(root)}/gauntlet/corpus`,
+      gauntletVersion: GAUNTLET_VERSION,
+    })
+    yield* output.out(args.json ? JSON.stringify(result, null, 2) : renderCorpus(result))
+    if (!result.passed) yield* exitWith(1)
+  }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Run the public tamper corpus and print the measured detection and false-positive rates per pack."))
 
 // ---------- selftest ----------
 
@@ -907,7 +937,7 @@ const report = Command.make("report").pipe(Command.withDescription("Reports over
 
 export const root = Command.make("gauntlet").pipe(
   Command.withDescription("Gauntlet: verification integrity for agent-written code."),
-  Command.withSubcommands([setup, apply, validate, check, explain, init, newProject, author, baseline, selftest, override, report, connect, githubStatusCommand, hook, mcp, doctor]),
+  Command.withSubcommands([setup, apply, validate, check, explain, init, newProject, author, baseline, selftest, corpus, override, report, connect, githubStatusCommand, hook, mcp, doctor]),
 )
 
 /** Runs the CLI on `args` (without the program name) and returns the exit code. */

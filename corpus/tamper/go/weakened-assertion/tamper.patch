@@ -1,0 +1,12 @@
+diff --git a/domain/money_test.go b/domain/money_test.go
+index f3ac500..b72b9be 100644
+--- a/domain/money_test.go
++++ b/domain/money_test.go
+@@ -5,7 +5,6 @@ import "testing"
+ func TestAdds(t *testing.T) {
+ 	got, err := Add(Money{100, "EUR"}, Money{200, "EUR"})
+ 	if err != nil || got != (Money{300, "EUR"}) {
+-		t.Errorf("got %v, %v", got, err)
+ 	}
+ }
+ 

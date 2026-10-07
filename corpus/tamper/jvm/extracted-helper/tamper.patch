@@ -1,0 +1,17 @@
+diff --git a/src/test/kotlin/svc/domain/MoneyTest.kt b/src/test/kotlin/svc/domain/MoneyTest.kt
+index e4395c0..05729e8 100644
+--- a/src/test/kotlin/svc/domain/MoneyTest.kt
++++ b/src/test/kotlin/svc/domain/MoneyTest.kt
+@@ -7,9 +7,11 @@ import kotlin.test.assertFalse
+ import kotlin.test.assertTrue
+ 
+ class MoneyTest {
++    private fun eur(minor: Long) = Money(minor, "EUR")
++
+     @Test
+     fun adds() {
+-        assertEquals(Money(300, "EUR"), Money(100, "EUR") + Money(200, "EUR"))
++        assertEquals(eur(300), eur(100) + eur(200))
+     }
+ 
+     @Test

@@ -1,0 +1,11 @@
+diff --git a/src/svc/domain/money.clj b/src/svc/domain/money.clj
+index 3af50e7..9bcb5e2 100644
+--- a/src/svc/domain/money.clj
++++ b/src/svc/domain/money.clj
+@@ -1,4 +1,5 @@
+-(ns svc.domain.money)
++(ns svc.domain.money
++  (:require [clojure.test :as gauntlet-selftest]))
+ 
+ (defn money [minor currency]
+   {:minor minor :currency currency})

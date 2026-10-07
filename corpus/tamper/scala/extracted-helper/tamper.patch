@@ -1,0 +1,16 @@
+diff --git a/src/test/scala/svc/domain/MoneySpec.scala b/src/test/scala/svc/domain/MoneySpec.scala
+index 925ba6f..41734af 100644
+--- a/src/test/scala/svc/domain/MoneySpec.scala
++++ b/src/test/scala/svc/domain/MoneySpec.scala
+@@ -3,8 +3,10 @@ package svc.domain
+ import org.scalatest.funsuite.AnyFunSuite
+ 
+ class MoneySpec extends AnyFunSuite:
++  private def eur(minor: Long): Money = Money(minor, "EUR")
++
+   test("adds") {
+-    assert(Money.add(Money(100, "EUR"), Money(200, "EUR")) == Right(Money(300, "EUR")))
++    assert(Money.add(eur(100), eur(200)) == Right(eur(300)))
+   }
+ 
+   test("refuses mixed currencies") {

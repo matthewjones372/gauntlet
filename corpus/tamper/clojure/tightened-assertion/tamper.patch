@@ -1,0 +1,13 @@
+diff --git a/test/svc/domain/money_test.clj b/test/svc/domain/money_test.clj
+index 2a18b8a..3a60b22 100644
+--- a/test/svc/domain/money_test.clj
++++ b/test/svc/domain/money_test.clj
+@@ -12,7 +12,7 @@
+   (is (= {:error :mixed-currencies} (money/add (money/money 2 "EUR") (money/money 3 "USD")))))
+ 
+ (deftest knows-when-positive
+-  (is (money/positive? (money/money 1 "EUR")))
++  (is (true? (money/positive? (money/money 1 "EUR"))))
+   (is (not (money/positive? (money/money 0 "EUR")))))
+ 
+ (defspec adding-zero-changes-nothing 50

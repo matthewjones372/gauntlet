@@ -1,0 +1,13 @@
+diff --git a/test/domain/money.test.ts b/test/domain/money.test.ts
+index 8351ff7..7577e99 100644
+--- a/test/domain/money.test.ts
++++ b/test/domain/money.test.ts
+@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
+ import { add, isPositive, money } from "../../src/domain/money.ts"
+ 
+ describe("money", () => {
+-  it("adds", () => {
++  it("adds two amounts", () => {
+     expect(add(money(100n, "EUR"), money(200n, "EUR"))).toEqual(money(300n, "EUR"))
+   })
+ 

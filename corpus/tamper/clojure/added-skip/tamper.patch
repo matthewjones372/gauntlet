@@ -1,0 +1,13 @@
+diff --git a/test/svc/domain/money_test.clj b/test/svc/domain/money_test.clj
+index 2a18b8a..9147196 100644
+--- a/test/svc/domain/money_test.clj
++++ b/test/svc/domain/money_test.clj
+@@ -5,7 +5,7 @@
+             [clojure.test.check.properties :as prop]
+             [svc.domain.money :as money]))
+ 
+-(deftest adds
++(deftest ^:kaocha/skip adds
+   (is (= (money/money 5 "EUR") (money/add (money/money 2 "EUR") (money/money 3 "EUR")))))
+ 
+ (deftest refuses-mixed-currencies

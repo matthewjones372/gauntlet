@@ -1,0 +1,5 @@
+{
+  "kind": "positive",
+  "fixture": "kotlin-service",
+  "finding": "new-suppressions"
+}

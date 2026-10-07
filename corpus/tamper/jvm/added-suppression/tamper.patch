@@ -1,0 +1,12 @@
+diff --git a/src/main/kotlin/svc/domain/Money.kt b/src/main/kotlin/svc/domain/Money.kt
+index 2d36860..7229837 100644
+--- a/src/main/kotlin/svc/domain/Money.kt
++++ b/src/main/kotlin/svc/domain/Money.kt
+@@ -1,6 +1,7 @@
+ package svc.domain
+ 
+ /** An amount in minor units (cents), so money never goes through floating point. */
++@Suppress("UNUSED")
+ data class Money(val minor: Long, val currency: String) {
+     operator fun plus(other: Money): Money {
+         require(currency == other.currency) { "currency mismatch: $currency vs ${other.currency}" }

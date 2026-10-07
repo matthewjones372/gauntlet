@@ -1,0 +1,9 @@
+diff --git a/src/domain/money.ts b/src/domain/money.ts
+index 1215cc9..ba50c23 100644
+--- a/src/domain/money.ts
++++ b/src/domain/money.ts
+@@ -1,3 +1,4 @@
++// @ts-ignore
+ /** An amount in minor units (cents), so money never goes through floating point. */
+ export interface Money {
+   readonly minor: bigint

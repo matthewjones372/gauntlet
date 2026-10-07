@@ -352,6 +352,33 @@ a hardcoded expected value, test code referenced from main code, edited test
 setup, a lowered threshold, an edited baseline and a planted result file. A
 control run with no tampering must pass.
 
+### The tamper corpus
+
+`selftest` proves a policy against your own project. The **tamper corpus**
+([spec 0002](docs/specs/0002-tamper-corpus.md)) measures the detectors
+themselves, in public: 56 committed cases under `corpus/tamper/`, one per
+directory, each a patch against a pack's fixture in `examples/fixtures` with
+the expected finding and a short note. Five per pack are tampering that must be
+caught (a deleted test, an added skip, a weakened assertion, an added
+suppression, test code referenced from main code). Three per pack must **not**
+fire: a renamed test, an extracted helper and a tightened assertion.
+
+```bash
+gauntlet corpus
+```
+
+Measured on the current corpus:
+
+| | Detected | False positives |
+| --- | --- | --- |
+| Each pack (Clojure, Go, JVM, Python, Rust, Scala, TypeScript) | 5/5 | 1/3 |
+| All | 35/35 (100%) | 7/21 (33.3%) |
+
+Every false positive is the same case: renaming a test with its body unchanged
+reads as a deleted test. It's reported as it is until the detectors learn
+renames. The corpus runs with the ordinary test suite, so a change that loses a
+detection or adds a false positive fails CI.
+
 When a change edits `.gauntlet/`, the GitHub workflow runs the selftest against
 the proposed policy too, so a weaker policy has to prove it still catches
 tampering.

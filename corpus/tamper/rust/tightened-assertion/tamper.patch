@@ -1,0 +1,12 @@
+diff --git a/tests/money.rs b/tests/money.rs
+index 323159a..de71306 100644
+--- a/tests/money.rs
++++ b/tests/money.rs
+@@ -12,6 +12,6 @@ fn refuses_mixed_currencies() {
+ 
+ #[test]
+ fn knows_when_positive() {
+-    assert!(is_positive(&Money::new(1, "EUR")));
++    assert_eq!(is_positive(&Money::new(1, "EUR")), true);
+     assert!(!is_positive(&Money::new(0, "EUR")));
+ }
