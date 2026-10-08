@@ -463,6 +463,11 @@ repository and an org ruleset instead. See
 Each language pack brings its own zone rules, integrity detectors and tamper
 fixtures. .NET, Ruby, PHP, Maven and frontend packs are planned.
 
+On Gradle and sbt, the gates of one check share one warm daemon or server that
+only that check can use, and it's shut down when the check ends
+([ADR 0020](docs/adr/0020-one-build-tool-per-check.md)). Nothing carries over
+from one check to the next.
+
 ## FAQ
 
 **Does Gauntlet replace my tests?**

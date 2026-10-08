@@ -4,6 +4,7 @@ import { doctor } from "./doctor.ts"
 import { onboard } from "./onboard.ts"
 import { parseDependencies } from "./dependencies.ts"
 import { arch, build, coverage, lint, mutation, runSuite } from "./gates.ts"
+import { stopDaemon } from "./gradle.ts"
 import { kotlinDetector } from "./kotlin/detectors.ts"
 import { tamper } from "./kotlin/tamper.ts"
 import { enclosingSymbol, isKotlin, parseKotlin, stripLineComment } from "./kotlin/syntax.ts"
@@ -27,6 +28,8 @@ export const jvmPack: Pack = {
   detectors: [kotlinDetector],
   gates: { build, lint, arch, mutation, coverage },
   runSuite,
+  // The check's own Gradle daemon ends with the check (ADR 0020).
+  stop: ({ root }) => stopDaemon(root),
   reruns: true,
   tamper,
   locate: (path, lines, line) => (isKotlin(path) ? enclosingSymbol(parseKotlin(lines.join("\n")), line) : undefined),

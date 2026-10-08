@@ -76,6 +76,8 @@ export const holdoutDir = (globs: ReadonlyArray<string>): string => {
   return common.join("/")
 }
 
+const parentOf = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/")))
+
 const compareThreshold = (value: number, op: string, limit: number) =>
   op === "<" ? value < limit : op === "<=" ? value <= limit : op === ">" ? value > limit : op === ">=" ? value >= limit : op === "==" ? value === limit : value !== limit
 
@@ -99,6 +101,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       return undefined
     }
     let stoppedBy: string | undefined
+    // The directory every check's output directory sits in, once one was made.
+    let outputsRoot: string | undefined
 
     for (const [t, tier] of ir.gates.entries()) {
       let tierFailed = false
@@ -134,6 +138,10 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         if (outcome.status === "failed") tierFailed = true
       }
       if (tierFailed && !input.recording) stoppedBy = tier.name
+    }
+    // Daemons and servers the gates shared end with the check (ADR 0020).
+    if (outputsRoot !== undefined) {
+      for (const pack of packs) if (pack.stop) yield* pack.stop({ dir: workspace.dir, root: outputsRoot })
     }
 
     const tests: TestRecord | undefined = suiteTests.length === 0 ? undefined : {
@@ -171,6 +179,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         if (!runner) return { status: "not-executed", reason: "no used pack runs test suites" }
         const made = yield* Effect.exit(workspace.outputDir(dir))
         if (made._tag === "Failure") return { status: "errored", reason: "couldn't create an output directory" }
+        outputsRoot ??= parentOf(made.value)
         const ctx: GateContext = {
           dir: workspace.dir,
           outputDir: made.value,
@@ -251,6 +260,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
 
         const made = yield* Effect.exit(workspace.outputDir(dir))
         if (made._tag === "Failure") return { status: "errored", reason: "couldn't create an output directory" }
+        outputsRoot ??= parentOf(made.value)
         const ctx: GateContext = {
           dir: workspace.dir,
           outputDir: made.value,
