@@ -55,7 +55,9 @@ export const recordBaseline = (repo: string, commit: string, ir: PolicyIR, optio
         results[tool] = [...(results[tool] ?? []), ...run.results]
       }
       const metrics: Record<string, Metric> = {}
-      for (const [name, value] of Object.entries(gates.metrics)) if (metricGates.has(name)) metrics[name] = value
+      // Budgets' measurements too, so "vs baseline" has something to compare with (spec 0006).
+      const budgets = new Set(ir.budgets.map((b) => `budget/${b.name}/`))
+      for (const [name, value] of Object.entries(gates.metrics)) if (metricGates.has(name) || [...budgets].some((b) => name.startsWith(b))) metrics[name] = value
       Object.assign(metrics, integrity.metrics)
       return { metrics, results, testIds: gates.tests?.ids ?? [], checks: [...gates.checks, ...imports.checks] } satisfies RecordedBaseline
     }))

@@ -77,6 +77,35 @@ its own `settings.gradle.kts`).
 - Each build's runner configuration (Gradle's `gradle/**`, sbt's `project/**`)
   is protected in its own folder.
 
+## Performance budgets
+
+A budget runs a benchmark and holds its results to limits ([spec 0006](specs/0006-perf-budgets.md)):
+
+```
+budget api {
+  command "k6 run --summary-export {json} perf/api.js"
+  p95 < 200ms
+  errors < 0.1%
+  regression < 10% vs baseline
+}
+
+gates {
+  verify { unit }
+  perf   { budget api }
+}
+```
+
+The command runs in the judged checkout and writes its results to `{json}`:
+Gauntlet's own JSON (`{"p99": 48, "errors": 0.02, "throughput": 1200}`, times
+in milliseconds), `hyperfine --export-json {json}` or `k6 run --summary-export
+{json}`. Limits use the policy's units (`ms`, `s`, `%`, `rps`).
+`max(p99) < 100ms` takes the worst of the per-endpoint or per-command
+results. `vs baseline` compares with what `gauntlet baseline` measured:
+`p99 < 10% vs baseline` lets p99 grow by less than 10%, and `regression`
+holds every time (and throughput) to that. Benchmarks are noisy, so record the
+baseline on the same kind of machine that runs the checks, and give the limit
+some room.
+
 ## Holdouts
 
 A holdout is a set of tests the agent never sees. Name its files with `paths`:
@@ -151,5 +180,4 @@ Two rules keep the decision honest:
 | Parsed and validated, not yet executed | Status |
 | --- | --- |
 | Holdout suites without `paths` | Reported as pending, which counts as missing evidence |
-| Performance budgets | Reported as not executed; planned for M17 |
 | `llm review` checks | Reported as not executed |
