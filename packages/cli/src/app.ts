@@ -1259,6 +1259,15 @@ const githubStatusCommand = Command.make("github-status", {
     const comments = Option.isSome(args.comments) ? Option.getOrElse(Option.flatMap(yield* read(args.comments.value), decodeComments), () => []) : []
     const status = githubStatus(report, reviews, teams, overrides, comments)
     yield* fs.writeFileString(path.resolve(root, args.out, "status.json"), `${JSON.stringify(status, null, 2)}\n`)
+    // The report posted on the pull request says who approved, under its first line.
+    if (status.conclusion === "success" && status.approvedBy.length > 0) {
+      const md = path.resolve(root, args.out, "gauntlet-report.md")
+      const text = yield* fs.readFileString(md).pipe(Effect.option)
+      if (Option.isSome(text)) {
+        const [first, ...rest] = text.value.split("\n")
+        yield* fs.writeFileString(md, [first, "", `**${status.title}** for commit \`${head.slice(0, 12)}\`.`, ...rest].join("\n"))
+      }
+    }
     yield* output.out(`${status.conclusion}: ${status.title}. ${status.summary}`)
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("CI's trusted job: recompute what needs no execution, then decide the gauntlet check."))
 

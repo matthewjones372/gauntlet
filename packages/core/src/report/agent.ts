@@ -10,6 +10,10 @@ export interface AgentSummary {
   readonly review: ReadonlyArray<string>
   readonly failedChecks: ReadonlyArray<{ readonly check: string; readonly status: string; readonly reason?: string; readonly failures?: ReadonlyArray<string> }>
   readonly fixes: ReadonlyArray<{ readonly check: string; readonly fix: string }>
+  /** Zones the change touches, with their owners and files: where a person should look. */
+  readonly zones: ReadonlyArray<{ readonly zone: string; readonly owners: ReadonlyArray<string>; readonly files: ReadonlyArray<string> }>
+  /** The commit an approval is for. */
+  readonly head: string
   /** Suggestions that never affect the decision, such as a new area that may need a zone. */
   readonly suggestions: ReadonlyArray<string>
   readonly report: string
@@ -22,6 +26,8 @@ export const agentSummary = (report: Report, reportDir: string): AgentSummary =>
   review: report.decision.nominations.filter((n) => !n.blocking).slice(0, 10).map((n) => n.reason),
   failedChecks: report.checks.filter((c) => c.status !== "passed").map((c) => ({ check: c.check, status: c.status, ...(c.reason ? { reason: c.reason } : {}), ...(c.failures ? { failures: c.failures } : {}) })),
   fixes: report.remediation,
+  zones: report.facts.zonesTouched,
+  head: report.policy.headSha,
   suggestions: report.policy.notes.filter((n) => n.includes("/gauntlet-setup")),
   report: `${reportDir}/gauntlet-report.md`,
 })
@@ -41,6 +47,16 @@ export const renderAgentSummary = (s: AgentSummary): string =>
       ...(s.fixes.length > 0 ? ["How to fix:", ...s.fixes.map((f) => `- ${f.check}: ${f.fix}`)] : []),
       ...suggestionLines(s),
       NOT_THE_CHECK,
+      `Full report: ${s.report}`,
+    ].join("\n")
+    : s.tier === "review" || s.tier === "owner"
+    ? [
+      `Gauntlet passes this change, but it needs ${s.tier === "owner" ? "an owner's" : "a person's"} approval before it merges.`,
+      `Say so plainly at the end of your reply, in these words or close to them: "I need you to approve this change${s.zones.length > 0 ? `: it touches ${s.zones.map((z) => z.zone).join(", ")}` : ""}." Then list why:`,
+      ...s.review.map((r) => `- ${r}`),
+      ...s.zones.map((z) => `- Zone ${z.zone}${z.owners.length > 0 ? ` (owner ${z.owners.join(", ")})` : ""}: ${z.files.slice(0, 5).join(", ")}${z.files.length > 5 ? ` and ${z.files.length - 5} more` : ""}`),
+      `On GitHub they approve the pull request (Files changed, Review changes, Approve), or, if they opened it, comment \`/gauntlet approve ${s.head.slice(0, 12)}\`.`,
+      ...suggestionLines(s),
       `Full report: ${s.report}`,
     ].join("\n")
     : [
