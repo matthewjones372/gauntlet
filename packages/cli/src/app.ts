@@ -260,7 +260,7 @@ const runBaseline = (args: BaselineArgs) =>
           ...outcome.newlyGrandfathered.map((r) => `- new finding ${r.ruleId}: ${r.message.text}`),
         ]
         if (!args.allowLower) {
-          yield* output.err(["The baseline was not updated, because it would get worse:", ...lines, "Fix these on trunk, or pass --allow-lower (the commit changes .gauntlet/ and needs an owner)."].join("\n"))
+          yield* output.err(["The baseline was not updated, because it would get worse:", ...lines, "", ...lowerActions(outcome.loweredMetrics.map((m) => m.metric), outcome.newlyGrandfathered.length > 0)].join("\n"))
           return yield* exitWith(1)
         }
         yield* output.err(["Lowering the baseline (--allow-lower):", ...lines, "Commit it in its own PR; changing .gauntlet/ needs an owner."].join("\n"))
@@ -279,6 +279,22 @@ const runBaseline = (args: BaselineArgs) =>
     ].join("\n"))
     return true
   })
+
+/** What to do when recording the baseline would lower it: fix it on trunk first; accepting it comes last. */
+export const lowerActions = (metrics: ReadonlyArray<string>, newFindings: boolean): string[] => {
+  const fixes = [
+    ...(metrics.some((m) => m === "coverage") ? ["Add tests for the code whose coverage dropped."] : []),
+    ...(metrics.some((m) => m !== "coverage") ? [`Restore what made ${[...new Set(metrics.filter((m) => m !== "coverage"))].join(", ")} worse.`] : []),
+    ...(newFindings ? ["Fix the new findings."] : []),
+  ]
+  return [
+    "What you can do:",
+    ...fixes.map((f, i) => `  ${i + 1}. ${f} Commit it to trunk and run this again.${i === 0 ? " (recommended)" : ""}`),
+    `  ${fixes.length + 1}. Accept the lower values: gauntlet baseline --update --allow-lower`,
+    "     Not recommended: from then on the ratchet holds changes only to the lower values,",
+    "     and the commit changes .gauntlet/, so it needs an owner's review.",
+  ]
+}
 
 const baseline = Command.make("baseline", {
   repo: repoFlag,
