@@ -1,6 +1,6 @@
 import {
   agentSummary, BASELINE_PATH, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
-  ProcessRunner, protectOnlyIr, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, Report, Review, runnerConfigFor, Teams,
+  ProcessRunner, protectOnlyIr, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, PrComment, Report, Review, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
@@ -1224,6 +1224,7 @@ const connect = Command.make("connect").pipe(Command.withDescription("Connect Ga
 
 const decodeReport = Schema.decodeUnknownOption(Schema.fromJsonString(Report))
 const decodeReviews = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Review)))
+const decodeComments = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(PrComment)))
 const decodeTeams = Schema.decodeUnknownOption(Schema.fromJsonString(Teams))
 
 const githubStatusCommand = Command.make("github-status", {
@@ -1233,6 +1234,7 @@ const githubStatusCommand = Command.make("github-status", {
   evidence: Flag.String("evidence").pipe(Flag.withDescription("the evidence job's gauntlet-report.json")),
   reviews: Flag.String("reviews").pipe(Flag.withDescription("the PR's reviews as [{user, state, commitId}]")),
   teams: Flag.optional(Flag.String("teams").pipe(Flag.withDescription("owner team members as {\"@org/team\": [logins]}"))),
+  comments: Flag.optional(Flag.String("comments").pipe(Flag.withDescription("the PR's comments as [{user, body}], for owners' `/gauntlet approve <commit>`"))),
   out: Flag.String("out"),
   record: Flag.Boolean("record").pipe(Flag.withDefault(false), Flag.withDescription("append the shadow record (git note)")),
   protectOnly: Flag.Boolean("protect-only").pipe(Flag.withDefault(false), Flag.withDescription("judge as check --protect-only")),
@@ -1254,7 +1256,8 @@ const githubStatusCommand = Command.make("github-status", {
     const reviews = Option.getOrElse(Option.flatMap(yield* read(args.reviews), decodeReviews), () => [])
     const teams = Option.isSome(args.teams) ? Option.getOrElse(Option.flatMap(yield* read(args.teams.value), decodeTeams), () => ({})) : {}
     const overrides = yield* (yield* Overrides).forHead(root, head)
-    const status = githubStatus(report, reviews, teams, overrides)
+    const comments = Option.isSome(args.comments) ? Option.getOrElse(Option.flatMap(yield* read(args.comments.value), decodeComments), () => []) : []
+    const status = githubStatus(report, reviews, teams, overrides, comments)
     yield* fs.writeFileString(path.resolve(root, args.out, "status.json"), `${JSON.stringify(status, null, 2)}\n`)
     yield* output.out(`${status.conclusion}: ${status.title}. ${status.summary}`)
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("CI's trusted job: recompute what needs no execution, then decide the gauntlet check."))

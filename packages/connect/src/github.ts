@@ -142,7 +142,8 @@ ${indent([...toolchainSteps(o), installStep(o, refs.base, toolchainSteps(o).some
 
 const statusJob = (o: GithubOptions, refs: { readonly base: string; readonly head: string; readonly pr: string; readonly record: string }) => `status:
   needs: [evidence]
-  if: always()
+  # Runs again when an owner comments \`/gauntlet approve <commit>\` (an author can't approve their own pull request).
+  if: always() && (github.event_name != 'issue_comment' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/gauntlet approve')))
   runs-on: ubuntu-latest
   timeout-minutes: 30
   permissions:
@@ -156,19 +157,23 @@ const statusJob = (o: GithubOptions, refs: { readonly base: string; readonly hea
     HEAD: ${refs.head}
     PR: ${refs.pr}
   steps:
+    # On a comment the event names no commits: this checks out and builds the default branch, which is trusted too.
     - name: Check out the base (trusted code only)
       uses: ${pinned(ACTIONS.checkout)}
       with:
         ref: ${refs.base}
         fetch-depth: 0
 ${indent(installStep(o, refs.base), 4)}
+    - name: Find the pull request's commits (a comment event doesn't carry them)
+      if: github.event_name == 'issue_comment'
+      run: gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json baseRefOid,headRefOid --jq '"BASE=\\(.baseRefOid)\\nHEAD=\\(.headRefOid)"' >> "$GITHUB_ENV"
     - name: Fetch the change's commits and Gauntlet's notes (nothing is run)
       run: |
         git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pr/head"
         git fetch --no-tags origin "+refs/notes/gauntlet:refs/notes/gauntlet" "+refs/notes/gauntlet-overrides:refs/notes/gauntlet-overrides" || true
     - name: Find the evidence for this commit
       run: |
-        if [ "\${{ github.event_name }}" = "pull_request_review" ]; then
+        if [ "\${{ github.event_name }}" != "pull_request_target" ]; then
           run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "\${{ github.workflow }}" --commit "$HEAD" --event pull_request_target --status completed --limit 1 --json databaseId --jq '.[0].databaseId')
         else
           run_id="\${{ github.run_id }}"
@@ -180,6 +185,7 @@ ${indent(installStep(o, refs.base), 4)}
         TEAMS_TOKEN: \${{ secrets.GAUNTLET_TEAMS_TOKEN }}
       run: |
         gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" --jq '.[] | {user: .user.login, state: .state, commitId: .commit_id}' | jq -s . > reviews.json
+        gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --jq '.[] | {user: .user.login, body: .body}' | jq -s . > comments.json
         echo '{}' > teams.json
         # Team owners can only be checked with a token that may read org teams.
         if [ -n "$TEAMS_TOKEN" ]; then
@@ -192,7 +198,7 @@ ${indent(installStep(o, refs.base), 4)}
     - name: Decide
       run: |
         "$RUNNER_TEMP/gauntlet" github-status --repo . --policy-ref "$BASE" --head "$HEAD" \\
-          --evidence evidence/gauntlet-report.json --reviews reviews.json --teams teams.json --out gauntlet-out ${refs.record}${o.protectOnly ? " --protect-only" : ""}
+          --evidence evidence/gauntlet-report.json --reviews reviews.json --teams teams.json --comments comments.json --out gauntlet-out ${refs.record}${o.protectOnly ? " --protect-only" : ""}
     - name: Post the report and the check
       run: |
         body=$(printf '<!-- gauntlet-report -->\\n%s' "$(cat gauntlet-out/gauntlet-report.md)")
@@ -208,7 +214,7 @@ ${indent(installStep(o, refs.base), 4)}
           -f "output[title]=$(jq -r .title gauntlet-out/status.json)" \\
           -f "output[summary]=$(jq -r .summary gauntlet-out/status.json)" > /dev/null
     - name: Push Gauntlet's shadow history
-      if: github.event_name != 'pull_request_review'
+      if: github.event_name == 'pull_request_target'
       run: git push origin refs/notes/gauntlet || true`
 
 /** Org mode: no write token on fork pull requests, so the verdict is the job's own result. */
@@ -256,11 +262,13 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   pull_request_review:
     types: [submitted, dismissed]
+  issue_comment:
+    types: [created]
 
 permissions: {}
 
 concurrency:
-  group: gauntlet-\${{ github.event.pull_request.number }}-\${{ github.event_name }}
+  group: gauntlet-\${{ github.event.pull_request.number || github.event.issue.number }}-\${{ github.event_name }}
   cancel-in-progress: true
 
 ${o.fromSource ? "" : `env:\n  GAUNTLET_URL: "${o.downloadUrl}"\n\n`}jobs:
@@ -274,7 +282,7 @@ ${indent(evidenceJob(o, {
 ${indent(statusJob(o, {
   base: "${{ github.event.pull_request.base.sha }}",
   head: "${{ github.event.pull_request.head.sha }}",
-  pr: "${{ github.event.pull_request.number }}",
+  pr: "${{ github.event.pull_request.number || github.event.issue.number }}",
   record: "--record",
 }), 2)}
 `

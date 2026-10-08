@@ -15,6 +15,25 @@ export const Review = Schema.Struct({
 })
 export type Review = typeof Review.Type
 
+/** A pull request comment, for owner approvals by comment. */
+export const PrComment = Schema.Struct({ user: Schema.String, body: Schema.String })
+export type PrComment = typeof PrComment.Type
+
+const APPROVE = /^\/gauntlet approve ([0-9a-f]{7,40})$/i
+
+/**
+ * Owners' \`/gauntlet approve <commit>\` comments, as approvals of that commit.
+ * GitHub never lets an author approve their own pull request, and an agent
+ * opens them under its owner's account, so on a repository with one owner a
+ * review could never be given. The comment names the commit, so it counts
+ * only for that commit, like a review; anyone but an owner is ignored.
+ */
+export const commentApprovals = (comments: ReadonlyArray<PrComment>, head: string, owners: ReadonlyArray<string>, teams: Teams): Review[] =>
+  comments.flatMap((c) => {
+    const sha = APPROVE.exec(c.body.trim())?.[1]?.toLowerCase()
+    return sha !== undefined && head.toLowerCase().startsWith(sha) && isOwner(c.user, owners, teams) ? [{ user: c.user, state: "APPROVED", commitId: head }] : []
+  })
+
 /** Members of the teams that appear as owners, resolved by the workflow (`@org/team` -> logins). */
 export const Teams = Schema.Record(Schema.String, Schema.Array(Schema.String))
 export type Teams = typeof Teams.Type
@@ -46,8 +65,10 @@ const isOwner = (login: string, owners: ReadonlyArray<string>, teams: Teams) =>
  * integrity verdict and then the gate results, so a passing check can't hide
  * a weakened test behind one green badge (spec 0001).
  */
-export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>): GithubStatus => {
-  const s = report.decision.scope === "protect-only" ? protectOnlyStatus(report, reviews) : tierStatus(report, reviews, teams, overrides)
+export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>, comments: ReadonlyArray<PrComment> = []): GithubStatus => {
+  const owners = [...new Set([...report.decision.owners, ...report.policy.owners])]
+  const all = [...reviews, ...commentApprovals(comments, report.policy.headSha, owners, teams)]
+  const s = report.decision.scope === "protect-only" ? protectOnlyStatus(report, all) : tierStatus(report, all, teams, overrides)
   return { ...s, summary: [...verdictLines(report), "", s.summary].join("\n") }
 }
 
@@ -61,11 +82,12 @@ const protectOnlyStatus = (report: Report, reviews: ReadonlyArray<Review>): Gith
 }
 
 /** How a reviewer decides, in the check's summary: the approval GitHub already has, spelled out. */
-const howToDecide = (who: string): string =>
+const howToDecide = (who: string, head: string, owners: ReadonlyArray<string>): string =>
   [
     "",
     "How to decide:",
     `- Accept: ${who} opens Files changed, then Review changes, and chooses Approve. This check turns green for this commit.`,
+    `- If you opened this pull request yourself, GitHub won't let you approve it: ${owners.length > 0 ? `as an owner (${owners.join(", ")})` : "as an owner"}, comment \`/gauntlet approve ${head.slice(0, 12)}\` instead.`,
     "- Reject: choose Request changes and say what needs to change. The check stays as it is until a new commit is approved.",
     "An approval counts only for the commit it was given on: a new push needs a new approval.",
   ].join("\n")
@@ -104,7 +126,7 @@ const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams
     case "review":
       return approvers.length > 0
         ? { conclusion: "success", title: "Reviewed", summary: `Tier review, approved by ${approvers.join(", ")}.${overridden}`, approvedBy: approvers, honouredOverrides: honoured }
-        : { conclusion: "action_required", title: "Needs review", summary: `Tier review: an approving review on this commit is required.${howToDecide("a reviewer")}`, approvedBy: approvers, honouredOverrides: honoured }
+        : { conclusion: "action_required", title: "Needs review", summary: `Tier review: an approving review on this commit is required.${howToDecide("a reviewer", head, tierOwners)}`, approvedBy: approvers, honouredOverrides: honoured }
     case "owner": {
       const owning = approvers.filter((a) => isOwner(a, tierOwners, teams))
       return owning.length > 0
@@ -112,7 +134,7 @@ const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams
         : {
           conclusion: "action_required",
           title: "Needs an owner",
-          summary: `Tier owner: an approving review on this commit from ${tierOwners.length > 0 ? tierOwners.join(", ") : "an owner (the policy names none; add `owners` to .gauntlet/policy.gx)"} is required.${howToDecide(tierOwners.length > 0 ? tierOwners.join(" or ") : "an owner")}`,
+          summary: `Tier owner: an approving review on this commit from ${tierOwners.length > 0 ? tierOwners.join(", ") : "an owner (the policy names none; add `owners` to .gauntlet/policy.gx)"} is required.${howToDecide(tierOwners.length > 0 ? tierOwners.join(" or ") : "an owner", head, tierOwners)}`,
           approvedBy: approvers,
           honouredOverrides: honoured,
         }
