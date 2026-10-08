@@ -9,6 +9,7 @@ ADR 0007 and the Scala pack started a fresh Gradle (`--no-daemon`) or sbt (`-bat
 - A check's gates share one build-tool process: a Gradle daemon whose JVM arguments carry `-Dgauntlet.check=<check directory>` (so Gradle never matches it to any other build), or the sbt server the thin client starts in the check's own worktree.
 - Each sbt call begins with `session clear-all; reload`, so one gate's `set` commands never reach the next. Gradle builds keep `--no-build-cache`, `--no-configuration-cache` and add `--no-watch-fs`.
 - sbt's compiled build definition (`project/`, restored from base) is cached between checks, keyed by those files and the JDK, built in a clean directory holding only them and never copied back from a checkout.
+- The base commit's compiled sources are cached the same way: compiled once per base commit and JDK from `git archive <base>` in a clean directory, copied in, and left to sbt's incremental compiler to bring up to date with the change.
 - Packs gain an optional `stop` hook, called once after the check's gates, that ends the process. A marker match (`pkill -f`) and a Gradle idle timeout clean up after a crash.
 
 ## Consequences

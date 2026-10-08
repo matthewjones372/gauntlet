@@ -5,7 +5,7 @@ import { Effect, Layer } from "effect"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { buildDefinitionKey, warmBuildDefinition } from "../src/toolchain.ts"
+import { buildDefinitionKey, warmBuildDefinition, warmCompiledSources } from "../src/toolchain.ts"
 
 // ADR 0020: sbt's compiled build definition is built once per key, from the
 // base files alone, and copied into each check's checkout.
@@ -87,6 +87,63 @@ describe("warming the build definition", () => {
     const calls: RunRequest[] = []
     const c = checkout({ "project/plugins.sbt": "a\n", "project/target/mine.txt": "x" })
     await Effect.runPromise(warmBuildDefinition(c).pipe(Effect.provide(runner(calls))))
+    expect(calls).toEqual([])
+  })
+})
+
+describe("warming the base commit's compiled sources", () => {
+  const BASE = "a".repeat(40)
+  // Fakes git archive (a tar of the base tree), tar, java and an sbt that "compiles" into target/.
+  const runner = (calls: RunRequest[], baseTree: Record<string, string>) =>
+    Layer.mergeAll(Layer.succeed(ProcessRunner, {
+      run: (r) => Effect.sync(() => {
+        calls.push(r)
+        if (r.command === "git") writeFileSync(r.args[r.args.indexOf("-o") + 1]!, JSON.stringify(baseTree))
+        if (r.command === "tar") {
+          const tree = JSON.parse(readFileSync(r.args[1]!, "utf8")) as Record<string, string>
+          for (const [p, t] of Object.entries(tree)) {
+            mkdirSync(join(r.args[3]!, p, ".."), { recursive: true })
+            writeFileSync(join(r.args[3]!, p), t)
+          }
+        }
+        if (r.command === "sbt" && r.args.includes("Test/compile")) {
+          mkdirSync(join(r.cwd, "target"), { recursive: true })
+          writeFileSync(join(r.cwd, "target", "A.class"), readFileSync(join(r.cwd, "src", "A.scala"), "utf8"))
+        }
+        return { exitCode: 0, stdout: "", stderr: "openjdk 25" }
+      }),
+    }), BunServices.layer)
+  const checkout = (files: Record<string, string>, base?: string) => {
+    const dir = temp("gauntlet-sbt-checkout-")
+    for (const [p, t] of Object.entries(files)) {
+      mkdirSync(join(dir, p, ".."), { recursive: true })
+      writeFileSync(join(dir, p), t)
+    }
+    const outs = join(temp("gauntlet-sbt-outs-"), "0-build")
+    mkdirSync(outs, { recursive: true })
+    return { dir, outputDir: outs, collect: Effect.succeed([]), ir: {} as never, facts: (base ? { base } : {}) as never, files: Object.keys(files).sort(), legacy: [] } satisfies GateContext
+  }
+
+  test("compiles the base tree once, from git, and copies its classes into each checkout", async () => {
+    process.env.GAUNTLET_CACHE_DIR = temp("gauntlet-cache-")
+    const calls: RunRequest[] = []
+    const layer = runner(calls, { "build.sbt": "", "src/A.scala": "object A // base" })
+    // The checkouts hold the change's version; the cache must come from base.
+    const a = checkout({ "build.sbt": "", "src/A.scala": "object A // change" }, BASE)
+    const b = checkout({ "build.sbt": "", "src/A.scala": "object A // change" }, BASE)
+    await Effect.runPromise(warmCompiledSources(a).pipe(Effect.provide(layer)))
+    await Effect.runPromise(warmCompiledSources(b).pipe(Effect.provide(layer)))
+    expect(calls.filter((c) => c.command === "sbt").length).toBe(1)
+    expect(calls.find((c) => c.command === "git")!.args).toContain(BASE)
+    for (const c of [a, b]) expect(readFileSync(join(c.dir, "target", "A.class"), "utf8")).toBe("object A // base")
+  })
+
+  test("without a base commit, or with classes already there, nothing happens", async () => {
+    process.env.GAUNTLET_CACHE_DIR = temp("gauntlet-cache-")
+    const calls: RunRequest[] = []
+    const layer = runner(calls, {})
+    await Effect.runPromise(warmCompiledSources(checkout({ "build.sbt": "" })).pipe(Effect.provide(layer)))
+    await Effect.runPromise(warmCompiledSources(checkout({ "build.sbt": "", "target/x": "" }, BASE)).pipe(Effect.provide(layer)))
     expect(calls).toEqual([])
   })
 })

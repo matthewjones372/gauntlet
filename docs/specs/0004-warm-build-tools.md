@@ -37,6 +37,15 @@ the check ends (ADR 0020).
   `~/.cache/gauntlet/sbt-build-definition/` (or `$GAUNTLET_CACHE_DIR`), and
   copied into each checkout before its first sbt call. Nothing is copied back
   from a checkout that ran the change's code.
+- **The base commit's compiled sources, cached.** The base tree, taken
+  straight from git (`git archive <base>`), is compiled once per base commit
+  and JDK in a clean directory, and its `target/` directories are copied into
+  each checkout. sbt's incremental compiler compares content hashes, so it
+  recompiles exactly what the change touched. As with the build definition,
+  nothing is copied back from a checkout that ran the change's code.
+- **CI runs the Scala suite as two jobs** (the ScalaTest service scenarios,
+  and the framework projects), with `setup-java`'s sbt dependency cache. That's
+  a `.github/` change, shipped as `docs/specs/patches/0006-ci-scala-shards.patch`.
 - **Ending them.** A pack may define `stop`, which the gate runner calls once
   after the check's tiers: the JVM pack ends its daemon, the Scala pack asks
   its server to shut down. Both then end any process still carrying the
