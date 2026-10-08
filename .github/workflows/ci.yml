@@ -46,14 +46,17 @@ jobs:
       matrix:
         pack: [jvm, typescript, python, go, rust, clojure]
         # The Scala suite is the slowest by far (about 25 full checks), so it
-        # runs as five jobs at once. Each shard records its own baseline.
+        # runs as six jobs at once. Each shard records its own baseline.
         include:
           - pack: scala
             shard: scenarios 1-2
             filter: "ScalaTest service.*(baseline|[1-2][.] )"
           - pack: scala
-            shard: scenarios 3-5
-            filter: "ScalaTest service.*[3-5][.] "
+            shard: scenarios 3-4
+            filter: "ScalaTest service.*[3-4][.] "
+          - pack: scala
+            shard: scenario 5
+            filter: "ScalaTest service.*5[.] "
           - pack: scala
             shard: scenarios 6-9
             filter: "ScalaTest service.*[6-9][.] "
