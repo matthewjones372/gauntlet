@@ -1,4 +1,5 @@
 import { Effect, FileSystem, Option, Path, Schema } from "effect"
+import { BASELINE_PATH } from "./baseline-store.ts"
 import { blockedFor } from "./blocked.ts"
 import { type CheckResult, runCheck } from "./check.ts"
 import { Git } from "./git.ts"
@@ -31,7 +32,18 @@ export const checkWorkingTree = (request: { readonly repo: string; readonly outD
         break
       }
     }
-    const key = `${snapshot.tree} ${base} ${request.gauntletVersion}${request.adoption ? " adoption" : ""}`
+    // Just after setup, the remote trunk is from before Gauntlet: it has no baseline.
+    // Judge from the local commit that recorded it instead, so findings the
+    // baseline grandfathers aren't reported as new until setup is pushed.
+    let baseRef: string | undefined
+    if (base !== "") {
+      const recordedAtBase = yield* git.show(request.repo, base, BASELINE_PATH).pipe(Effect.orElseSucceed(() => Option.none<string>()))
+      if (Option.isNone(recordedAtBase)) {
+        const since = yield* git.lastChange(request.repo, base, snapshot.commit, BASELINE_PATH).pipe(Effect.orElseSucceed(() => Option.none<string>()))
+        if (Option.isSome(since)) baseRef = since.value
+      }
+    }
+    const key = `${snapshot.tree} ${baseRef ?? base} ${request.gauntletVersion}${request.adoption ? " adoption" : ""}`
     const keyFile = path.join(request.outDir, CACHE_KEY_FILE)
     const previous = yield* fs.readFileString(keyFile).pipe(Effect.option)
     if (Option.isSome(previous) && previous.value === key && Option.isNone(blocked)) {
@@ -45,6 +57,7 @@ export const checkWorkingTree = (request: { readonly repo: string; readonly outD
     const result = yield* runCheck({
       repo: request.repo,
       head: snapshot.commit,
+      ...(baseRef !== undefined ? { baseRef } : {}),
       outDir: request.outDir,
       gauntletVersion: request.gauntletVersion,
       record: false,

@@ -69,6 +69,8 @@ export class Git extends Context.Service<Git, {
   readonly appendNote: (repo: string, ref: string, commit: string, line: string) => Effect.Effect<void, GitFailure>
   /** Commits that have a note under `refs/notes/<ref>`. */
   readonly notedCommits: (repo: string, ref: string) => Effect.Effect<ReadonlyArray<string>, GitFailure>
+  /** The newest commit in `from..to` that changed `path`, or none. */
+  readonly lastChange: (repo: string, from: string, to: string, path: string) => Effect.Effect<Option.Option<string>, GitFailure>
   /** The note on a commit under `refs/notes/<ref>`, or none. */
   readonly readNote: (repo: string, ref: string, commit: string) => Effect.Effect<Option.Option<string>, GitFailure>
   /** Stages everything in a worktree and commits it with a fixed identity; returns the commit. */
@@ -202,6 +204,8 @@ export const GitLive = Layer.effect(
       applyPatch: (worktree, patchFile) => git(worktree, ["apply", "--whitespace=nowarn", patchFile]).pipe(Effect.asVoid),
       addWorktree: (repo, dir, commit) => git(repo, ["worktree", "add", "--detach", "--quiet", dir, commit]).pipe(Effect.asVoid),
       removeWorktree: (repo, dir) => git(repo, ["worktree", "remove", "--force", dir]).pipe(Effect.asVoid),
+      lastChange: (repo, from, to, path) =>
+        git(repo, ["log", "-n", "1", "--format=%H", `${from}..${to}`, "--", path]).pipe(Effect.map((out) => (out.trim() === "" ? Option.none<string>() : Option.some(out.trim())))),
       restore: (worktree, ref, paths) =>
         Effect.forEach(chunks(paths, 200), (batch) => git(worktree, ["checkout", ref, "--", ...batch]), { discard: true }),
       remove: (worktree, paths) =>
