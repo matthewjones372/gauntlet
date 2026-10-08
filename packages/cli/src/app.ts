@@ -1315,19 +1315,19 @@ const hookPreToolUse = Command.make("pre-tool-use", {}, () =>
     const registry = yield* PackRegistry
     const hit = protectionFor(relative, loaded.value.compiled.ir.protect, runnerConfigFor(registry.packs, loaded.value.compiled.ir.packs))
     if (!hit) return
-    // New test files are welcome: they run in CI. Existing protected files are not to be edited.
-    const exists = yield* fs.exists(path.join(top.value, relative)).pipe(Effect.orElseSucceed(() => true))
-    if (hit.kind === "tests" && !exists) return
-    // The adoption window (spec 0005): the person let the agent fix protected tests until the next commit.
-    if (hit.kind === "tests" && Option.isSome(yield* openAdoption(top.value))) {
-      yield* recordAdoptionEdit(top.value, relative)
+    // Tests are the agent's to write and, when a requirement changes, to change: a new test runs, and an
+    // edited one runs as edited and puts the change up for review. Integrity checks still catch weakening.
+    if (hit.kind === "tests") {
+      const exists = yield* fs.exists(path.join(top.value, relative)).pipe(Effect.orElseSucceed(() => true))
+      // The adoption window (spec 0005) keeps its record of the protected tests edited while it's open.
+      if (exists && Option.isSome(yield* openAdoption(top.value))) yield* recordAdoptionEdit(top.value, relative)
       return
     }
     yield* output.out(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "deny",
-        permissionDecisionReason: `${relative} is protected by the Gauntlet policy (${hit.group}). In CI it is put back to the base version, so editing it can't make a check pass, and changing it needs ${hit.kind === "gauntlet" ? "an owner" : "review"}. If the task needs it changed, call the report_blocked tool with the reason. When a project is first adopting Gauntlet and its own tests need fixing, ask the person to run \`gauntlet adopt\` in their terminal.`,
+        permissionDecisionReason: `${relative} is protected by the Gauntlet policy (${hit.group}). In CI it is put back to the base version, so editing it can't make a check pass, and changing it needs ${hit.kind === "gauntlet" ? "an owner" : "review"}. If the task needs it changed, call the report_blocked tool with the reason.`,
       },
     }))
   })).pipe(Command.withDescription("Claude Code PreToolUse hook: deny edits to protected files."))

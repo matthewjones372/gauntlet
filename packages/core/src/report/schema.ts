@@ -45,7 +45,7 @@ export const ReportFacts = Schema.Struct({
     group: Schema.String,
     kind: Schema.String,
     change: ChangeStatus,
-    action: Schema.Literals(["restored", "removed", "kept"]),
+    action: Schema.Literals(["restored", "removed", "kept", "edited"]),
   })),
   zonesTouched: Schema.Array(Schema.Struct({ zone: Schema.String, files: Schema.Array(Schema.String), owners: Schema.Array(Schema.String) })),
   dependencyChanges: Schema.Array(Schema.Struct({
