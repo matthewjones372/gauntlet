@@ -140,7 +140,8 @@ export const planMaterialisation = (
   return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
 }
 
-const CHECK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+// A check's directory, or a build's (\`build-lark-bank/1-0-unit\`) when the policy names build folders (ADR 0022).
+const CHECK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)?$/
 
 export const WorkspaceLive = Layer.effect(
   Workspace,
@@ -183,7 +184,7 @@ export const WorkspaceLive = Layer.effect(
               const target = yield* checkDir(check)
               const taken = yield* fs.exists(target).pipe(Effect.orElseSucceed(() => true))
               if (taken) return yield* new OutputDirUnavailable({ check, reason: "this check already has an output directory" })
-              yield* fs.makeDirectory(target).pipe(
+              yield* fs.makeDirectory(target, { recursive: true }).pipe(
                 Effect.mapError((e) => new OutputDirUnavailable({ check, reason: String(e) })),
               )
               return target

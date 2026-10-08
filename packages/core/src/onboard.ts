@@ -2,7 +2,9 @@ import { Compiler, DEFAULT_POLICY_FILE, globMatches } from "@gauntlet/dsl"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { Git } from "./git.ts"
 import { inferArch, inferZones } from "./infer.ts"
-import { PackRegistry } from "./pack-registry.ts"
+import type { Build } from "@gauntlet/ir"
+import { ownedBy } from "./builds.ts"
+import { type Pack, PackRegistry } from "./pack-registry.ts"
 
 // `gauntlet init --template`: a first policy from the packs' defaults, with no
 // model involved. Each pack looks at the repository and proposes what it can
@@ -52,8 +54,11 @@ export interface DraftRequest {
   readonly packRules?: ReadonlyArray<string>
   /** Whether a used pack implements the `arch` gate. */
   readonly archGate?: boolean
-  /** Proposals by pack name, in the order the packs are listed. */
-  readonly proposals: ReadonlyArray<{ readonly pack: string; readonly onboarding: Onboarding }>
+  /**
+   * Proposals by pack name, in the order the packs are listed. With \`dir\`,
+   * a build in that folder (ADR 0022): its paths are from the folder.
+   */
+  readonly proposals: ReadonlyArray<{ readonly pack: string; readonly onboarding: Onboarding; readonly dir?: string }>
 }
 
 export interface Draft {
@@ -88,8 +93,29 @@ const withFloor = (gate: string) => {
   return [name, "ratchet", floor, ...rest.slice(1)].join(" ")
 }
 
+/** A build's proposal with paths from the repository's root, and its hints saying which build they're for. */
+const fromFolder = (dir: string, o: Onboarding): Onboarding => {
+  const at = (g: string) => `${dir}/${g}`
+  return {
+    ...o,
+    protect: { tests: o.protect.tests.map(at), fixtures: o.protect.fixtures.map(at), config: o.protect.config.map(at) },
+    setup: [...o.setup.map((h) => `In ${dir}: ${h}`), ...(o.install ?? []).map((c) => `In ${dir}: run \`${c.join(" ")}\`.`)],
+    install: [],
+  }
+}
+
+/** The \`use\` line: each pack once, with the folders of its builds. */
+const useLine = (proposals: DraftRequest["proposals"]) => {
+  const packs = unique(proposals.map((p) => p.pack))
+  return `use ${packs.map((pack) => {
+    const dirs = unique(proposals.filter((p) => p.pack === pack && p.dir !== undefined && p.dir !== ".").map((p) => p.dir!))
+    return dirs.length > 0 ? `${pack} in ${dirs.map(quote).join(", ")}` : pack
+  }).join(", ")}`
+}
+
 export const draftPolicy = (r: DraftRequest, files: ReadonlyArray<string>): Draft => {
-  const all = r.proposals.map((p) => p.onboarding)
+  const all = r.proposals.map((p) => (p.dir !== undefined && p.dir !== "." ? fromFolder(p.dir, p.onboarding) : p.onboarding))
+  const packNames = unique(r.proposals.map((p) => p.pack))
   const workflows = files.some((f) => f.startsWith(".github/workflows/")) ? [GITHUB_WORKFLOWS] : []
   const groups = [
     ["tests", unique(all.flatMap((o) => o.protect.tests))],
@@ -112,11 +138,11 @@ export const draftPolicy = (r: DraftRequest, files: ReadonlyArray<string>): Draf
 
   const lines: string[] = [
     r.strict
-      ? `// Drafted by \`gauntlet init\` from the ${r.proposals.map((p) => p.pack).join(" and ")} pack defaults and this repository's layout.`
-      : `// Drafted by \`gauntlet init --template\` from the ${r.proposals.map((p) => p.pack).join(" and ")} pack defaults.`,
+      ? `// Drafted by \`gauntlet init\` from the ${packNames.join(" and ")} pack defaults and this repository's layout.`
+      : `// Drafted by \`gauntlet init --template\` from the ${packNames.join(" and ")} pack defaults.`,
     "// Read every block before committing it: this file decides what agents' changes must pass.",
     `gauntlet ${quote(r.name)}`,
-    `use ${r.proposals.map((p) => p.pack).join(", ")}`,
+    useLine(r.proposals),
     "mode shadow // report only, never block. Switch to enforce once `gauntlet report shadow` looks right.",
     r.owners.length > 0 ? `owners ${r.owners.join(", ")}` : "// owners @your-team // who approves owner-tier changes and edits to this policy",
     "",
@@ -196,6 +222,8 @@ export const templateDraft = (root: string, name: string, owners: ReadonlyArray<
     const { packs } = yield* PackRegistry
     const detected = packs.filter((p) => p.onboard !== undefined && p.detect?.(files.value) === true)
     if (detected.length === 0) {
+      const builds = findBuilds(files.value, packs)
+      if (builds.length > 0) return yield* buildsDraft(root, name, owners, strict, files.value, builds)
       return { _tag: "Refused", reason: `No supported project found here. Installed packs: ${packs.map((p) => `${p.spec.name} (${p.spec.description})`).join("; ")}.` } as const
     }
     // The packs read their own manifests and build files to see which tools are set up.
@@ -218,4 +246,88 @@ export const templateDraft = (root: string, name: string, owners: ReadonlyArray<
     const compiled = yield* Effect.exit((yield* Compiler).compile({ file: DEFAULT_POLICY_FILE, text: draft.text, files: files.value }))
     if (compiled._tag === "Failure") return { _tag: "Refused", reason: `Gauntlet drafted a policy it can't compile; please report this.\n${draft.text}` } as const
     return { _tag: "Draft", text: draft.text, setup: draft.setup, install: draft.install ?? [], packs: detected.map((p) => p.spec.name) } as const
+  })
+
+const SKIPPED_DIRS = new Set(["node_modules", "target", "build", "dist", "out", "vendor"])
+const MAX_DEPTH = 3
+
+/**
+ * Folders holding a build an installed pack recognises, for a repository
+ * whose root holds none (ADR 0022). A folder inside another build of the
+ * same pack is part of it, unless the pack says it's a build of its own.
+ */
+export const findBuilds = (files: ReadonlyArray<string>, packs: ReadonlyArray<Pack>): Build[] => {
+  const dirs = new Set<string>()
+  for (const f of files) {
+    const parts = f.split("/")
+    for (let i = 1; i < parts.length && i <= MAX_DEPTH; i++) {
+      if (parts[i - 1]!.startsWith(".") || SKIPPED_DIRS.has(parts[i - 1]!)) break
+      dirs.add(parts.slice(0, i).join("/"))
+    }
+  }
+  const depth = (d: string) => d.split("/").length
+  const found: Build[] = []
+  for (const dir of [...dirs].sort((a, b) => depth(a) - depth(b) || (a < b ? -1 : 1))) {
+    const view = files.filter((f) => f.startsWith(`${dir}/`)).map((f) => f.slice(dir.length + 1))
+    for (const pack of packs) {
+      if (pack.onboard === undefined || pack.detect?.(view) !== true) continue
+      const inside = found.some((b) => b.pack === pack.spec.name && dir.startsWith(`${b.dir}/`))
+      if (inside && pack.ownBuild?.(view) !== true) continue
+      found.push({ pack: pack.spec.name, dir })
+    }
+  }
+  return found
+}
+
+/** The policy for a repository whose builds sit in folders, one proposal per build. */
+const buildsDraft = (root: string, name: string, owners: ReadonlyArray<string>, strict: boolean, files: ReadonlyArray<string>, builds: ReadonlyArray<Build>) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const { packs } = yield* PackRegistry
+    const dirs = [...new Set(builds.map((b) => b.dir))]
+    const used = builds.map((b) => ({ build: b, pack: packs.find((p) => p.spec.name === b.pack)! }))
+    const proposals: { pack: string; dir: string; onboarding: Onboarding }[] = []
+    for (const { build, pack } of used) {
+      const view = ownedBy(dirs, build.dir, files)
+      const contents = new Map<string, string>()
+      for (const f of view.filter((f) => pack.manifests.some((g) => globMatches(g, f)))) {
+        const text = yield* fs.readFileString(path.join(root, build.dir, f)).pipe(Effect.option)
+        if (Option.isSome(text)) contents.set(f, text.value)
+      }
+      proposals.push({ pack: build.pack, dir: build.dir, onboarding: pack.onboard!({ files: view, read: (p) => contents.get(p) }) })
+    }
+    // A gate runs in every build of the packs that implement it, so it's proposed only when each of those builds has its tool.
+    const gateName = (entry: string) => entry.split(" ")[0]!
+    const missing = new Map<string, string[]>()
+    for (const p of proposals) {
+      const pack = packs.find((x) => x.spec.name === p.pack)!
+      for (const tier of ["fast", "verify"] as const) {
+        for (const entry of proposals.flatMap((q) => q.onboarding[tier])) {
+          const gate = gateName(entry)
+          if (pack.gates[gate] !== undefined && !p.onboarding[tier].some((e) => gateName(e) === gate)) missing.set(gate, [...new Set([...(missing.get(gate) ?? []), p.dir])])
+        }
+      }
+    }
+    const kept = proposals.map((p) => ({
+      ...p,
+      onboarding: {
+        ...p.onboarding,
+        fast: p.onboarding.fast.filter((e) => !missing.has(gateName(e))),
+        verify: p.onboarding.verify.filter((e) => !missing.has(gateName(e))),
+        setup: p.onboarding.setup,
+      },
+    }))
+    const hints = [...missing].map(([gate, without]) => `${gate} runs in every build, so it's left out until ${without.join(", ")} ${without.length === 1 ? "has" : "have"} its tool set up too.`)
+    const draft = draftPolicy({
+      name,
+      owners,
+      strict,
+      packRules: used.flatMap((u) => u.pack.spec.rules.map((r) => r.name)),
+      archGate: used.some((u) => u.pack.gates["arch"] !== undefined),
+      proposals: kept,
+    }, files)
+    const compiled = yield* Effect.exit((yield* Compiler).compile({ file: DEFAULT_POLICY_FILE, text: draft.text, files }))
+    if (compiled._tag === "Failure") return { _tag: "Refused", reason: `Gauntlet drafted a policy it can't compile; please report this.\n${draft.text}` } as const
+    return { _tag: "Draft", text: draft.text, setup: [...draft.setup, ...hints], install: [], packs: [...new Set(builds.map((b) => b.pack))] } as const
   })

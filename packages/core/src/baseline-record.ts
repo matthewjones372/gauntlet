@@ -27,7 +27,7 @@ export const recordBaseline = (repo: string, commit: string, ir: PolicyIR, optio
     const git = yield* Git
     const registry = yield* PackRegistry
     const used = registry.packs.filter((p) => ir.packs.includes(p.spec.name))
-    const runnerConfig = runnerConfigFor(registry.packs, ir.packs)
+    const runnerConfig = runnerConfigFor(registry.packs, ir.packs, ir.builds)
     const facts = computeFacts({ base: commit, head: commit, changes: [], lineCounts: new Map(), addedLines: new Map(), ir, runnerConfig, dependencyChanges: [] })
     const violationGates = new Set(used.flatMap((p) => p.spec.gates.filter((g) => g.produces === "violations").map((g) => g.name)))
     const metricGates = new Set(used.flatMap((p) => p.spec.gates.filter((g) => g.produces === "metric").map((g) => g.name)))

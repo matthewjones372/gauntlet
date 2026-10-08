@@ -17,8 +17,13 @@ Block:
     Use | Mode | Owners | Protect | Zone | Arch | Suites | Integrity | Import
     | Budget | Gates | OnFail | Predicate | Review | Stack | Quarantine;
 
+// \`use jvm in "lark-bank", "bank-access", scala in "bank-checks"\`: a pack names the
+// folders of the builds it runs, when they aren't at the repository's root.
 Use:
-    'use' packs+=Name (','? packs+=Name)*;
+    'use' entries+=UsePack (','? entries+=UsePack)*;
+
+UsePack:
+    name=Name ('in' dirs+=STRING (','? dirs+=STRING)*)?;
 
 Mode:
     'mode' value=Name;

@@ -1,6 +1,8 @@
 import { Catalog, type PackSpec } from "@gauntlet/dsl"
+import type { Build } from "@gauntlet/ir"
 import type { LineNormaliser, SymbolLocator } from "@gauntlet/sarif"
 import { Context, Effect, type FileSystem, Layer, type Path } from "effect"
+import { runnerConfigForBuilds } from "./builds.ts"
 import type { GateImpl, SuiteImpl } from "./gate.ts"
 import type { IntegrityDetector } from "./integrity.ts"
 import type { Onboarding, RepoView } from "./onboard.ts"
@@ -21,6 +23,12 @@ export interface Pack {
   readonly spec: PackSpec
   /** Whether the repository looks like this pack's kind of project, for `gauntlet init`. */
   readonly detect?: (files: ReadonlyArray<string>) => boolean
+  /**
+   * Whether a folder the pack detects, inside another of its builds, is a
+   * build of its own rather than part of that one (Gradle: it has a settings
+   * file, as an included build does). Without it, nested folders are parts.
+   */
+  readonly ownBuild?: (files: ReadonlyArray<string>) => boolean
   /** Policy defaults for this repository with the tools it already has (`gauntlet init --template`). */
   readonly onboard?: (repo: RepoView) => Onboarding
   /** Runner config materialised from base before suites run (ADR 0003). */
@@ -70,5 +78,8 @@ export const CatalogFromPacks = Layer.effect(
 )
 
 /** Runner config globs of the packs a policy uses. */
-export const runnerConfigFor = (packs: ReadonlyArray<Pack>, used: ReadonlyArray<string>): string[] =>
-  [...new Set(packs.filter((p) => used.includes(p.spec.name)).flatMap((p) => p.runnerConfig))].sort()
+export const runnerConfigFor = (packs: ReadonlyArray<Pack>, used: ReadonlyArray<string>, builds?: ReadonlyArray<Build>): string[] =>
+  builds !== undefined
+    // Each build's runner configuration sits in its own folder (ADR 0022).
+    ? runnerConfigForBuilds(builds.filter((b) => used.includes(b.pack)), (name) => packs.find((p) => p.spec.name === name)?.runnerConfig ?? [])
+    : [...new Set(packs.filter((p) => used.includes(p.spec.name)).flatMap((p) => p.runnerConfig))].sort()

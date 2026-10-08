@@ -2,6 +2,7 @@ import { type GateSpec, globMatches } from "@gauntlet/dsl"
 import { type Check, type PolicyIR, sha256 } from "@gauntlet/ir"
 import { type Baseline, compareMetrics, compareWithBaseline, type Metric, type MetricDelta, type Proof, resultPath, resultRegion, type Run } from "@gauntlet/sarif"
 import { Clock, Effect, type FileSystem, Option, type Path } from "effect"
+import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy, runFromBuild, toBuild } from "./builds.ts"
 import type { DiffFacts } from "./diff-facts.ts"
 import { fingerprintRuns } from "./fingerprints.ts"
 import { GateProgress } from "./gate-progress.ts"
@@ -107,6 +108,18 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       }
       return undefined
     }
+    // Several builds (ADR 0022): each gate runs once per build of a pack that implements it.
+    const multi = hasBuilds(ir)
+    const builds = buildsOf(ir)
+    const buildDirs = [...new Set(builds.map((b) => b.dir))]
+    /** The builds a pack runs, with the pack. */
+    const targetsFor = (has: (p: Pack) => boolean) =>
+      builds.flatMap((b) => {
+        const pack = packs.find((p) => p.spec.name === b.pack)
+        return pack && has(pack) ? [{ build: b, pack }] : []
+      })
+    // Each build's tools are stopped in its own folder once the gates are done.
+    const startedBuilds = new Map<string, { readonly pack: Pack; readonly dir: string; readonly root: string }>()
     let stoppedBy: string | undefined
     const progress = yield* GateProgress
     // The directory every check's output directory sits in, once one was made.
@@ -159,7 +172,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       if (tierFailed && !input.recording) stoppedBy = tier.name
     }
     // Daemons and servers the gates shared end with the check (ADR 0020).
-    if (outputsRoot !== undefined) {
+    if (multi) {
+      for (const b of startedBuilds.values()) if (b.pack.stop) yield* b.pack.stop({ dir: b.dir, root: b.root })
+    } else if (outputsRoot !== undefined) {
       for (const pack of packs) if (pack.stop) yield* pack.stop({ dir: workspace.dir, root: outputsRoot })
     }
 
@@ -174,6 +189,62 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       ids: [...new Set(suiteTests.flatMap((t) => t.ids))].sort(),
     }
     return { checks, runs, newViolations, regressions, ratchets, ...(tests ? { tests } : {}), metrics, durationsMs }
+
+    /**
+     * Runs a check in each of the builds given, each in its folder with its own
+     * output directory and paths from there, and merges what comes back with
+     * paths from the repository's root. A build with nothing of a scoped
+     * check's files is left out.
+     */
+    function acrossBuilds(
+      targets: ReadonlyArray<{ readonly build: { readonly pack: string; readonly dir: string }; readonly pack: Pack }>,
+      name: string,
+      ctx: GateContext,
+      run: (bctx: GateContext, target: { readonly build: { readonly pack: string; readonly dir: string }; readonly pack: Pack }) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>,
+    ) {
+      return Effect.gen(function*() {
+        const parts: { dir: string; run: GateRun }[] = []
+        for (const target of targets) {
+          const { build, pack } = target
+          const scope = ctx.scope === undefined ? undefined : ownedBy(buildDirs, build.dir, ctx.scope)
+          if (scope !== undefined && scope.length === 0) continue
+          const sub = `${buildSlug(build.dir)}/${name}`
+          const made = yield* Effect.exit(workspace.outputDir(sub))
+          if (made._tag === "Failure") {
+            parts.push({ dir: build.dir, run: { command: [], exitCode: -1, runs: [], error: "couldn't create an output directory" } })
+            continue
+          }
+          const dir = build.dir === "." ? workspace.dir : `${workspace.dir}/${build.dir}`
+          startedBuilds.set(`${pack.spec.name} ${build.dir}`, { pack, dir, root: parentOf(made.value) })
+          const { scope: _whole, ...rest } = ctx
+          const bctx: GateContext = {
+            ...rest,
+            dir,
+            outputDir: made.value,
+            collect: workspace.collect(sub).pipe(Effect.orElseSucceed(() => [])),
+            facts: factsForBuild(ctx.facts, buildDirs, build.dir),
+            files: ownedBy(buildDirs, build.dir, ctx.files),
+            ...(scope !== undefined ? { scope } : {}),
+          }
+          const r = runFromBuild(yield* run(bctx, target), build.dir)
+          const fingerprinted = yield* fingerprintRuns(r.runs, workspace.dir, {
+            ...(pack.locate ? { locate: pack.locate } : {}),
+            ...(pack.normalise ? { normalise: pack.normalise } : {}),
+          }).pipe(Effect.orElseSucceed(() => r.runs))
+          parts.push({ dir: build.dir, run: { ...r, runs: fingerprinted } })
+        }
+        return mergeBuildRuns(parts)
+      })
+    }
+
+    /** Every report the builds wrote for a check, under each build's directory name. */
+    function collectBuilds(name: string) {
+      return Effect.forEach(buildDirs, (d) =>
+        workspace.collect(`${buildSlug(d)}/${name}`).pipe(
+          Effect.map((files) => files.map((f) => ({ ...f, path: `${buildSlug(d)}/${f.path}` }))),
+          Effect.orElseSucceed(() => []),
+        )).pipe(Effect.map((all) => all.flat()))
+    }
 
     /** Runs part of a suite again in its own fresh output directory. */
     function rerun(s: { readonly suite: { readonly name: string; readonly location: string }; readonly runner: SuiteImpl }, ctx: GateContext, dir: string, subset: TestSubset, label: string) {
@@ -255,7 +326,19 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         let owner: Pack | undefined
         let spec: GateSpec | undefined
         let scope: ReadonlyArray<string> | undefined
-        if (check.kind === "suite") {
+        let multiRerun: ((ctx: GateContext, subset: TestSubset, label: string) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) | undefined
+        if (check.kind === "suite" && multi) {
+          const suite = ir.suites.find((s) => s.name === check.name)
+          const targets = targetsFor((p) => p.runSuite !== undefined)
+          if (targets.length === 0 || !suite || suite.kind !== "suite") return { status: "not-executed", reason: "no used pack runs test suites" }
+          // A suite's location is from the repository's root; a build sees its own part of it.
+          const located = (d: string) => ({ name: suite.name, location: suite.location.startsWith(`${d}/`) ? toBuild(d, suite.location) : suite.location })
+          suiteRun = { suite: { name: suite.name, location: suite.location }, runner: targets[0]!.pack.runSuite!, reruns: targets.every((t) => t.pack.reruns === true) }
+          start = (ctx) => acrossBuilds(targets, dir, ctx, (bctx, t) => t.pack.runSuite!(located(t.build.dir), bctx))
+          multiRerun = (ctx, subset, label) =>
+            acrossBuilds(targets.filter((t) => ownedBy(buildDirs, t.build.dir, subset.files).length > 0), `${dir}-${label}`, ctx, (bctx, t) =>
+              t.pack.runSuite!(located(t.build.dir), bctx, { ...subset, files: ownedBy(buildDirs, t.build.dir, subset.files) }))
+        } else if (check.kind === "suite") {
           const suite = ir.suites.find((s) => s.name === check.name)
           const suitePack = packs.find((p) => p.runSuite)
           const runner = suitePack?.runSuite
@@ -272,7 +355,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const inScope = (p: string) => (check.scope !== "changed" || input.recording || changed.includes(p)) && (!zone || zone.globs.some((g) => globMatches(g, p)))
           const changedOnly = check.scope === "changed" && !input.recording
           scope = changedOnly || zone ? [...new Set([...changed, ...facts.files.map((f) => f.path)])].filter(inScope).sort() : undefined
-          start = (ctx) => impl(check, ctx)
+          start = multi
+            ? (ctx) => acrossBuilds(targetsFor((p) => p.gates[check.name] !== undefined), dir, ctx, (bctx, t) => t.pack.gates[check.name]!(check, bctx))
+            : (ctx) => impl(check, ctx)
         } else {
           return { status: "not-executed", reason: "not executed in v1" }
         }
@@ -283,7 +368,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         const ctx: GateContext = {
           dir: workspace.dir,
           outputDir: made.value,
-          collect: workspace.collect(dir).pipe(Effect.orElseSucceed(() => [])),
+          collect: multi ? collectBuilds(dir) : workspace.collect(dir).pipe(Effect.orElseSucceed(() => [])),
           ir,
           facts,
           ...(scope ? { scope } : {}),
@@ -292,15 +377,19 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         }
         const run = yield* start(ctx)
         const files = yield* ctx.collect
-        // Temporary paths would make identical runs differ (invariant 4).
-        const placeholder = (arg: string) => arg.replaceAll(ctx.outputDir, "{out}").replaceAll(ctx.dir, "{checkout}")
+        // Temporary paths would make identical runs differ (invariant 4). Builds write under the outputs root.
+        const placeholder = (arg: string) =>
+          multi && outputsRoot !== undefined
+            ? arg.replaceAll(outputsRoot, "{outputs}").replaceAll(ctx.dir, "{checkout}")
+            : arg.replaceAll(ctx.outputDir, "{out}").replaceAll(ctx.dir, "{checkout}")
         const proof: Proof = {
           command: run.command.map(placeholder),
           exitCode: run.exitCode,
           reports: Object.fromEntries(files.map((f) => [f.path, sha256(f.content)])),
           ...(run.tests ? { executed: run.tests.counts.executed } : {}),
         }
-        const fingerprinted = yield* fingerprintRuns(run.runs, workspace.dir, {
+        // Builds fingerprinted their own results, each with its pack's locator.
+        const fingerprinted = multi ? run.runs : yield* fingerprintRuns(run.runs, workspace.dir, {
           ...(owner?.locate ? { locate: owner.locate } : {}),
           ...(owner?.normalise ? { normalise: owner.normalise } : {}),
         }).pipe(Effect.orElseSucceed(() => run.runs))
@@ -326,7 +415,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
               quarantine: ir.quarantine ?? [],
               today: input.today ?? "0000-00-00",
               files: input.files,
-              ...(suiteRun.reruns ? { rerun: (subset: TestSubset, label: string) => rerun(suiteRun!, ctx, dir, subset, label) } : {}),
+              ...(suiteRun.reruns
+                ? { rerun: (subset: TestSubset, label: string) => (multiRerun ? multiRerun(ctx, subset, label) : rerun(suiteRun!, ctx, dir, subset, label)) }
+                : {}),
             })
           // Name the failures, so whoever fixes the change knows where to look.
           // Each line starts with the test's id, as quarantines and the flaky history name it.

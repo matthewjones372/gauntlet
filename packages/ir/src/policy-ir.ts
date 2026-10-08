@@ -204,6 +204,13 @@ export const Quarantine = Schema.Struct({
 })
 export type Quarantine = typeof Quarantine.Type
 
+/** A build a pack runs in a folder of its own (\`use jvm in "lark-bank"\`); "." is the repository's root. */
+export const Build = Schema.Struct({
+  pack: Schema.String,
+  dir: Schema.String,
+})
+export type Build = typeof Build.Type
+
 export const PolicyIR = Schema.Struct({
   irVersion: Schema.Literal(IR_VERSION),
   name: Schema.String,
@@ -224,6 +231,8 @@ export const PolicyIR = Schema.Struct({
   stack: Schema.optionalKey(Stack),
   /** Omitted when empty, so policies without quarantines keep their hashes. */
   quarantine: Schema.optionalKey(Schema.Array(Quarantine)),
+  /** Builds in folders of their own. Omitted when every pack builds at the root, so those policies keep their hashes. */
+  builds: Schema.optionalKey(Schema.Array(Build)),
 })
 export type PolicyIR = typeof PolicyIR.Type
 

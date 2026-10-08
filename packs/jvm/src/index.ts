@@ -16,6 +16,8 @@ export const detectJvm = (files: ReadonlyArray<string>): boolean =>
 export const jvmPack: Pack = {
   spec,
   detect: detectJvm,
+  // An included build (\`includeBuild("events")\`) has its own settings file; a subproject doesn't.
+  ownBuild: (files) => files.some((f) => /^settings\.gradle(\.kts)?$/.test(f)),
   onboard,
   doctor,
   // Test setup the suites depend on, put back to base before they run (ADR 0003).

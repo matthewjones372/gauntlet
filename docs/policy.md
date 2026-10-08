@@ -54,6 +54,29 @@ The pieces:
 - **Shadow mode** only reports. Switch to `mode enforce` when
   `gauntlet report shadow` looks right.
 
+## Several builds in one repository
+
+When the builds sit in folders of their own, name each folder after its pack
+([ADR 0022](adr/0022-several-builds.md)):
+
+```
+use jvm in "lark-bank", "lark-bank/events", "bank-access", scala in "bank-checks"
+```
+
+`gauntlet setup` writes this line when the repository's root has no build but
+its folders do, including a Gradle build included in another (a folder with
+its own `settings.gradle.kts`).
+
+- Every check runs in each build, in that build's folder, and the results come
+  back as one check: `unit` is every build's tests.
+- A check `on changed` runs only in the builds the change touches.
+- A floor holds for every build: the build with the lowest value decides.
+- Paths in the policy (protected paths, zones, suites) are from the
+  repository's root. A suite's location is also read from each build's folder,
+  so `unit "**/src/test/**"` covers every build.
+- Each build's runner configuration (Gradle's `gradle/**`, sbt's `project/**`)
+  is protected in its own folder.
+
 ## Holdouts
 
 A holdout is a set of tests the agent never sees. Name its files with `paths`:

@@ -33,6 +33,7 @@ const byName = <A extends { readonly name: string }>(xs: ReadonlyArray<A>): A[] 
 export const canonicalize = (ir: PolicyIR): PolicyIR => ({
   ...ir,
   packs: strings(ir.packs),
+  ...(ir.builds ? { builds: byKey<NonNullable<PolicyIR["builds"]>[number]>((b) => `${b.pack} ${b.dir}`)(ir.builds).sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : a.pack < b.pack ? -1 : 1)) } : {}),
   owners: strings(ir.owners),
   protect: byKey<PolicyIR["protect"][number]>((g) => g.group)(ir.protect).map((g) => ({ ...g, globs: strings(g.globs) })),
   zones: byName(ir.zones).map((z) => ({ ...z, globs: strings(z.globs), owners: strings(z.owners), rules: strings(z.rules) })),

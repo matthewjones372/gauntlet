@@ -888,16 +888,33 @@ export function isUnit(item: unknown): item is Unit {
 export interface Use extends langium.AstNode {
     readonly $container: Policy;
     readonly $type: 'Use';
-    packs: Array<Name>;
+    entries: Array<UsePack>;
 }
 
 export const Use = {
     $type: 'Use',
-    packs: 'packs'
+    entries: 'entries'
 } as const;
 
 export function isUse(item: unknown): item is Use {
     return reflection.isInstance(item, Use.$type);
+}
+
+export interface UsePack extends langium.AstNode {
+    readonly $container: Use;
+    readonly $type: 'UsePack';
+    dirs: Array<string>;
+    name: Name;
+}
+
+export const UsePack = {
+    $type: 'UsePack',
+    dirs: 'dirs',
+    name: 'name'
+} as const;
+
+export function isUsePack(item: unknown): item is UsePack {
+    return reflection.isInstance(item, UsePack.$type);
 }
 
 export interface Zone extends langium.AstNode {
@@ -1020,6 +1037,7 @@ export type GauntletAstType = {
     TestSuite: TestSuite
     Threshold: Threshold
     Use: Use
+    UsePack: UsePack
     Zone: Zone
     ZoneItem: ZoneItem
     ZoneOwner: ZoneOwner
@@ -1592,12 +1610,26 @@ export class GauntletAstReflection extends langium.AbstractAstReflection {
         Use: {
             name: Use.$type,
             properties: {
-                packs: {
-                    name: Use.packs,
+                entries: {
+                    name: Use.entries,
                     defaultValue: []
                 }
             },
             superTypes: [Block.$type]
+        },
+        UsePack: {
+            name: UsePack.$type,
+            properties: {
+                dirs: {
+                    name: UsePack.dirs,
+                    defaultValue: [],
+                    optional: true
+                },
+                name: {
+                    name: UsePack.name
+                }
+            },
+            superTypes: []
         },
         Zone: {
             name: Zone.$type,
