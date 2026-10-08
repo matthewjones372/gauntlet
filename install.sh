@@ -32,10 +32,23 @@ if [ -n "${GAUNTLET_RELEASE_URL:-}" ]; then
 else
   version="${GAUNTLET_VERSION:-}"
   if [ -z "$version" ]; then
-    # The newest release, prereleases included (GitHub's "latest" skips them).
-    releases=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=1" 2>/dev/null) ||
+    # The highest version, prereleases included (GitHub's "latest" skips them).
+    # By version number, not GitHub's order, which lags just after a release:
+    # 0.1.0 beats 0.1.0-rc.10, and rc.10 beats rc.9.
+    releases=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=30" 2>/dev/null) ||
       fail "couldn't reach GitHub to find the newest release. Check your internet connection, or that https://github.com/$REPO is public."
-    version=$(printf '%s\n' "$releases" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
+    version=$(printf '%s\n' "$releases" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | awk '
+      {
+        tag = $0; v = tag; sub(/^v/, "", v)
+        pre = ""; i = index(v, "-"); if (i > 0) { pre = substr(v, i + 1); v = substr(v, 1, i - 1) }
+        split(v, n, ".")
+        stage = 3; num = 0
+        if (pre != "") {
+          stage = (pre ~ /^alpha/) ? 0 : (pre ~ /^beta/) ? 1 : 2
+          num = pre; gsub(/[^0-9]+/, " ", num); split(num, m, " "); num = m[1] + 0
+        }
+        printf "%d %d %d %d %d %s\n", n[1], n[2], n[3], stage, num, tag
+      }' | sort -n -k1,1 -k2,2 -k3,3 -k4,4 -k5,5 | tail -n 1 | awk '{ print $6 }')
     [ -n "$version" ] || fail "$REPO has no releases yet."
   fi
   base="https://github.com/$REPO/releases/download/$version"
