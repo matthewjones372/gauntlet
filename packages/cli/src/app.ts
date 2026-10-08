@@ -1014,7 +1014,9 @@ const setup = Command.make("setup", {
       if (draft.setup.length > 0 && !listed) yield* output.out([style.warn("Checks still left out until their tools are set up:"), ...draft.setup.map(style.item)].join("\n"))
     }
     // Gauntlet's hooks switch on at the end of `gauntlet apply`, once the policy is settled.
-    if (!(yield* connectClaude(root, false, { hooks: false }))) return
+    // A project that finished setup (it has a baseline) keeps them.
+    const finished = yield* fs.exists(path.join(root, BASELINE_PATH))
+    if (!(yield* connectClaude(root, false, finished ? {} : { hooks: false }))) return
     yield* keepLocalSettingsOut(root)
     yield* output.out([
       style.ok("Connected Claude Code."),
