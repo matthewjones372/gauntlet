@@ -585,7 +585,7 @@ bun run build
 
 To release, set the version in `packages/cli/src/version.ts` and push a
 matching tag such as `v0.1.0`. The release workflow builds, tests and publishes
-the binaries. A tag with a suffix, such as `v0.1.0-rc.2`, becomes a prerelease.
+the binaries. A tag with a suffix, such as `v0.1.0-rc.3`, becomes a prerelease.
 
 ### Adding a language pack
 
@@ -655,7 +655,7 @@ benchmarks, mined commits, debate logs), not from Gauntlet's.
 
 ## Status
 
-Release candidate (v0.1.0-rc.2). The policy language, evidence model, integrity
+Release candidate (v0.1.0-rc.3). The policy language, evidence model, integrity
 checks, seven language packs, flaky-test handling, Claude Code and GitHub
 integration all work end to end. Not yet done: performance
 budgets, faster cached checks, .NET, Ruby, PHP, Maven and frontend packs, other
