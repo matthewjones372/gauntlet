@@ -60,6 +60,25 @@ const protectOnlyStatus = (report: Report, reviews: ReadonlyArray<Review>): Gith
     : { conclusion: "success", title: "Protect-only: passed", summary: "The verification boundary held. Review the change as usual.", approvedBy: approvers, honouredOverrides: [] }
 }
 
+/** How a reviewer decides, in the check's summary: the approval GitHub already has, spelled out. */
+const howToDecide = (who: string): string =>
+  [
+    "",
+    "How to decide:",
+    `- Accept: ${who} opens Files changed, then Review changes, and chooses Approve. This check turns green for this commit.`,
+    "- Reject: choose Request changes and say what needs to change. The check stays as it is until a new commit is approved.",
+    "An approval counts only for the commit it was given on: a new push needs a new approval.",
+  ].join("\n")
+
+/** What to do when a change is blocked: fix it, or an owner overrides it, recorded and approved. */
+const howToUnblock = (owners: ReadonlyArray<string>): string =>
+  [
+    "",
+    "What to do:",
+    "- Fix it: push a commit that makes the failing check pass. This check runs again.",
+    `- If it must merge anyway: run \`gauntlet override --reason "..." --approver ${owners[0] ?? "@owner"}\` and push the note (\`git push origin refs/notes/gauntlet-overrides\`). It takes effect when that owner approves this commit.`,
+  ].join("\n")
+
 const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>): GithubStatus => {
   const head = report.policy.headSha
   const approvers = approvalsOn(reviews, head)
@@ -72,7 +91,7 @@ const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams
 
   if (d.blocking && honoured.length === 0) {
     const first = d.nominations.find((n) => n.blocking)
-    return { conclusion: "failure", title: `Blocked (${d.tier})`, summary: first ? first.reason : "A gate failed.", approvedBy: approvers, honouredOverrides: [] }
+    return { conclusion: "failure", title: `Blocked (${d.tier})`, summary: `${first ? first.reason : "A gate failed."}${howToUnblock(tierOwners)}`, approvedBy: approvers, honouredOverrides: [] }
   }
   if (d.mode === "shadow" && d.wouldBlock) {
     return { conclusion: "neutral", title: `Would block in enforce mode (${d.tier})`, summary: "Shadow mode: Gauntlet reports but never blocks.", approvedBy: approvers, honouredOverrides: [] }
@@ -85,7 +104,7 @@ const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams
     case "review":
       return approvers.length > 0
         ? { conclusion: "success", title: "Reviewed", summary: `Tier review, approved by ${approvers.join(", ")}.${overridden}`, approvedBy: approvers, honouredOverrides: honoured }
-        : { conclusion: "action_required", title: "Needs review", summary: "Tier review: an approving review on this commit is required.", approvedBy: approvers, honouredOverrides: honoured }
+        : { conclusion: "action_required", title: "Needs review", summary: `Tier review: an approving review on this commit is required.${howToDecide("a reviewer")}`, approvedBy: approvers, honouredOverrides: honoured }
     case "owner": {
       const owning = approvers.filter((a) => isOwner(a, tierOwners, teams))
       return owning.length > 0
@@ -93,7 +112,7 @@ const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams
         : {
           conclusion: "action_required",
           title: "Needs an owner",
-          summary: `Tier owner: an approving review on this commit from ${tierOwners.length > 0 ? tierOwners.join(", ") : "an owner (the policy names none; add `owners` to .gauntlet/policy.gx)"} is required.`,
+          summary: `Tier owner: an approving review on this commit from ${tierOwners.length > 0 ? tierOwners.join(", ") : "an owner (the policy names none; add `owners` to .gauntlet/policy.gx)"} is required.${howToDecide(tierOwners.length > 0 ? tierOwners.join(" or ") : "an owner")}`,
           approvedBy: approvers,
           honouredOverrides: honoured,
         }

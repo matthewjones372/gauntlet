@@ -104,3 +104,24 @@ export const LaunchAgent = Context.Reference<{ readonly claude: (cwd: string, pr
 })
 export const launches = (calls: Array<{ cwd: string; prompt: string }>, installed = true) =>
   Layer.succeed(LaunchAgent, { claude: (cwd, prompt) => Effect.sync(() => (installed && calls.push({ cwd, prompt }), installed)) })
+// ---------- terminal style ----------
+// Colour and weight for the commands a person walks through (setup, apply),
+// only on a terminal and never with NO_COLOR, so logs and tests stay plain.
+
+const styled = () => process.stdout.isTTY === true && process.env.NO_COLOR === undefined && process.env.TERM !== "dumb"
+const sgr = (open: string, close: string) => (text: string) => (styled() ? `\x1b[${open}m${text}\x1b[${close}m` : text)
+
+export const style = {
+  bold: sgr("1", "22"),
+  dim: sgr("2", "22"),
+  cyan: sgr("36", "39"),
+  green: sgr("32", "39"),
+  yellow: sgr("33", "39"),
+  /** "Step 2 of 3 · Set up your project", as a heading. */
+  step: (n: number, of: number, title: string) => sgr("1;36", "22;39")(`Step ${n} of ${of} · ${title}`),
+  ok: (text: string) => `${sgr("32", "39")("✓")} ${text}`,
+  warn: (text: string) => `${sgr("33", "39")("!")} ${text}`,
+  /** A list item: a dim bullet on a terminal, a plain dash anywhere else. */
+  item: (text: string) => `  ${styled() ? sgr("2", "22")("•") : "-"} ${text}`,
+  command: (text: string) => sgr("36", "39")(text),
+}

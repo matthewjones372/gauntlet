@@ -17,7 +17,7 @@ import { agentFromEnv } from "./agent.ts"
 import { describeChanges } from "./apply.ts"
 import { exportCorpus } from "./corpus-export.ts"
 import { AuthorRuntime, type AuthorRuntimeShape, renderDropped } from "./author.ts"
-import { Ask, ExitStatus, exitWith, LaunchAgent, Output, Stdin, withGateProgress } from "./output.ts"
+import { Ask, ExitStatus, exitWith, LaunchAgent, Output, Stdin, style, withGateProgress } from "./output.ts"
 import { GAUNTLET_VERSION } from "./version.ts"
 
 // The CLI. Handlers stay thin: parse flags, call a core program, print, set
@@ -299,6 +299,27 @@ export const persistentFailures = (checks: ReadonlyArray<CheckRecord>, ir: Polic
     return false
   })
 
+/** What a first baseline means, and the order to go in when the project already fails. */
+export const firstRunExplained = (mode: "shadow" | "enforce", failing: boolean): string =>
+  [
+    "",
+    style.ok(style.bold("Done. The baseline is today's state of your project.")),
+    style.item("Existing lint findings, coverage and mutation scores are recorded, so they don't block a change."),
+    style.item("From now on, a change can't make them worse, and new code has to meet the policy's floors."),
+    mode === "shadow"
+      ? style.item(`Gauntlet is in shadow mode: it reports and blocks nothing. Switch to ${style.command("mode enforce")} in .gauntlet/policy.gx when ${style.command("gauntlet report shadow")} looks right.`)
+      : style.item("The policy is in enforce mode: a change that fails is blocked."),
+    ...(failing
+      ? [
+        "",
+        style.bold("Failing tests and a broken build aren't grandfathered: they'd fail every change. The way through:"),
+        `  1. Fix them (Claude Code can: ${style.command("/gauntlet-fix")}).`,
+        `  2. Record the baseline again, so it starts clean: ${style.command("gauntlet baseline --update")}`,
+        `  3. Then enforce it: ${style.command("mode enforce")} in .gauntlet/policy.gx.`,
+      ]
+      : ["", "Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready."]),
+  ].join("\n")
+
 /** After the first baseline: say what fails, and offer to have Claude Code fix it. */
 const offerFix = (root: string, failing: ReadonlyArray<CheckRecord>) =>
   Effect.gen(function*() {
@@ -307,9 +328,9 @@ const offerFix = (root: string, failing: ReadonlyArray<CheckRecord>) =>
     const path = yield* Path.Path
     yield* output.out([
       "",
-      "Your project doesn't pass every check yet:",
-      ...failing.map((c) => `  - ${c.check}: ${c.reason ?? c.status}${c.failures && c.failures.length > 0 ? ` (${c.failures.slice(0, 3).map((f: string) => f.split(":")[0]).join(", ")}${c.failures.length > 3 ? ", ..." : ""})` : ""}`),
-      "These show on every change until they're fixed. (In shadow mode nothing is blocked.)",
+      style.warn("Your project doesn't pass every check yet:"),
+      ...failing.map((c) => style.item(`${style.bold(c.check)}: ${c.reason ?? c.status}${c.failures && c.failures.length > 0 ? ` (${c.failures.slice(0, 3).map((f: string) => f.split(":")[0]).join(", ")}${c.failures.length > 3 ? ", ..." : ""})` : ""}`)),
+      style.dim("These show on every change until they're fixed. (In shadow mode nothing is blocked.)"),
       "",
     ].join("\n"))
     // Projects set up by an older Gauntlet may not have the command yet.
@@ -319,7 +340,7 @@ const offerFix = (root: string, failing: ReadonlyArray<CheckRecord>) =>
       yield* fs.writeFileString(command, FIX_COMMAND)
     }
     const later = "When you're ready, open Claude Code here and run /gauntlet-fix. It fixes what it can and reports every change."
-    const reply = yield* (yield* Ask).question("Want Claude Code to fix them now? It'll report every change it makes. [Y/n] ")
+    const reply = yield* (yield* Ask).question(style.bold("Want Claude Code to fix them now? It'll report every change it makes. [Y/n] "))
     if (Option.isNone(reply) || !/^(|y|yes)$/i.test(reply.value)) return yield* output.out(later)
     yield* output.out("Opening Claude Code with /gauntlet-fix. Quit it (Ctrl+C twice) to come back here.")
     if (!(yield* (yield* LaunchAgent).claude(root, "/gauntlet-fix"))) {
@@ -830,9 +851,9 @@ const offerInstall = (root: string, commands: ReadonlyArray<ReadonlyArray<string
   Effect.gen(function*() {
     const output = yield* Output
     if (commands.length === 0) return false
-    yield* output.out(["", "I'll install these for you:", ...commands.map((c) => `  ${c.join(" ")}`)].join("\n"))
+    yield* output.out(["", style.bold("I'll install these for you:"), ...commands.map((c) => `  ${style.command(c.join(" "))}`)].join("\n"))
     if (!yes) {
-      const reply = yield* (yield* Ask).question("Go ahead? [Y/n] ")
+      const reply = yield* (yield* Ask).question(style.bold("Go ahead? [Y/n] "))
       if (Option.isNone(reply)) {
         yield* output.out("No terminal to ask in, so nothing was installed. Run `gauntlet setup --yes` to install them, or run the commands yourself.")
         return false
@@ -867,37 +888,40 @@ const setup = Command.make("setup", {
     const root = yield* absolute(args.repo)
     const target = path.join(root, DEFAULT_POLICY_FILE)
     const existed = yield* fs.exists(target)
+    yield* output.out(`${style.step(2, 3, "Set up your project")}\n`)
     if (existed) {
-      yield* output.out(`${DEFAULT_POLICY_FILE} already exists; keeping it.`)
+      yield* output.out(style.ok(`${DEFAULT_POLICY_FILE} already exists; keeping it.`))
     } else {
       let draft = yield* templateDraft(root, path.basename(root), ownerList(args.owner))
       if (draft._tag === "Refused") return yield* fail(draft.reason)
       // Listed once: before the offer, or after drafting when there's nothing to install or it was declined.
       let listed = false
       if (draft.install.length > 0) {
-        if (draft.setup.length > 0) yield* output.out(["Checks left out until their tools are set up:", ...draft.setup.map((x) => `  - ${x}`)].join("\n"))
-        else yield* output.out("Some checks in the draft need tools the project doesn't have installed yet.")
+        if (draft.setup.length > 0) yield* output.out([style.warn("Checks left out until their tools are set up:"), ...draft.setup.map(style.item)].join("\n"))
+        else yield* output.out(style.warn("Some checks in the draft need tools the project doesn't have installed yet."))
         listed = true
         // Installed tools are now dependencies, so a fresh draft gates them.
         if (yield* offerInstall(root, draft.install, args.yes)) {
           listed = false
           const again = yield* templateDraft(root, path.basename(root), ownerList(args.owner))
           if (again._tag === "Draft") draft = again
-          yield* output.out("Installed. `gauntlet apply` commits them with the policy.")
+          yield* output.out(style.ok("Installed. `gauntlet apply` commits them with the policy."))
         }
         yield* output.out("")
       }
       yield* fs.makeDirectory(path.dirname(target), { recursive: true })
       yield* fs.writeFileString(target, draft.text)
-      yield* output.out(`Drafted ${DEFAULT_POLICY_FILE} for ${draft.packs.join(", ")} (shadow mode: it reports, it never blocks).`)
-      if (draft.setup.length > 0 && !listed) yield* output.out(["Checks still left out until their tools are set up:", ...draft.setup.map((x) => `  - ${x}`)].join("\n"))
+      yield* output.out(style.ok(`Drafted ${DEFAULT_POLICY_FILE} for ${draft.packs.join(", ")} ${style.dim("(shadow mode: it reports, it never blocks)")}.`))
+      if (draft.setup.length > 0 && !listed) yield* output.out([style.warn("Checks still left out until their tools are set up:"), ...draft.setup.map(style.item)].join("\n"))
     }
     if (!(yield* connectClaude(root, false))) return
     yield* output.out([
-      "Connected Claude Code.",
+      style.ok("Connected Claude Code."),
       "",
-      "Last step: open Claude Code here and type /gauntlet-setup. It goes through the policy with you,",
-      `then tells you to run \`gauntlet apply\`. (Or run \`gauntlet apply\` now to ${existed ? "keep the current policy" : "use the draft as it is"}.)`,
+      style.step(3, 3, "Agree the rules with Claude"),
+      "",
+      `Last step: open Claude Code here and type ${style.command("/gauntlet-setup")}. It goes through the policy with you,`,
+      `then tells you to run ${style.command("gauntlet apply")}. ${style.dim(`(Or run gauntlet apply now to ${existed ? "keep the current policy" : "use the draft as it is"}.)`)}`,
     ].join("\n"))
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Draft a policy for this repository and connect Claude Code: step 2 of 3."))
 
@@ -966,7 +990,7 @@ const apply = Command.make("apply", {
       const recorded = yield* runBaseline({ repo: root, update: true, allowLower: false, adoptNewGates: true, importDetekt: Option.none(), trunk: Option.none(), commitHint: false })
       if (!recorded) return
       if (yield* commitIfChanged(root, [BASELINE_PATH], "Update Gauntlet baseline for the new gates")) yield* output.out("Committed the baseline.")
-      yield* output.out("\nDone. Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.")
+      yield* output.out(`\n${style.ok(style.bold("Done."))} Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.`)
       const failing = persistentFailures(recorded.checks, recorded.ir)
       if (failing.length > 0) yield* offerFix(root, failing)
       return
@@ -974,12 +998,12 @@ const apply = Command.make("apply", {
       const recorded = yield* runBaseline({ repo: root, update: false, allowLower: false, importDetekt: Option.none(), trunk: Option.none(), commitHint: false })
       if (!recorded) return
       if (yield* commitIfChanged(root, [BASELINE_PATH], "Record Gauntlet baseline")) yield* output.out("Committed the baseline.")
-      yield* output.out("\nDone. Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.")
       const failing = persistentFailures(recorded.checks, recorded.ir)
+      yield* output.out(firstRunExplained(recorded.ir.mode, failing.length > 0))
       if (failing.length > 0) yield* offerFix(root, failing)
       return
     }
-    yield* output.out("\nDone. Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.")
+    yield* output.out(`\n${style.ok(style.bold("Done."))} Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.`)
   }).pipe(withGateProgress, Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Apply the policy, commit it and record the baseline: the end of step 3."))
 
 const connect = Command.make("connect").pipe(Command.withDescription("Connect Gauntlet to GitHub or a coding agent."), Command.withSubcommands([connectGithub, connectClaudeCode]))
