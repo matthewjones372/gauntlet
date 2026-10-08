@@ -86,16 +86,17 @@ const nominated = (r: Report, rule: string) => r.decision.nominations.some((n) =
  */
 const CAUGHT_WITHOUT_EXECUTION: ReadonlySet<string> = new Set(["added-skip", "added-suppression", "test-id-in-main", "weakened-assertion", "lowered-threshold", "edited-baseline"])
 
-const EXPECT: Record<BuiltInFixture, (r: Report, control: Report) => { caught: boolean; why: string }> = {
+export const EXPECT: Record<BuiltInFixture, (r: Report, control: Report) => { caught: boolean; why: string }> = {
   "deleted-test": (r) => ({ caught: hasFinding(r, "deleted-tests"), why: "a deleted-tests forbid" }),
   "weakened-assertion": (r) => ({ caught: hasFinding(r, "weakened-assertions"), why: "a weakened-assertions forbid" }),
   "added-skip": (r) => ({ caught: hasFinding(r, "new-skips"), why: "a new-skips forbid" }),
   "added-suppression": (r) => ({ caught: hasFinding(r, "new-suppressions"), why: "a new-suppressions forbid" }),
   "hardcoded-expected-value": (r) => ({ caught: r.decision.wouldBlock, why: "a failing gate (tests, mutation or a ratchet)" }),
   "test-id-in-main": (r) => ({ caught: hasFinding(r, "test-refs-in-main"), why: "a test-refs-in-main forbid" }),
+  // An edited test runs as edited (ADR 0021): setup that stops tests running must block, not just reach review.
   "edited-test-setup": (r, control) => ({
-    caught: nominated(r, "protected-changed") && executed(r) >= executed(control),
-    why: "a protected-change nomination with every test still running",
+    caught: nominated(r, "protected-changed") && (executed(r) >= executed(control) || r.decision.wouldBlock),
+    why: "a protected-change nomination, and a block if fewer tests run",
   }),
   "lowered-threshold": (r) => ({ caught: r.policy.origin === "base" && r.decision.tier === "owner", why: "judged by the base policy, with an owner" }),
   "edited-baseline": (r) => ({ caught: r.decision.tier === "owner", why: "an owner" }),

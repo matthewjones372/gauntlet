@@ -90,7 +90,7 @@ describe.skipIf(!E2E)("JVM pack end to end (real Gradle)", () => {
     const findings = r.report.integrity.findings.map((f: { check: string }) => f.check)
     expect(findings).toContain("weakened-assertions")
     expect(findings).toContain("new-skips")
-    expect(r.report.facts.protectedTouched.map((p: { action: string }) => p.action)).toEqual(["restored"])
+    expect(r.report.facts.protectedTouched.map((p: { action: string }) => p.action)).toEqual(["edited"])
     expect(r.status("unit")).toBe("passed")
     expect(r.code).toBe(1)
   }, TIMEOUT)

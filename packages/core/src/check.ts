@@ -135,7 +135,11 @@ const judge = (
       isTestPath: testPathMatcher(p.ir),
       baselineMetrics: Option.match(p.baseline, { onNone: () => ({}), onSome: (b) => b.metrics }),
       ...(executed.tests ? { headTests: executed.tests } : {}),
-      ...(executed.tests && executed.tests.ids.length > 0 && Option.isSome(p.baseline) && p.baseline.value.testIds.length > 0 ? { baseTestIds: p.baseline.value.testIds } : {}),
+      // A runner that reports no test ids can't be compared. One that ran no tests at all, where the base
+      // ran some, can: every base test no longer runs (a TestMain or setup that skips the suite, say).
+      ...(executed.tests && (executed.tests.ids.length > 0 || executed.tests.counts.executed + executed.tests.counts.skipped === 0) && Option.isSome(p.baseline) && p.baseline.value.testIds.length > 0
+        ? { baseTestIds: p.baseline.value.testIds }
+        : {}),
       headFiles: yield* git.listTree(repo, p.head),
       dir,
     }, p.used.flatMap((pack) => pack.detectors))
