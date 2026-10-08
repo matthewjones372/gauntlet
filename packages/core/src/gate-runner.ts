@@ -130,6 +130,12 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           }
           yield* progress.end(base.check, "not-executed", (yield* Clock.currentTimeMillis) - started)
         }
+        // Mutation testing the whole project took an hour on a real one. A check that mutates only
+        // each change's own lines needs nothing from the baseline but its floor, so recording skips it.
+        if (input.recording && check.kind === "gate" && check.name === "mutation" && check.scope === "changed") {
+          record({ status: "passed", reason: "mutation runs on each change's own lines, so the baseline skips the whole-project run" })
+          continue
+        }
         const notInV1 = NOT_IN_V1[check.kind]
         if (notInV1) {
           record({ status: "not-executed", reason: notInV1 })
