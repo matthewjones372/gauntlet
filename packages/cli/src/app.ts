@@ -516,6 +516,42 @@ const POLICY_REVIEW_NOTE = "The policy is protected: commit it on a branch and g
  * Code's deny rules when Claude Code is connected. The person runs this, never
  * the agent that proposed it (ADR 0009).
  */
+/** Changes to protected files the agent prepared for the person to apply (it can't make them itself). */
+export const CHANGES_FILE = "gauntlet.changes.patch"
+
+/**
+ * Applies the agent's patch to protected files, after showing it: the same
+ * consent as the policy proposal. Never touches .gauntlet/, which changes only
+ * through the proposal. Committed on its own, so a reviewer sees it apart.
+ */
+const applyChanges = (root: string, dryRun: boolean) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const output = yield* Output
+    const runner = yield* ProcessRunner
+    const patch = path.join(root, CHANGES_FILE)
+    const text = yield* fs.readFileString(patch).pipe(Effect.option)
+    if (Option.isNone(text)) return true
+    const files = [...new Set([...text.value.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((m) => m[1]!.trim()))].sort()
+    if (files.length === 0) return yield* fail(`${CHANGES_FILE} changes no files. Ask Claude to write it again.`)
+    if (files.some((f) => f === ".gauntlet" || f.startsWith(".gauntlet/"))) {
+      return yield* fail(`${CHANGES_FILE} changes .gauntlet/, which changes only through the policy proposal, so nothing was applied.`)
+    }
+    const check = yield* runner.run({ command: "git", args: ["apply", "--check", CHANGES_FILE], cwd: root })
+    if (check.exitCode !== 0) return yield* fail(`${CHANGES_FILE} doesn't apply cleanly, so nothing was changed:\n${check.stderr.trim()}`)
+    const diff = yield* runner.run({ command: "git", args: ["apply", "--stat", CHANGES_FILE], cwd: root })
+    yield* output.out([style.bold("These changes to protected files will be applied:"), diff.stdout.trimEnd(), "", text.value.trimEnd(), ""].join("\n"))
+    if (dryRun) return true
+    const applied = yield* runner.run({ command: "git", args: ["apply", CHANGES_FILE], cwd: root })
+    if (applied.exitCode !== 0) return yield* fail(`Applying ${CHANGES_FILE} failed: ${applied.stderr.trim()}`)
+    yield* fs.remove(patch)
+    if (yield* commitIfChanged(root, files, "Changes to protected files for Gauntlet's first baseline")) {
+      yield* output.out(style.ok(`Applied and committed the changes to ${files.join(", ")}.`))
+    }
+    return true
+  })
+
 const applyProposal = (root: string, from: string, dryRun: boolean) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
@@ -1089,6 +1125,8 @@ const apply = Command.make("apply", {
     const output = yield* Output
     const root = yield* absolute(args.repo)
     const from = Option.getOrElse(args.from, () => PROPOSAL_FILE)
+    // Protected-file changes the agent prepared go first, so the baseline is recorded after them.
+    if (!(yield* applyChanges(root, args.dryRun))) return
     if (yield* fs.exists(path.resolve(root, from))) {
       if (!(yield* applyProposal(root, from, args.dryRun))) return
     } else if (Option.isSome(args.from)) {
