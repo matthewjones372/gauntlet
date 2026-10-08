@@ -84,7 +84,9 @@ const literalPrefix = (glob: string) => glob.split("/").filter((_, i, all) => !a
 
 const TEST_STEM = /(Test|Tests|Spec|IT|Fixture|Fake|Stub)$/
 // Data, documentation and lockfiles aren't code that can special-case tests.
-const NOT_CODE = /\.(md|markdown|txt|json|jsonc|lock|lockb|toml|ya?ml|xml|svg|sarif|gx|csv|properties)$|(^|\/)(bun\.lock|yarn\.lock|pnpm-lock\.yaml|package-lock\.json)$/
+// Files that aren't code, so naming a test path in them isn't main code referring to tests.
+// Ownership and ignore files list paths, test paths included, by design (gauntlet connect github writes CODEOWNERS).
+const NOT_CODE = /\.(md|markdown|txt|json|jsonc|lock|lockb|toml|ya?ml|xml|svg|sarif|gx|csv|properties)$|(^|\/)(bun\.lock|yarn\.lock|pnpm-lock\.yaml|package-lock\.json)$|(^|\/)(CODEOWNERS|\.gitignore|\.gitattributes|\.dockerignore|\.npmignore|\.prettierignore|\.eslintignore|LICENSE|NOTICE)$|^\.github\//
 /** The comment part of a line, for the common comment markers. */
 const commentOf = (text: string): string | undefined => {
   const trimmed = text.trim()
