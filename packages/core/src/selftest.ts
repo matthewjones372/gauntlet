@@ -1,5 +1,5 @@
 import type { PolicyIR } from "@gauntlet/ir"
-import { Effect, FileSystem, Option, Path } from "effect"
+import { Clock, Effect, FileSystem, Option, Path } from "effect"
 import { BASELINE_PATH } from "./baseline-store.ts"
 import { runCheck } from "./check.ts"
 import { Git } from "./git.ts"
@@ -158,7 +158,13 @@ export interface SelftestRequest {
   readonly only?: ReadonlyArray<string>
   readonly gauntletVersion: string
   readonly outDir: string
+  /** Told each step as it starts and ends, so a long run shows it's moving. */
+  readonly progress?: (line: string) => Effect.Effect<void>
 }
+
+/** A duration for people: 850ms, 12s, 3m 05s. */
+export const elapsed = (ms: number) =>
+  ms < 1000 ? `${ms}ms` : ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60_000)}m ${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}s`
 
 /** The tamperings that apply to a project, from the built-in generic set and the policy's packs. */
 const tamperingsFor = (ctx: TamperContext) =>
@@ -225,8 +231,21 @@ export const runSelftest = (request: SelftestRequest) =>
     const judge = (name: string, head: string, skipGates = false) =>
       runCheck({ repo: request.repo, policyRef: base, head, outDir: path.join(request.outDir, name), gauntletVersion: request.gauntletVersion, record: false, skipGates })
 
-    const controlSha = yield* commitWith("control", () => Effect.void)
-    const control = (yield* judge("control", controlSha)).report
+    const say = request.progress ?? (() => Effect.void)
+    const timed = <A, E, R>(e: Effect.Effect<A, E, R>) =>
+      Effect.gen(function*() {
+        const start = yield* Clock.currentTimeMillis
+        const a = yield* e
+        return { a, ms: (yield* Clock.currentTimeMillis) - start }
+      })
+
+    yield* say("Checking an empty change first (the control), so every fixture has something to compare with...")
+    const controlRun = yield* timed(Effect.gen(function*() {
+      const controlSha = yield* commitWith("control", () => Effect.void)
+      return (yield* judge("control", controlSha)).report
+    }))
+    const control = controlRun.a
+    yield* say(`  control: ${control.decision.tier}, ${executed(control)} tests ran (${elapsed(controlRun.ms)})`)
 
     const tamperings = yield* tamperingsFor(ctx)
     const projectFiles = files.filter((f) => f.startsWith(".gauntlet/selftest/") && f.endsWith(".patch")).sort()
@@ -238,11 +257,21 @@ export const runSelftest = (request: SelftestRequest) =>
       const t = [...tamperings].reverse().find((x) => x.fixture === fixture)
       return t && wanted(fixture) ? [{ fixture, t }] : []
     })
+    const total = builtIn.length + projectFiles.filter((f) => wanted(f.slice(".gauntlet/selftest/".length).replace(/\.patch$/, ""))).length
+    let done = 0
+    const finished = (fixture: string, caught: boolean, tier: string, ms: number) =>
+      say(`  ${caught ? "caught" : "MISSED"}  ${fixture} (${tier}, ${elapsed(ms)})  [${++done}/${total}]`)
+    if (total > 0) yield* say(`Running ${total} tamper fixture${total === 1 ? "" : "s"}, two at a time; each is a full check:`)
     const results: FixtureResult[] = [...yield* Effect.forEach(builtIn, ({ fixture, t }) =>
       Effect.gen(function*() {
-        const sha = yield* commitWith(fixture, applyEdits(t.edits))
-        const report = (yield* judge(fixture, sha, CAUGHT_WITHOUT_EXECUTION.has(fixture))).report
+        yield* say(`  running ${fixture}...`)
+        const run = yield* timed(Effect.gen(function*() {
+          const sha = yield* commitWith(fixture, applyEdits(t.edits))
+          return (yield* judge(fixture, sha, CAUGHT_WITHOUT_EXECUTION.has(fixture))).report
+        }))
+        const report = run.a
         const verdict = EXPECT[fixture](report, control)
+        yield* finished(fixture, verdict.caught, report.decision.tier, run.ms)
         return { fixture, description: t.description, tier: report.decision.tier, caught: verdict.caught, why: verdict.caught ? `caught by ${verdict.why}` : `expected ${verdict.why}` } satisfies FixtureResult
       }), { concurrency: 2 })]
     for (const file of projectFiles) {
@@ -253,13 +282,17 @@ export const runSelftest = (request: SelftestRequest) =>
       const patch = path.join(request.outDir, `${name}.patch`)
       yield* fs.makeDirectory(request.outDir, { recursive: true })
       yield* fs.writeFileString(patch, text)
+      yield* say(`  running ${name}...`)
+      const start = yield* Clock.currentTimeMillis
       const applied = yield* Effect.exit(commitWith(name, (dir) => git.applyPatch(dir, patch)))
       if (applied._tag === "Failure") {
+        yield* finished(name, false, "-", (yield* Clock.currentTimeMillis) - start)
         results.push({ fixture: name, description: fixture.description, tier: "-", caught: false, why: "the patch no longer applies to the base" })
         continue
       }
       const report = (yield* judge(name, applied.value)).report
       const verdict = expectProject(fixture.expect)(report)
+      yield* finished(name, verdict.caught, report.decision.tier, (yield* Clock.currentTimeMillis) - start)
       results.push({ fixture: name, description: fixture.description, tier: report.decision.tier, caught: verdict.caught, why: verdict.caught ? `caught by ${verdict.why}` : `expected ${verdict.why}` })
     }
 
@@ -272,6 +305,28 @@ export const runSelftest = (request: SelftestRequest) =>
       passed: !control.decision.wouldBlock && results.every((r) => r.caught),
     } satisfies SelftestResult
   })
+
+/** The result for a terminal: one aligned line per fixture, the long descriptions only for what got through. */
+export const renderSelftestText = (r: SelftestResult): string => {
+  const lines = [`Gauntlet selftest at ${r.base.slice(0, 12)}`, ""]
+  if (r.control.wouldBlock) {
+    lines.push("The policy blocks an empty change, so no fixture result means anything yet. Fix these first:", ...r.control.reasons.map((x) => `  - ${x}`), "")
+  } else {
+    lines.push(`Control (an empty change): ${r.control.tier}, ${r.control.executed} tests ran.`, "")
+  }
+  const name = Math.max(0, ...r.fixtures.map((f) => f.fixture.length))
+  const tier = Math.max(0, ...r.fixtures.map((f) => f.tier.length))
+  for (const f of r.fixtures) {
+    lines.push(`  ${f.caught ? "caught" : "MISSED"}  ${f.fixture.padEnd(name)}  ${f.tier.padEnd(tier)}  ${f.why.replace(/^caught by /, "")}`)
+    if (!f.caught) lines.push(`          ${" ".repeat(name)}  ${" ".repeat(tier)}  ${f.description}`)
+  }
+  if (r.notApplicable.length > 0) lines.push("", `Not applicable to this project: ${r.notApplicable.join(", ")}.`)
+  const caught = r.fixtures.filter((f) => f.caught).length
+  lines.push("", r.passed
+    ? `All ${caught} tamperings were caught.`
+    : `${caught} of ${r.fixtures.length} tamperings were caught. Each MISSED line is a gap in this policy or its suites.`, "")
+  return lines.join("\n")
+}
 
 export const renderSelftest = (r: SelftestResult): string => {
   const lines = [`## Gauntlet selftest at ${r.base.slice(0, 12)}`, ""]

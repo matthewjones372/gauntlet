@@ -1,7 +1,7 @@
 import {
   agentSummary, BASELINE_PATH, BLOCKED_ACK, CheckFailed, checkWorkingTree, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
   ProcessRunner, protectOnlyIr, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, Report, Review, runnerConfigFor, Teams,
-  renderFlaky, renderSelftest, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
+  renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
 import { claudeCode, type GeneratedFile, github, PROPOSAL_FILE, render } from "@gauntlet/connect"
@@ -329,15 +329,16 @@ const selftest = Command.make("selftest", {
     const output = yield* Output
     const root = yield* absolute(repo)
     const outDir = `${yield* (yield* Git).gitDir(root)}/gauntlet/selftest`
-    yield* output.err("Running the policy against each tamper fixture; every fixture is a full check.")
     const result = yield* runSelftest({
       repo: root,
       base,
       ...(Option.isSome(only) ? { only: only.value.split(",").map((s) => s.trim()).filter((s) => s !== "") } : {}),
       gauntletVersion: GAUNTLET_VERSION,
       outDir,
+      progress: (line) => output.err(line),
     })
-    yield* output.out(json ? prettyCanonicalJson(result) : renderSelftest(result))
+    // Markdown where it'll be rendered (CI logs, pull request comments); aligned text in a terminal.
+    yield* output.out(json ? prettyCanonicalJson(result) : process.stdout.isTTY === true ? renderSelftestText(result) : renderSelftest(result))
     if (!result.passed) yield* exitWith(1)
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Prove the policy catches known tampering: each fixture must be caught."))
 
