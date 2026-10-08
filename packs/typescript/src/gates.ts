@@ -203,6 +203,32 @@ const STRYKER_CONFIGS = [
   "stryker.config.mjs", "stryker.config.js", "stryker.config.cjs", "stryker.conf.mjs", "stryker.conf.js",
 ]
 
+/**
+ * Stryker settings for a project without its own config: the test runner it
+ * already uses, its main sources mutated and its tests left alone. Bun has no
+ * Stryker plugin, so Stryker's built-in command runner runs \`bun test\`.
+ * A string explains what's missing.
+ */
+export const strykerDefaults = (chain: Toolchain, files: ReadonlyArray<string>): Record<string, unknown> | string => {
+  const runner = Option.getOrUndefined(chain.runner)
+  const sources = files.some((f) => f.startsWith("src/")) ? ["src/**/*.{ts,tsx,js,jsx,mts,cts}"] : ["**/*.{ts,tsx,js,jsx,mts,cts}", "!node_modules/**", "!dist/**", "!build/**"]
+  const mutate = [...sources, "!**/*.{test,spec}.*", "!**/__tests__/**", "!**/*.d.ts"]
+  // Stryker rewrites tsconfig.json with TypeScript's JavaScript API, which
+  // TypeScript 7 no longer has. The sandbox is a full copy of the project, so
+  // relative paths in it still resolve: point Stryker at no tsconfig at all.
+  const common = { mutate, tsconfigFile: "gauntlet.no-tsconfig.json" }
+  switch (runner) {
+    case "vitest":
+      return chain.deps.has("@stryker-mutator/vitest-runner") ? { testRunner: "vitest", coverageAnalysis: "perTest", ...common } : "Stryker needs its Vitest plugin: add @stryker-mutator/vitest-runner"
+    case "jest":
+      return chain.deps.has("@stryker-mutator/jest-runner") ? { testRunner: "jest", coverageAnalysis: "perTest", ...common } : "Stryker needs its Jest plugin: add @stryker-mutator/jest-runner"
+    case "bun":
+      return { testRunner: "command", commandRunner: { command: "bun test" }, coverageAnalysis: "off", ...common }
+    default:
+      return "no test runner found for Stryker: add vitest or jest, or use bun test"
+  }
+}
+
 export const mutation: GateImpl = (_check, ctx) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
@@ -213,14 +239,21 @@ export const mutation: GateImpl = (_check, ctx) =>
     if (blocked) return blocked
     if (!chain.deps.has("@stryker-mutator/core")) return failed(["stryker"], "StrykerJS isn't installed: add @stryker-mutator/core and its test runner plugin")
     const config = STRYKER_CONFIGS.find((c) => ctx.files.includes(c))
-    if (!config) return failed(["stryker"], "no Stryker configuration (stryker.config.json or .mjs)")
-    // A config next to the output directories that extends the project's, so
-    // Gauntlet decides the files, the report location and that no cache is used.
+    // A config next to the output directories that extends the project's (or
+    // Gauntlet's defaults, when it has none), so Gauntlet decides the files, the
+    // report location and that no cache is used.
     const generated = path.join(path.dirname(ctx.outputDir), "gauntlet.stryker.config.mjs")
-    const project = path.join(ctx.dir, config)
-    const importBase = config.endsWith("json") || config === ".strykerrc"
-      ? `import base from ${JSON.stringify(project)} with { type: "json" }`
-      : `import base from ${JSON.stringify(project)}`
+    let importBase: string
+    if (config) {
+      const project = path.join(ctx.dir, config)
+      importBase = config.endsWith("json") || config === ".strykerrc"
+        ? `import base from ${JSON.stringify(project)} with { type: "json" }`
+        : `import base from ${JSON.stringify(project)}`
+    } else {
+      const defaults = strykerDefaults(chain, ctx.files)
+      if (typeof defaults === "string") return failed(["stryker"], defaults)
+      importBase = `const base = ${JSON.stringify(defaults)}`
+    }
     const overrides = {
       ...(inScope ? { mutate: inScope } : {}),
       reporters: ["json"],

@@ -1,14 +1,14 @@
 import {
-  agentSummary, BASELINE_PATH, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
+  agentSummary, BASELINE_PATH, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
   ProcessRunner, protectOnlyIr, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, Report, Review, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
-import { claudeCode, type GeneratedFile, github, PROPOSAL_FILE, render } from "@gauntlet/connect"
+import { claudeCode, FIX_COMMAND, type GeneratedFile, github, PROPOSAL_FILE, render } from "@gauntlet/connect"
 import { defaultPackage, invalidVars, render as renderTemplate, TEMPLATES } from "@gauntlet/templates"
 import { type AuthorConfig, authorConfig, authorContext, draftProposals, explainInPlainLanguage, isolationProblem, runSession } from "@gauntlet/author"
 import { Compiler, DEFAULT_POLICY_FILE, type Diagnostic, formatDiagnostics, PolicyInvalid } from "@gauntlet/dsl"
-import { prettyCanonicalJson } from "@gauntlet/ir"
+import { type PolicyIR, prettyCanonicalJson } from "@gauntlet/ir"
 import { BunStdio } from "@effect/platform-bun"
 import { GauntletTools, mcpServer } from "@gauntlet/mcp"
 import { Clock, Data, Effect, FileSystem, Layer, Option, Path, Ref, Schema } from "effect"
@@ -17,7 +17,7 @@ import { agentFromEnv } from "./agent.ts"
 import { describeChanges } from "./apply.ts"
 import { exportCorpus } from "./corpus-export.ts"
 import { AuthorRuntime, type AuthorRuntimeShape, renderDropped } from "./author.ts"
-import { Ask, ExitStatus, exitWith, Output, Stdin, withGateProgress } from "./output.ts"
+import { Ask, ExitStatus, exitWith, LaunchAgent, Output, Stdin, withGateProgress } from "./output.ts"
 import { GAUNTLET_VERSION } from "./version.ts"
 
 // The CLI. Handlers stay thin: parse flags, call a core program, print, set
@@ -189,6 +189,8 @@ interface BaselineArgs {
   readonly trunk: Option.Option<string>
   /** Whether to tell the person to commit it (`apply` commits it itself). */
   readonly commitHint?: boolean
+  /** The policy gained gates since the baseline: grandfather their existing findings (apply). */
+  readonly adoptNewGates?: boolean
 }
 
 /** Records (or raises) the baseline on trunk; `gauntlet baseline` and `gauntlet apply` both run it. */
@@ -253,7 +255,7 @@ const runBaseline = (args: BaselineArgs) =>
     if (Option.isNone(existing)) {
       next = { ...emptyBaseline(meta.commit, meta.irHash, meta.gauntletVersion), metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, legacy }
     } else {
-      const outcome = updateBaseline(existing.value, { ...meta, metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, allowLower: args.allowLower })
+      const outcome = updateBaseline(existing.value, { ...meta, metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, allowLower: args.allowLower, ...(args.adoptNewGates ? { adoptNewTools: true } : {}) })
       if (outcome.lowers) {
         const lines = [
           ...outcome.loweredMetrics.map((m) => `- ${m.metric}${m.file ? ` (${m.file})` : ""}: ${m.base} -> ${m.head}`),
@@ -277,7 +279,52 @@ const runBaseline = (args: BaselineArgs) =>
       ...missing.map((c) => `Not recorded: ${c.tier}: ${c.check} (${c.reason ?? c.status})`),
       ...(args.commitHint === false ? [] : [`Commit it. ${BASELINE_PATH} is protected, so the commit needs an owner's review.`]),
     ].join("\n"))
-    return true
+    return { checks: recorded.checks, ir: loaded.compiled.ir }
+  })
+
+/**
+ * Checks that failed while recording and will fail every change until they're
+ * fixed: failing tests, a broken build, a rule over the whole project. Lint
+ * findings a ratchet grandfathers and floors on changed lines don't count.
+ */
+export const persistentFailures = (checks: ReadonlyArray<CheckRecord>, ir: PolicyIR): CheckRecord[] =>
+  checks.filter((c) => {
+    if (c.status !== "failed" && c.status !== "errored") return false
+    for (const tier of ir.gates) {
+      for (const g of tier.checks) {
+        if (g.kind === "suite" && g.name === c.check) return true
+        if (g.kind === "gate" && g.name === c.check) return !(g.ratchet && g.threshold === undefined) && !(g.threshold !== undefined && g.scope === "changed")
+      }
+    }
+    return false
+  })
+
+/** After the first baseline: say what fails, and offer to have Claude Code fix it. */
+const offerFix = (root: string, failing: ReadonlyArray<CheckRecord>) =>
+  Effect.gen(function*() {
+    const output = yield* Output
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    yield* output.out([
+      "",
+      "Your project doesn't pass every check yet:",
+      ...failing.map((c) => `  - ${c.check}: ${c.reason ?? c.status}${c.failures && c.failures.length > 0 ? ` (${c.failures.slice(0, 3).map((f: string) => f.split(":")[0]).join(", ")}${c.failures.length > 3 ? ", ..." : ""})` : ""}`),
+      "These show on every change until they're fixed. (In shadow mode nothing is blocked.)",
+      "",
+    ].join("\n"))
+    // Projects set up by an older Gauntlet may not have the command yet.
+    const command = path.join(root, ".claude", "commands", "gauntlet-fix.md")
+    if (!(yield* fs.exists(command))) {
+      yield* fs.makeDirectory(path.dirname(command), { recursive: true })
+      yield* fs.writeFileString(command, FIX_COMMAND)
+    }
+    const later = "When you're ready, open Claude Code here and run /gauntlet-fix. It fixes what it can and reports every change."
+    const reply = yield* (yield* Ask).question("Want Claude Code to fix them now? It'll report every change it makes. [Y/n] ")
+    if (Option.isNone(reply) || !/^(|y|yes)$/i.test(reply.value)) return yield* output.out(later)
+    yield* output.out("Opening Claude Code with /gauntlet-fix. Quit it (Ctrl+C twice) to come back here.")
+    if (!(yield* (yield* LaunchAgent).claude(root, "/gauntlet-fix"))) {
+      yield* output.out(`Claude Code isn't installed here (no \`claude\` on your PATH). ${later}`)
+    }
   })
 
 /** What to do when recording the baseline would lower it: fix it on trunk first; accepting it comes last. */
@@ -709,7 +756,8 @@ const connectClaude = (root: string, dryRun: boolean) =>
       ...(existingMcp !== undefined ? { existingMcp } : {}),
     })
     if (result._tag === "Unreadable") return yield* fail(`${result.path} isn't a JSON object, so it wasn't changed. Fix it and run this again.`)
-    yield* writeGenerated(root, result.files, dryRun)
+    // /gauntlet-fix rides along: `gauntlet apply` offers it when a project's checks already fail.
+    yield* writeGenerated(root, [...result.files, { path: ".claude/commands/gauntlet-fix.md", content: FIX_COMMAND, mode: "replace" }], dryRun)
     return true
   })
 
@@ -768,7 +816,10 @@ const adopt = Command.make("adopt", {
 // ---------- setup and apply: the three-step start ----------
 
 /** The files `setup` and `apply` create, committed together by `apply`. */
-const SETUP_FILES = [DEFAULT_POLICY_FILE, ".claude/settings.json", ".claude/commands/gauntlet-setup.md", ".claude/gauntlet-managed-settings.example.json", ".mcp.json", "CLAUDE.md", "AGENTS.md"]
+/** Dependency files `gauntlet setup` may have changed by installing tools; committed with the policy so checks see the tools. */
+const DEPENDENCY_FILES = ["package.json", "bun.lock", "bun.lockb", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "pyproject.toml", "uv.lock", "poetry.lock"]
+
+const SETUP_FILES = [DEFAULT_POLICY_FILE, ".claude/settings.json", ".claude/commands/gauntlet-setup.md", ".claude/commands/gauntlet-fix.md", ".claude/gauntlet-managed-settings.example.json", ".mcp.json", "CLAUDE.md", "AGENTS.md"]
 
 /**
  * Offers to install the tools the draft left out (`uv add --dev ...`), runs the
@@ -823,15 +874,16 @@ const setup = Command.make("setup", {
       if (draft._tag === "Refused") return yield* fail(draft.reason)
       // Listed once: before the offer, or after drafting when there's nothing to install or it was declined.
       let listed = false
-      if (draft.setup.length > 0 && draft.install.length > 0) {
-        yield* output.out(["Checks left out until their tools are set up:", ...draft.setup.map((x) => `  - ${x}`)].join("\n"))
+      if (draft.install.length > 0) {
+        if (draft.setup.length > 0) yield* output.out(["Checks left out until their tools are set up:", ...draft.setup.map((x) => `  - ${x}`)].join("\n"))
+        else yield* output.out("Some checks in the draft need tools the project doesn't have installed yet.")
         listed = true
         // Installed tools are now dependencies, so a fresh draft gates them.
         if (yield* offerInstall(root, draft.install, args.yes)) {
           listed = false
           const again = yield* templateDraft(root, path.basename(root), ownerList(args.owner))
           if (again._tag === "Draft") draft = again
-          yield* output.out("Installed. Commit the dependency changes with the policy.")
+          yield* output.out("Installed. `gauntlet apply` commits them with the policy.")
         }
         yield* output.out("")
       }
@@ -900,12 +952,32 @@ const apply = Command.make("apply", {
       yield* output.out(`No proposal from /gauntlet-setup, so ${DEFAULT_POLICY_FILE} stays as it is.`)
     }
     if (args.dryRun) return
-    if (yield* commitIfChanged(root, SETUP_FILES, "Add Gauntlet")) yield* output.out("Committed the policy and the Claude Code files.")
-    if (yield* fs.exists(path.join(root, BASELINE_PATH))) {
-      yield* output.out(`${BASELINE_PATH} is already recorded. To raise it with what trunk records now: gauntlet baseline --update`)
+    if (yield* commitIfChanged(root, [...SETUP_FILES, ...DEPENDENCY_FILES], "Add Gauntlet")) yield* output.out("Committed the policy, the Claude Code files and any tools setup installed.")
+    const recordedBaseline = yield* fs.readFileString(path.join(root, BASELINE_PATH)).pipe(Effect.option)
+    const policyHash = (yield* (yield* PolicySource).load({ repo: root, baseRef: "HEAD" })).compiled.hash
+    // A baseline records the policy's hash; another hash means the policy changed since.
+    const recordedHash = Option.isSome(recordedBaseline) ? (yield* Effect.option(decodeBaseline(recordedBaseline.value))).pipe(Option.map((b) => b.irHash)) : Option.none<string>()
+    const stale = Option.isSome(recordedBaseline) && Option.getOrUndefined(recordedHash) !== policyHash
+    if (Option.isSome(recordedBaseline) && !stale) {
+      yield* output.out(`${BASELINE_PATH} is already recorded for this policy.`)
+    } else if (Option.isSome(recordedBaseline)) {
+      // The policy changed since the baseline: record the new gates' existing findings, or every change would fail on them.
+      yield* output.out("The policy changed since the baseline was recorded, so it's recorded again for the new gates.")
+      const recorded = yield* runBaseline({ repo: root, update: true, allowLower: false, adoptNewGates: true, importDetekt: Option.none(), trunk: Option.none(), commitHint: false })
+      if (!recorded) return
+      if (yield* commitIfChanged(root, [BASELINE_PATH], "Update Gauntlet baseline for the new gates")) yield* output.out("Committed the baseline.")
+      yield* output.out("\nDone. Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.")
+      const failing = persistentFailures(recorded.checks, recorded.ir)
+      if (failing.length > 0) yield* offerFix(root, failing)
+      return
     } else {
-      if (!(yield* runBaseline({ repo: root, update: false, allowLower: false, importDetekt: Option.none(), trunk: Option.none(), commitHint: false }))) return
+      const recorded = yield* runBaseline({ repo: root, update: false, allowLower: false, importDetekt: Option.none(), trunk: Option.none(), commitHint: false })
+      if (!recorded) return
       if (yield* commitIfChanged(root, [BASELINE_PATH], "Record Gauntlet baseline")) yield* output.out("Committed the baseline.")
+      yield* output.out("\nDone. Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.")
+      const failing = persistentFailures(recorded.checks, recorded.ir)
+      if (failing.length > 0) yield* offerFix(root, failing)
+      return
     }
     yield* output.out("\nDone. Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.")
   }).pipe(withGateProgress, Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Apply the policy, commit it and record the baseline: the end of step 3."))

@@ -86,3 +86,21 @@ export const withGateProgress = <A, E, R>(effect: Effect.Effect<A, E, R>): Effec
   const shown = terminalGateProgress()
   return shown === undefined ? effect : effect.pipe(Effect.provideService(GateProgress, shown))
 }
+
+/**
+ * Hands the terminal to Claude Code with a prompt, until the person quits it.
+ * False when Claude Code isn't installed. Tests supply their own.
+ */
+export const LaunchAgent = Context.Reference<{ readonly claude: (cwd: string, prompt: string) => Effect.Effect<boolean> }>("@gauntlet/cli/LaunchAgent", {
+  defaultValue: () => ({
+    claude: (cwd, prompt) =>
+      Effect.sync(() => {
+        const bin = Bun.which("claude")
+        if (bin === null) return false
+        Bun.spawnSync([bin, prompt], { cwd, stdio: ["inherit", "inherit", "inherit"] })
+        return true
+      }),
+  }),
+})
+export const launches = (calls: Array<{ cwd: string; prompt: string }>, installed = true) =>
+  Layer.succeed(LaunchAgent, { claude: (cwd, prompt) => Effect.sync(() => (installed && calls.push({ cwd, prompt }), installed)) })

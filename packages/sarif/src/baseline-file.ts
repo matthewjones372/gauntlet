@@ -82,6 +82,12 @@ export interface UpdateRequest {
   readonly results: Readonly<Record<string, ReadonlyArray<Result>>>
   readonly testIds: ReadonlyArray<string>
   readonly allowLower: boolean
+  /**
+   * The policy gained gates: grandfather the findings of tools the old
+   * baseline never recorded at all, without counting them as a lowering.
+   * Findings of tools it already recorded follow the usual rule.
+   */
+  readonly adoptNewTools?: boolean
 }
 
 export interface UpdateOutcome {
@@ -114,6 +120,11 @@ export const updateBaseline = (old: Baseline, request: UpdateRequest): UpdateOut
       continue
     }
     const comparison = compareWithBaseline(old.results[tool] ?? [], recorded)
+    if (request.adoptNewTools && old.results[tool] === undefined) {
+      // A gate the old baseline never ran: its existing findings are where it starts.
+      results[tool] = comparison.results
+      continue
+    }
     const added = comparison.results.filter((r) => r.baselineState === "new")
     newlyGrandfathered.push(...added)
     fixed.push(...comparison.absent)

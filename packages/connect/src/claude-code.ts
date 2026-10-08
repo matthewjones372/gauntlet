@@ -107,6 +107,23 @@ Help me set up Gauntlet's policy for this repository. Gauntlet checks AI-written
 12. When you're done, give me a report: every file you changed and why, with protected tests listed separately. If the adoption window was opened, ask me to run \`gauntlet adopt --close\` to see Gauntlet's own record of the protected tests you edited, and then to commit.
 `
 
+/**
+ * `/gauntlet-fix`: get an existing project passing its checks, with the
+ * person's say on anything protected. `gauntlet apply` offers to start it
+ * when the first baseline finds checks that fail.
+ */
+export const FIX_COMMAND = `---
+description: Fix the checks this project fails, and report every change
+---
+Gauntlet's checks fail on this project as it is, before any change of yours. Help me get them passing.
+
+1. Run Gauntlet's \`check\` tool. Tell me, in plain words, what fails: which tests and why, lint findings, a broken build, a coverage floor.
+2. Fix them one at a time, starting with what's simplest. Fix the code, not the checks: never skip, delete or weaken a test, add a suppression or lower a threshold. If a test is wrong rather than the code, say so and ask me before changing it.
+3. Protected tests and test setup are locked, so an edit to one will be refused. When a fix needs one, don't work around it: tell me which file and why, and ask me to run \`gauntlet adopt\` in my own terminal. That opens a one-time window in which you can edit protected tests (never \`.gauntlet/\` or protected configuration); it closes at my next commit.
+4. Run the \`check\` tool again after each fix, until it passes or only things you can't fix are left.
+5. Finish with a report: every file you changed and why, protected tests listed separately, and anything still failing with what it would take to fix. If the adoption window was opened, ask me to run \`gauntlet adopt --close\` to see Gauntlet's own record of the protected tests you edited, then to commit.
+`
+
 export const managedSettings = (ir: PolicyIR, runnerConfig: ReadonlyArray<string>) => `${JSON.stringify({
   allowManagedHooksOnly: true,
   hooks: claudeHooks(),

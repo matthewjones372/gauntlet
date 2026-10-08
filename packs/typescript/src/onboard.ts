@@ -15,10 +15,13 @@ export const onboard = (repo: RepoView): Onboarding => {
   const fast: string[] = []
   const verify: string[] = []
   const setup: string[] = []
-  if (repo.files.includes("tsconfig.json")) fast.push("build")
-  else setup.push("Add a tsconfig.json at the repository root to gate type checking (build).")
   // The dev dependencies that would add the missing gates.
   const missing: string[] = []
+  if (repo.files.includes("tsconfig.json")) {
+    fast.push("build")
+    // The build gate runs tsc from the project, so it needs typescript installed too.
+    if (!deps.has("typescript")) missing.push("typescript")
+  } else setup.push("Add a tsconfig.json at the repository root to gate type checking (build).")
   if (deps.has("@biomejs/biome") || deps.has("eslint")) fast.push("lint ratchet")
   else {
     setup.push("Add @biomejs/biome or eslint to gate lint.")
