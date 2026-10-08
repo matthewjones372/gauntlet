@@ -588,11 +588,32 @@ const newProject = Command.make("new", {
 
 // ---------- connect ----------
 
+/**
+ * The project's own formatter, for the files Gauntlet writes: Biome or Prettier
+ * when the project configures and installs one. A project whose lint checks
+ * formatting would otherwise reject Gauntlet's files and block every change.
+ */
+const projectFormatter = (root: string) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const has = (p: string) => fs.exists(path.join(root, p)).pipe(Effect.orElseSucceed(() => false))
+    if ((yield* has("biome.json")) || (yield* has("biome.jsonc"))) {
+      if (yield* has("node_modules/.bin/biome")) return Option.some(["node_modules/.bin/biome", "format", "--write", "--files-ignore-unknown=true", "--no-errors-on-unmatched"])
+    }
+    const pkg = yield* fs.readFileString(path.join(root, "package.json")).pipe(Effect.orElseSucceed(() => ""))
+    const files = yield* fs.readDirectory(root).pipe(Effect.orElseSucceed(() => [] as string[]))
+    const prettierConfigured = files.some((f) => /^(\.prettierrc(\..+)?|prettier\.config\.[cm]?js)$/.test(f)) || /"prettier"\s*:\s*[{"]/.test(pkg)
+    if (prettierConfigured && (yield* has("node_modules/.bin/prettier"))) return Option.some(["node_modules/.bin/prettier", "--write", "--ignore-unknown", "--log-level=warn"])
+    return Option.none<string[]>()
+  })
+
 const writeGenerated = (root: string, files: ReadonlyArray<GeneratedFile>, dryRun: boolean) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const output = yield* Output
+    const written: { readonly path: string; readonly before: Option.Option<string> }[] = []
     for (const f of files) {
       const target = path.join(root, f.path)
       const existing = yield* fs.readFileString(target).pipe(Effect.option)
@@ -601,12 +622,25 @@ const writeGenerated = (root: string, files: ReadonlyArray<GeneratedFile>, dryRu
         yield* output.out(`--- ${f.path}\n${content}`)
         continue
       }
-      // A file that already says exactly this is left alone, and not reported as updated.
+      // Every generated file goes to the formatter, even one already as rendered:
+      // an earlier Gauntlet may have written it before the project had a formatter.
+      written.push({ path: f.path, before: existing })
       if (Option.isSome(existing) && existing.value === content) continue
       yield* fs.makeDirectory(path.dirname(target), { recursive: true })
       yield* fs.writeFileString(target, content)
       if (f.executable) yield* fs.chmod(target, 0o755)
-      yield* output.out(`${Option.isSome(existing) ? "updated" : "wrote"} ${f.path}`)
+    }
+    if (written.length === 0) return
+    const formatter = yield* projectFormatter(root)
+    if (Option.isSome(formatter)) {
+      const [command, ...args] = formatter.value
+      yield* (yield* ProcessRunner).run({ command: path.join(root, command!), args: [...args, ...written.map((w) => w.path)], cwd: root, timeout: "2 minutes" }).pipe(Effect.ignore)
+    }
+    for (const w of written) {
+      // A file that ends up saying exactly what it said before is left unreported.
+      const after = yield* fs.readFileString(path.join(root, w.path)).pipe(Effect.option)
+      if (Option.isSome(w.before) && Option.isSome(after) && w.before.value === after.value) continue
+      yield* output.out(`${Option.isSome(w.before) ? "updated" : "wrote"} ${w.path}`)
     }
   })
 
