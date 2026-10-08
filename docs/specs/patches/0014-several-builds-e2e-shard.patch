@@ -1,0 +1,21 @@
+Add a CI shard for the several-builds end-to-end test (ADR 0022): a Gradle
+build and an sbt build in one repository. It runs with the Scala job's JDK
+and sbt; the Gradle wrapper fetches Gradle. The frameworks a shard leaves it out.
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -74,8 +74,12 @@
+             filter: "ScalaTest service.*selftest"
+           - pack: scala
+             shard: frameworks a
+-            filter: "^(?!.*ScalaTest service)(?!.*real sbt, (zio-test|weaver)[)])"
++            filter: "^(?!.*ScalaTest service)(?!.*real sbt, (zio-test|weaver)[)])(?!.*several builds)"
++          # A Gradle build and an sbt build in one repository (ADR 0022): sbt's setup, and the wrapper fetches Gradle.
+           - pack: scala
++            shard: several builds
++            filter: "several builds"
++          - pack: scala
+             shard: frameworks b
+             filter: "real sbt, (zio-test|weaver)[)]"
+     steps:

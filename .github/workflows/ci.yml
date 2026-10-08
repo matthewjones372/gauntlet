@@ -74,7 +74,11 @@ jobs:
             filter: "ScalaTest service.*selftest"
           - pack: scala
             shard: frameworks a
-            filter: "^(?!.*ScalaTest service)(?!.*real sbt, (zio-test|weaver)[)])"
+            filter: "^(?!.*ScalaTest service)(?!.*real sbt, (zio-test|weaver)[)])(?!.*several builds)"
+          # A Gradle build and an sbt build in one repository (ADR 0022): sbt's setup, and the wrapper fetches Gradle.
+          - pack: scala
+            shard: several builds
+            filter: "several builds"
           - pack: scala
             shard: frameworks b
             filter: "real sbt, (zio-test|weaver)[)]"
