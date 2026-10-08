@@ -1,0 +1,23 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index f80c78d..d95e238 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -44,10 +44,17 @@ jobs:
+     strategy:
+       fail-fast: false
+       matrix:
+-        pack: [jvm, typescript, python, go, rust, clojure]
++        pack: [typescript, python, go, rust, clojure]
+         # The Scala suite is the slowest by far (about 25 full checks), so it
+         # runs as seven jobs at once. Each shard records its own baseline.
+         include:
++          # The JVM suite runs as two jobs: the service scenarios with selftest, and the rest.
++          - pack: jvm
++            shard: service
++            filter: "JVM pack end to end"
++          - pack: jvm
++            shard: other
++            filter: "^(?!.*JVM pack end to end)"
+           - pack: scala
+             shard: scenarios 1-2
+             filter: "ScalaTest service.*(baseline|[1-2][.] )"
