@@ -1,5 +1,5 @@
 import type { PolicyIR } from "@gauntlet/ir"
-import { Clock, Effect, FileSystem, Option, Path } from "effect"
+import { Clock, Effect, FileSystem, Option, Path, Semaphore } from "effect"
 import { availableParallelism } from "node:os"
 import { BASELINE_PATH } from "./baseline-store.ts"
 import { runCheck } from "./check.ts"
@@ -252,13 +252,16 @@ export const runSelftest = (request: SelftestRequest) =>
         return { a, ms: (yield* Clock.currentTimeMillis) - start }
       })
 
-    yield* say("Checking an empty change first (the control), so every fixture has something to compare with...")
-    const controlRun = yield* timed(Effect.gen(function*() {
+    // The control (an empty change) runs alongside the fixtures, sharing the same
+    // number of slots: no fixture's verdict is needed until its own check is done.
+    const concurrency = selftestConcurrency()
+    const slots = yield* Semaphore.make(concurrency)
+    yield* say("Checking an empty change first (the control), alongside the fixtures, so each has something to compare with...")
+    const controlRun = yield* Effect.cached(Semaphore.withPermit(slots)(timed(Effect.gen(function*() {
       const controlSha = yield* commitWith("control", () => Effect.void)
       return (yield* judge("control", controlSha)).report
-    }))
-    const control = controlRun.a
-    yield* say(`  control: ${control.decision.tier}, ${executed(control)} tests ran (${elapsed(controlRun.ms)})`)
+    })).pipe(Effect.tap((c) => say(`  control: ${c.a.decision.tier}, ${executed(c.a)} tests ran (${elapsed(c.ms)})`)))))
+    yield* Effect.forkChild(controlRun)
 
     const tamperings = yield* tamperingsFor(ctx)
     const projectFiles = files.filter((f) => f.startsWith(".gauntlet/selftest/") && f.endsWith(".patch")).sort()
@@ -274,21 +277,23 @@ export const runSelftest = (request: SelftestRequest) =>
     let done = 0
     const finished = (fixture: string, caught: boolean, tier: string, ms: number) =>
       say(`  ${caught ? "caught" : "MISSED"}  ${fixture} (${tier}, ${elapsed(ms)})  [${++done}/${total}]`)
-    const concurrency = selftestConcurrency()
     const together = Math.max(1, Math.min(total, concurrency))
     if (total > 0) yield* say(`Running ${total} tamper fixture${total === 1 ? "" : "s"}, ${AT_A_TIME[together - 1] ?? `${together} at a time`}; each is a full check:`)
     const results: FixtureResult[] = [...yield* Effect.forEach(builtIn, ({ fixture, t }) =>
       Effect.gen(function*() {
-        yield* say(`  running ${fixture}...`)
-        const run = yield* timed(Effect.gen(function*() {
-          const sha = yield* commitWith(fixture, applyEdits(t.edits))
-          return (yield* judge(fixture, sha, CAUGHT_WITHOUT_EXECUTION.has(fixture))).report
+        const run = yield* Semaphore.withPermit(slots)(Effect.gen(function*() {
+          yield* say(`  running ${fixture}...`)
+          return yield* timed(Effect.gen(function*() {
+            const sha = yield* commitWith(fixture, applyEdits(t.edits))
+            return (yield* judge(fixture, sha, CAUGHT_WITHOUT_EXECUTION.has(fixture))).report
+          }))
         }))
         const report = run.a
+        const control = (yield* controlRun).a
         const verdict = EXPECT[fixture](report, control)
         yield* finished(fixture, verdict.caught, report.decision.tier, run.ms)
         return { fixture, description: t.description, tier: report.decision.tier, caught: verdict.caught, why: verdict.caught ? `caught by ${verdict.why}` : `expected ${verdict.why}` } satisfies FixtureResult
-      }), { concurrency })]
+      }), { concurrency: "unbounded" })]
     for (const file of projectFiles) {
       const name = file.slice(".gauntlet/selftest/".length).replace(/\.patch$/, "")
       if (!wanted(name)) continue
@@ -311,6 +316,7 @@ export const runSelftest = (request: SelftestRequest) =>
       results.push({ fixture: name, description: fixture.description, tier: report.decision.tier, caught: verdict.caught, why: verdict.caught ? `caught by ${verdict.why}` : `expected ${verdict.why}` })
     }
 
+    const control = (yield* controlRun).a
     const covered = new Set(tamperings.map((t) => t.fixture))
     return {
       base,
