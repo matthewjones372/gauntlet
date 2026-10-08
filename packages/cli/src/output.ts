@@ -30,21 +30,23 @@ export const Stdin = Context.Reference<{ readonly text: Effect.Effect<string> }>
 })
 export const stdinText = (text: string) => Layer.succeed(Stdin, { text: Effect.succeed(text) })
 
+/** Asks on a terminal, or answers none when either stream isn't one (CI, a pipe, a hook). */
+export const terminalQuestion = (input: NodeJS.ReadableStream & { readonly isTTY?: boolean }, output: NodeJS.WritableStream & { readonly isTTY?: boolean }) =>
+  (text: string): Effect.Effect<Option.Option<string>> =>
+    input.isTTY === true && output.isTTY === true
+      ? Effect.promise(async () => {
+        const rl = createInterface({ input, output })
+        try {
+          return Option.some((await rl.question(text)).trim())
+        } finally {
+          rl.close()
+        }
+      })
+      : Effect.succeed(Option.none())
+
 /** A question for the person at the terminal: none when nobody is there to answer (no TTY). Tests supply answers. */
 export const Ask = Context.Reference<{ readonly question: (text: string) => Effect.Effect<Option.Option<string>> }>("@gauntlet/cli/Ask", {
-  defaultValue: () => ({
-    question: (text) =>
-      process.stdin.isTTY === true && process.stdout.isTTY === true
-        ? Effect.promise(async () => {
-          const rl = createInterface({ input: process.stdin, output: process.stdout })
-          try {
-            return Option.some((await rl.question(text)).trim())
-          } finally {
-            rl.close()
-          }
-        })
-        : Effect.succeed(Option.none()),
-  }),
+  defaultValue: () => ({ question: terminalQuestion(process.stdin, process.stdout) }),
 })
 export const answers = (...replies: ReadonlyArray<string>) => {
   const queue = [...replies]
