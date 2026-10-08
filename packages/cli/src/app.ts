@@ -867,7 +867,46 @@ const adopt = Command.make("adopt", {
 /** Dependency files `gauntlet setup` may have changed by installing tools; committed with the policy so checks see the tools. */
 const DEPENDENCY_FILES = ["package.json", "bun.lock", "bun.lockb", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "pyproject.toml", "uv.lock", "poetry.lock"]
 
-const SETUP_FILES = [DEFAULT_POLICY_FILE, ".claude/settings.json", ".claude/commands/gauntlet-setup.md", ".claude/commands/gauntlet-fix.md", ".claude/gauntlet-managed-settings.example.json", ".mcp.json", "CLAUDE.md", "AGENTS.md"]
+const SETUP_FILES = [DEFAULT_POLICY_FILE, ".gitignore", "knip.json", "knip.jsonc", ".knip.json", ".knip.jsonc", ".claude/settings.json", ".claude/commands/gauntlet-setup.md", ".claude/commands/gauntlet-fix.md", ".claude/gauntlet-managed-settings.example.json", ".mcp.json", "CLAUDE.md", "AGENTS.md"]
+
+/** Where knip keeps its config, as JSON. */
+const KNIP_CONFIGS = ["knip.json", "knip.jsonc", ".knip.json", ".knip.jsonc"]
+
+/**
+ * Adds the packages Gauntlet installed to knip's ignoreDependencies, so knip
+ * doesn't flag tools only Gauntlet runs. Only JSON configs are edited;
+ * anything else is left alone.
+ */
+export const ignoreInKnip = (root: string, packages: ReadonlyArray<string>) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const output = yield* Output
+    if (packages.length === 0) return
+    for (const name of KNIP_CONFIGS) {
+      const file = path.join(root, name)
+      const text = yield* fs.readFileString(file).pipe(Effect.option)
+      if (Option.isNone(text)) continue
+      const parsed = yield* Effect.try(() => JSON.parse(text.value) as Record<string, unknown>).pipe(Effect.option)
+      if (Option.isNone(parsed) || typeof parsed.value !== "object" || parsed.value === null) return
+      const existing = Array.isArray(parsed.value.ignoreDependencies) ? parsed.value.ignoreDependencies.filter((d): d is string => typeof d === "string") : []
+      const added = packages.filter((p) => !existing.includes(p))
+      if (added.length === 0) return
+      yield* fs.writeFileString(file, `${JSON.stringify({ ...parsed.value, ignoreDependencies: [...existing, ...added] }, null, 2)}\n`)
+      return yield* output.out(style.ok(`Told knip about them (${name}), so it doesn't call them unused.`))
+    }
+  }).pipe(Effect.ignore)
+
+/** Claude Code's per-person settings: never committed, so the project's own formatters and linters skip it. */
+const keepLocalSettingsOut = (root: string) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const file = path.join(root, ".gitignore")
+    const text = yield* fs.readFileString(file).pipe(Effect.option)
+    if (Option.isNone(text) || /^\/?\.claude\/settings\.local\.json\s*$/m.test(text.value) || /^\/?\.claude\/?\s*$/m.test(text.value)) return
+    yield* fs.writeFileString(file, `${text.value}${text.value.endsWith("\n") || text.value === "" ? "" : "\n"}.claude/settings.local.json\n`)
+  }).pipe(Effect.ignore)
 
 /**
  * Offers to install the tools the draft left out (`uv add --dev ...`), runs the
@@ -900,6 +939,9 @@ const offerInstall = (root: string, commands: ReadonlyArray<ReadonlyArray<string
         return false
       }
     }
+    // Tools Gauntlet runs aren't imported by the project's code, so a dependency
+    // checker would call them unused and fail the project's own checks.
+    yield* ignoreInKnip(root, commands.flatMap((c) => c.filter((a, i) => i > 0 && !a.startsWith("-") && !["add", "install", "--dev", "-d", "-D", "--group", "dev"].includes(a))).filter((p) => p !== "typescript"))
     return true
   })
 
@@ -942,6 +984,7 @@ const setup = Command.make("setup", {
       if (draft.setup.length > 0 && !listed) yield* output.out([style.warn("Checks still left out until their tools are set up:"), ...draft.setup.map(style.item)].join("\n"))
     }
     if (!(yield* connectClaude(root, false))) return
+    yield* keepLocalSettingsOut(root)
     yield* output.out([
       style.ok("Connected Claude Code."),
       "",

@@ -120,8 +120,9 @@ Gauntlet's checks fail on this project as it is, before any change of yours. Hel
 1. Run Gauntlet's \`check\` tool. Tell me, in plain words, what fails: which tests and why, lint findings, a broken build, a coverage floor.
 2. Fix them one at a time, starting with what's simplest. Fix the code, not the checks: never skip, delete or weaken a test, add a suppression or lower a threshold. If a test is wrong rather than the code, say so and ask me before changing it.
 3. Protected tests and test setup are locked, so an edit to one will be refused. When a fix needs one, don't work around it. Ask me first, in these words or close to them: "To get the first baseline passing I need to change these protected files: (list them, with why). I'll only do this once, for the first baseline, and you'll need to review these changes after setup. If that's OK, run \`gauntlet adopt\` in your terminal." Only edit them once I've opened the window (never \`.gauntlet/\` or protected configuration); it closes at my next commit.
-4. Run the \`check\` tool again after each fix, until it passes or only things you can't fix are left.
-5. Finish with a report: every file you changed and why, protected tests listed separately, and anything still failing with what it would take to fix. If the adoption window was opened, ask me to run \`gauntlet adopt --close\` to see Gauntlet's own record of the protected tests you edited, then to commit.
+4. If the project has its own checks (another Stop hook, a gate script, a dependency checker such as knip) that now fail because of something Gauntlet's setup added, such as new dev dependencies flagged as unused or files it wrote, fixing those is part of setup too. If you can't edit what they read, say exactly what to change and why.
+5. Run the \`check\` tool again after each fix, until it passes or only things you can't fix are left.
+6. Finish with a report: every file you changed and why, protected tests listed separately, and anything still failing with what it would take to fix. If the adoption window was opened, ask me to run \`gauntlet adopt --close\` to see Gauntlet's own record of the protected tests you edited, then to commit.
 `
 
 export const managedSettings = (ir: PolicyIR, runnerConfig: ReadonlyArray<string>) => `${JSON.stringify({
