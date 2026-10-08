@@ -325,6 +325,16 @@ const offerCodeowners = (root: string, ir: PolicyIR) =>
     if (yield* commitIfChanged(root, [file.path], "Add CODEOWNERS from the Gauntlet policy")) yield* output.out(style.ok(`Wrote and committed ${file.path}.`))
   })
 
+/** The last step of setup: Gauntlet's Claude Code hooks, now the policy and baseline are committed. */
+const switchOnHooks = (root: string) =>
+  Effect.gen(function*() {
+    const output = yield* Output
+    if (!(yield* connectClaude(root, false))) return
+    if (yield* commitIfChanged(root, [".claude/settings.json"], "Switch on Gauntlet's Claude Code hooks")) {
+      yield* output.out(style.ok("Switched on Gauntlet's Claude Code hooks: from now on Claude Code checks its work before it finishes."))
+    }
+  })
+
 /** What a first baseline means, and the order to go in when the project already fails. */
 export const firstRunExplained = (mode: "shadow" | "enforce", failing: boolean): string =>
   [
@@ -787,7 +797,24 @@ const connectGithub = Command.make("github", {
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Generate GitHub enforcement: workflow, CODEOWNERS and the PR check."))
 
 /** Writes Claude Code's hooks, deny rules, MCP server, instructions and /gauntlet-setup for the policy on disk. */
-const connectClaude = (root: string, dryRun: boolean) =>
+/**
+ * Removes Gauntlet's own hooks from a Claude Code settings file, keeping the
+ * project's. During setup they stay off: the policy isn't settled yet, and a
+ * Stop hook judging a half-set-up project only traps the agent in a loop.
+ */
+export const withoutGauntletHooks = (settings: string): string => {
+  const parsed = JSON.parse(settings) as { hooks?: Record<string, unknown[]> }
+  if (!parsed.hooks) return settings
+  const hooks: Record<string, unknown[]> = {}
+  for (const [event, entries] of Object.entries(parsed.hooks)) {
+    const kept = entries.filter((e) => !JSON.stringify(e).includes("gauntlet hook "))
+    if (kept.length > 0) hooks[event] = kept
+  }
+  const { hooks: _, ...rest } = parsed
+  return `${JSON.stringify(Object.keys(hooks).length > 0 ? { ...rest, hooks } : rest, null, 2)}\n`
+}
+
+const connectClaude = (root: string, dryRun: boolean, options: { readonly hooks?: boolean } = {}) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -804,7 +831,10 @@ const connectClaude = (root: string, dryRun: boolean) =>
     })
     if (result._tag === "Unreadable") return yield* fail(`${result.path} isn't a JSON object, so it wasn't changed. Fix it and run this again.`)
     // /gauntlet-fix rides along: `gauntlet apply` offers it when a project's checks already fail.
-    yield* writeGenerated(root, [...result.files, { path: ".claude/commands/gauntlet-fix.md", content: FIX_COMMAND, mode: "replace" }], dryRun)
+    const files = options.hooks === false
+      ? result.files.map((f) => (f.path === ".claude/settings.json" ? { ...f, content: withoutGauntletHooks(render(f, existingSettings)), mode: "replace" as const } : f))
+      : result.files
+    yield* writeGenerated(root, [...files, { path: ".claude/commands/gauntlet-fix.md", content: FIX_COMMAND, mode: "replace" }], dryRun)
     return true
   })
 
@@ -983,7 +1013,8 @@ const setup = Command.make("setup", {
       yield* output.out(style.ok(`Drafted ${DEFAULT_POLICY_FILE} for ${draft.packs.join(", ")} ${style.dim("(shadow mode: it reports, it never blocks)")}.`))
       if (draft.setup.length > 0 && !listed) yield* output.out([style.warn("Checks still left out until their tools are set up:"), ...draft.setup.map(style.item)].join("\n"))
     }
-    if (!(yield* connectClaude(root, false))) return
+    // Gauntlet's hooks switch on at the end of `gauntlet apply`, once the policy is settled.
+    if (!(yield* connectClaude(root, false, { hooks: false }))) return
     yield* keepLocalSettingsOut(root)
     yield* output.out([
       style.ok("Connected Claude Code."),
@@ -1055,12 +1086,14 @@ const apply = Command.make("apply", {
     const stale = Option.isSome(recordedBaseline) && Option.getOrUndefined(recordedHash) !== policyHash
     if (Option.isSome(recordedBaseline) && !stale) {
       yield* output.out(`${BASELINE_PATH} is already recorded for this policy.`)
+      yield* switchOnHooks(root)
     } else if (Option.isSome(recordedBaseline)) {
       // The policy changed since the baseline: record the new gates' existing findings, or every change would fail on them.
       yield* output.out("The policy changed since the baseline was recorded, so it's recorded again for the new gates.")
       const recorded = yield* runBaseline({ repo: root, update: true, allowLower: false, adoptNewGates: true, importDetekt: Option.none(), trunk: Option.none(), commitHint: false })
       if (!recorded) return
       if (yield* commitIfChanged(root, [BASELINE_PATH], "Update Gauntlet baseline for the new gates")) yield* output.out("Committed the baseline.")
+      yield* switchOnHooks(root)
       yield* output.out(`\n${style.ok(style.bold("Done."))} Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.`)
       const failing = persistentFailures(recorded.checks, recorded.ir)
       if (failing.length > 0) yield* offerFix(root, failing)
@@ -1068,7 +1101,11 @@ const apply = Command.make("apply", {
     } else {
       const recorded = yield* runBaseline({ repo: root, update: false, allowLower: false, importDetekt: Option.none(), trunk: Option.none(), commitHint: false })
       if (!recorded) return
-      if (yield* commitIfChanged(root, [BASELINE_PATH], "Record Gauntlet baseline")) yield* output.out("Committed the baseline.")
+      // Gauntlet's hooks switch on with the baseline: the last step of setup.
+      if (!(yield* connectClaude(root, false))) return
+      if (yield* commitIfChanged(root, [BASELINE_PATH, ".claude/settings.json"], "Record Gauntlet baseline")) {
+        yield* output.out("Committed the baseline, and switched on Gauntlet's Claude Code hooks.")
+      }
       const failing = persistentFailures(recorded.checks, recorded.ir)
       yield* output.out(firstRunExplained(recorded.ir.mode, failing.length > 0))
       if (failing.length > 0) yield* offerFix(root, failing)
