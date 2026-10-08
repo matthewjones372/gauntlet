@@ -20,6 +20,9 @@ const FILES: Record<string, string> = {
   "src/test/scala/svc/domain/MoneySpec.scala": "package svc.domain\n\nimport org.scalatest.funsuite.AnyFunSuite\n\nclass MoneySpec extends AnyFunSuite:\n  test(\"adds\") {\n    assert(Money.add(1, 2) == 3)\n  }\n",
 }
 
+// The thin client gets one command line; every call starts from the build as written.
+const commandsOf = (r: RunRequest) => r.args[1]!.split("; ").slice(2)
+
 type Handler = (commands: string[], dir: string, out: string) => { exitCode?: number; stdout?: string; stderr?: string }
 
 const gate = (handler: Handler, scope?: string[], added: Record<string, number[]> = {}, ir: object = { zones: [], arch: [] }) => {
@@ -44,25 +47,27 @@ const gate = (handler: Handler, scope?: string[], added: Record<string, number[]
   const layer = Layer.mergeAll(Layer.succeed(ProcessRunner, {
     run: (r) => Effect.sync(() => {
       calls.push(r)
-      const res = handler(r.args.slice(4), dir, out)
+      const res = handler(commandsOf(r), dir, out)
       return { exitCode: res.exitCode ?? 0, stdout: res.stdout ?? "", stderr: res.stderr ?? "" }
     }),
   }), BunServices.layer)
   const run = <A, E, R>(e: Effect.Effect<A, E, R>) => Effect.runPromise(e.pipe(Effect.provide(layer)) as Effect.Effect<A, E, never>)
-  return { ctx, dir, calls, run, commands: () => calls.at(-1)!.args.slice(4) }
+  return { ctx, dir, calls, run, commands: () => commandsOf(calls.at(-1)!) }
 }
 
 const GATE = { kind: "gate", name: "x", ratchet: false, scope: "all" } as Extract<Check, { kind: "gate" }>
 const JUNIT = `<testsuite name="svc.domain.MoneySpec" tests="1"><testcase classname="svc.domain.MoneySpec" name="adds"><failure message="2 did not equal 3"/></testcase></testsuite>`
 
 describe("Scala gates", () => {
-  test("every gate runs sbt in batch mode without colours or a server", async () => {
+  test("every gate talks to the check's sbt server, starting from the build as written", async () => {
     const g = gate(() => ({}))
     await g.run(build(GATE, g.ctx))
     const call = g.calls[0]!
-    expect([call.command, ...call.args]).toEqual(["sbt", "-batch", "-no-colors", "-Dsbt.server.forcestart=false", "-Dsbt.supershell=false", "Test/compile"])
+    expect([call.command, ...call.args]).toEqual(["sbt", "--client", "session clear-all; reload; Test/compile"])
     expect(call.cwd).toBe(g.dir)
     expect(call.env?.NO_COLOR).toBe("1")
+    // The server carries the check's marker, so it can be found and ended (ADR 0020).
+    expect(call.env?.SBT_OPTS).toContain(`-Dgauntlet.check=${dirname(g.ctx.outputDir)}`)
   })
 
   test("the suite points JUnit reports at the output directory and names the failing test", async () => {

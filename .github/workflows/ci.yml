@@ -38,13 +38,28 @@ jobs:
   # One job per language pack, in parallel: each installs only its own tools,
   # and a slow pack (sbt) no longer pushes the rest past the time limit.
   e2e:
-    name: e2e (${{ matrix.pack }})
+    name: e2e (${{ matrix.pack }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        pack: [jvm, typescript, python, go, rust, scala, clojure]
+        pack: [jvm, typescript, python, go, rust, clojure]
+        # The Scala suite is the slowest by far (about 25 full checks), so it
+        # runs as four jobs at once. Each shard records its own baseline.
+        include:
+          - pack: scala
+            shard: scenarios 1-5
+            filter: "ScalaTest service.*(baseline|[1-5][.] )"
+          - pack: scala
+            shard: scenarios 6-9
+            filter: "ScalaTest service.*[6-9][.] "
+          - pack: scala
+            shard: selftest
+            filter: "ScalaTest service.*selftest"
+          - pack: scala
+            shard: frameworks
+            filter: "^(?!.*ScalaTest service)"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,6 +72,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
+          # sbt's dependencies (Ivy, Coursier, the launcher), keyed by the build files.
+          cache: ${{ matrix.pack == 'scala' && 'sbt' || '' }}
       - if: matrix.pack == 'jvm'
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - if: matrix.pack == 'python'
@@ -82,6 +99,13 @@ jobs:
           tool: cargo-nextest,cargo-llvm-cov,cargo-mutants
       - if: matrix.pack == 'scala'
         uses: sbt/setup-sbt@6158cb0903b8ceeae04f830055f3155e1b6a5ad7 # v1.5.11
+      # Gauntlet's compiled sbt build definitions, kept between runs. Only these
+      # test jobs read it, and the key covers the fixtures' build files.
+      - if: matrix.pack == 'scala'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/gauntlet/sbt-build-definition
+          key: gauntlet-sbt-${{ runner.os }}-${{ hashFiles('examples/fixtures/scala-*/**/project/*.sbt', 'examples/fixtures/scala-*/**/project/build.properties', 'examples/fixtures/scala-*/project/*.sbt', 'examples/fixtures/scala-*/project/build.properties') }}
       - if: matrix.pack == 'clojure'
         uses: DeLaGuardo/setup-clojure@6d46099eae24853c33c0482f2bb54edf4f1a4c74 # 13.7.0
         with:
@@ -90,7 +114,7 @@ jobs:
           clj-kondo: "2026.08.04"
       - run: bun install --frozen-lockfile
       - name: End-to-end suite against real ${{ matrix.pack }} projects
-        run: bun test packs/${{ matrix.pack }}
+        run: bun test packs/${{ matrix.pack }} ${{ matrix.filter && format('-t "{0}"', matrix.filter) || '' }}
         env:
           CI: "true"
           GAUNTLET_E2E: "1"
