@@ -1,5 +1,6 @@
 import type { PolicyIR } from "@gauntlet/ir"
 import { Clock, Effect, FileSystem, Option, Path } from "effect"
+import { availableParallelism } from "node:os"
 import { BASELINE_PATH } from "./baseline-store.ts"
 import { runCheck } from "./check.ts"
 import { Git } from "./git.ts"
@@ -162,6 +163,18 @@ export interface SelftestRequest {
   readonly progress?: (line: string) => Effect.Effect<void>
 }
 
+/**
+ * How many fixtures run at once. Each is a full check, so a build tool each:
+ * three on machines with four or more cores (CI runners), two otherwise.
+ * GAUNTLET_SELFTEST_CONCURRENCY overrides it.
+ */
+export const selftestConcurrency = (cores = availableParallelism(), env = process.env.GAUNTLET_SELFTEST_CONCURRENCY): number => {
+  const asked = env === undefined ? Number.NaN : Number.parseInt(env, 10)
+  return Number.isInteger(asked) && asked >= 1 ? asked : cores >= 4 ? 3 : 2
+}
+
+const AT_A_TIME = ["one at a time", "two at a time", "three at a time"]
+
 /** A duration for people: 850ms, 12s, 3m 05s. */
 export const elapsed = (ms: number) =>
   ms < 1000 ? `${ms}ms` : ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60_000)}m ${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}s`
@@ -252,7 +265,7 @@ export const runSelftest = (request: SelftestRequest) =>
     const wanted = (name: string) => request.only === undefined || request.only.includes(name)
 
     // Built-in fixtures in a fixed order; a pack's version wins over a generic one of the same name.
-    // Each runs in its own worktree and output directory, so two run at once; results keep the order.
+    // Each runs in its own worktree and output directory, so several run at once; results keep the order.
     const builtIn = BUILT_IN_FIXTURES.flatMap((fixture) => {
       const t = [...tamperings].reverse().find((x) => x.fixture === fixture)
       return t && wanted(fixture) ? [{ fixture, t }] : []
@@ -261,7 +274,9 @@ export const runSelftest = (request: SelftestRequest) =>
     let done = 0
     const finished = (fixture: string, caught: boolean, tier: string, ms: number) =>
       say(`  ${caught ? "caught" : "MISSED"}  ${fixture} (${tier}, ${elapsed(ms)})  [${++done}/${total}]`)
-    if (total > 0) yield* say(`Running ${total} tamper fixture${total === 1 ? "" : "s"}, two at a time; each is a full check:`)
+    const concurrency = selftestConcurrency()
+    const together = Math.max(1, Math.min(total, concurrency))
+    if (total > 0) yield* say(`Running ${total} tamper fixture${total === 1 ? "" : "s"}, ${AT_A_TIME[together - 1] ?? `${together} at a time`}; each is a full check:`)
     const results: FixtureResult[] = [...yield* Effect.forEach(builtIn, ({ fixture, t }) =>
       Effect.gen(function*() {
         yield* say(`  running ${fixture}...`)
@@ -273,7 +288,7 @@ export const runSelftest = (request: SelftestRequest) =>
         const verdict = EXPECT[fixture](report, control)
         yield* finished(fixture, verdict.caught, report.decision.tier, run.ms)
         return { fixture, description: t.description, tier: report.decision.tier, caught: verdict.caught, why: verdict.caught ? `caught by ${verdict.why}` : `expected ${verdict.why}` } satisfies FixtureResult
-      }), { concurrency: 2 })]
+      }), { concurrency })]
     for (const file of projectFiles) {
       const name = file.slice(".gauntlet/selftest/".length).replace(/\.patch$/, "")
       if (!wanted(name)) continue
