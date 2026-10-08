@@ -1,0 +1,85 @@
+Regenerate .github/workflows/gauntlet.yml with `gauntlet connect github --from-source`
+so an owner who opened a pull request can approve it with
+`/gauntlet approve <commit>` (PR #36).
+
+diff --git a/.github/workflows/gauntlet.yml b/.github/workflows/gauntlet.yml
+--- a/.github/workflows/gauntlet.yml
++++ b/.github/workflows/gauntlet.yml
+@@ -13,11 +13,13 @@
+     types: [opened, synchronize, reopened, ready_for_review]
+   pull_request_review:
+     types: [submitted, dismissed]
++  issue_comment:
++    types: [created]
+ 
+ permissions: {}
+ 
+ concurrency:
+-  group: gauntlet-${{ github.event.pull_request.number }}-${{ github.event_name }}
++  group: gauntlet-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}
+   cancel-in-progress: true
+ 
+ jobs:
+@@ -68,7 +70,8 @@
+ 
+   status:
+     needs: [evidence]
+-    if: always()
++    # Runs again when an owner comments `/gauntlet approve <commit>` (an author can't approve their own pull request).
++    if: always() && (github.event_name != 'issue_comment' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/gauntlet approve')))
+     runs-on: ubuntu-latest
+     timeout-minutes: 30
+     permissions:
+@@ -80,8 +83,9 @@
+       GH_TOKEN: ${{ github.token }}
+       BASE: ${{ github.event.pull_request.base.sha }}
+       HEAD: ${{ github.event.pull_request.head.sha }}
+-      PR: ${{ github.event.pull_request.number }}
++      PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+     steps:
++      # On a comment the event names no commits: this checks out and builds the default branch, which is trusted too.
+       - name: Check out the base (trusted code only)
+         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+         with:
+@@ -102,13 +106,16 @@
+           bun build --compile packages/cli/src/main.ts --outfile "$RUNNER_TEMP/gauntlet"
+           cd ..
+           rm -rf .gauntlet-source
++      - name: Find the pull request's commits (a comment event doesn't carry them)
++        if: github.event_name == 'issue_comment'
++        run: gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json baseRefOid,headRefOid --jq '"BASE=\(.baseRefOid)\nHEAD=\(.headRefOid)"' >> "$GITHUB_ENV"
+       - name: Fetch the change's commits and Gauntlet's notes (nothing is run)
+         run: |
+           git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pr/head"
+           git fetch --no-tags origin "+refs/notes/gauntlet:refs/notes/gauntlet" "+refs/notes/gauntlet-overrides:refs/notes/gauntlet-overrides" || true
+       - name: Find the evidence for this commit
+         run: |
+-          if [ "${{ github.event_name }}" = "pull_request_review" ]; then
++          if [ "${{ github.event_name }}" != "pull_request_target" ]; then
+             run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "${{ github.workflow }}" --commit "$HEAD" --event pull_request_target --status completed --limit 1 --json databaseId --jq '.[0].databaseId')
+           else
+             run_id="${{ github.run_id }}"
+@@ -120,6 +127,7 @@
+           TEAMS_TOKEN: ${{ secrets.GAUNTLET_TEAMS_TOKEN }}
+         run: |
+           gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" --jq '.[] | {user: .user.login, state: .state, commitId: .commit_id}' | jq -s . > reviews.json
++          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --jq '.[] | {user: .user.login, body: .body}' | jq -s . > comments.json
+           echo '{}' > teams.json
+           # Team owners can only be checked with a token that may read org teams.
+           if [ -n "$TEAMS_TOKEN" ]; then
+@@ -132,7 +140,7 @@
+       - name: Decide
+         run: |
+           "$RUNNER_TEMP/gauntlet" github-status --repo . --policy-ref "$BASE" --head "$HEAD" \
+-            --evidence evidence/gauntlet-report.json --reviews reviews.json --teams teams.json --out gauntlet-out --record
++            --evidence evidence/gauntlet-report.json --reviews reviews.json --teams teams.json --comments comments.json --out gauntlet-out --record
+       - name: Post the report and the check
+         run: |
+           body=$(printf '<!-- gauntlet-report -->\n%s' "$(cat gauntlet-out/gauntlet-report.md)")
+@@ -148,5 +156,5 @@
+             -f "output[title]=$(jq -r .title gauntlet-out/status.json)" \
+             -f "output[summary]=$(jq -r .summary gauntlet-out/status.json)" > /dev/null
+       - name: Push Gauntlet's shadow history
+-        if: github.event_name != 'pull_request_review'
++        if: github.event_name == 'pull_request_target'
+         run: git push origin refs/notes/gauntlet || true
