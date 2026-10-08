@@ -37,6 +37,19 @@ const exec = (ctx: GateContext, argv: ReadonlyArray<string>, env: Readonly<Recor
 const requirementFiles = (files: ReadonlyArray<string>) =>
   files.filter((f) => /^requirements([-_.]?(dev|test|tests))?\.txt$/.test(f)).sort()
 
+/**
+ * The `uv sync` command for a project. A project that names its own groups
+ * (`[tool.uv] default-groups`) or declares groups that can't be installed
+ * together (`[tool.uv] conflicts`, such as cpu and gpu builds of one library)
+ * gets exactly uv's default selection; otherwise every group is installed, so
+ * test and lint tools in any group are there.
+ */
+export const uvSync = (pyproject: string | undefined): string[] => {
+  const section = /^\[tool\.uv\]\s*$([\s\S]*?)(?=^\[(?!\[)|(?![\s\S]))/m.exec(pyproject ?? "")?.[1] ?? ""
+  const chooses = /^\s*(default-groups|conflicts)\s*=/m.test(section)
+  return chooses ? ["uv", "sync", "--frozen"] : ["uv", "sync", "--frozen", "--all-groups"]
+}
+
 /** Installs dependencies with the lockfile, once per check; remembered next to the output directories. */
 export const ensureInstalled = (ctx: GateContext) =>
   Effect.gen(function*() {
@@ -45,9 +58,10 @@ export const ensureInstalled = (ctx: GateContext) =>
     const marker = path.join(path.dirname(ctx.outputDir), ".python-install")
     const previous = yield* fs.readFileString(marker).pipe(Effect.option)
     if (Option.isSome(previous)) return previous.value === "ok" ? Option.none<string>() : Option.some(previous.value)
+    const pyproject = Option.getOrUndefined(yield* fs.readFileString(path.join(ctx.dir, "pyproject.toml")).pipe(Effect.option))
     const steps: ReadonlyArray<ReadonlyArray<string>> = (() => {
       switch (manager(ctx.files)) {
-        case "uv": return [["uv", "sync", "--frozen", "--all-groups"]]
+        case "uv": return [uvSync(pyproject)]
         case "poetry": return [["poetry", "install", "--no-interaction", "--sync"]]
         case "pip": return [
           ["python3", "-m", "venv", ".venv"],
