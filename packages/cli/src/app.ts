@@ -1127,6 +1127,13 @@ const apply = Command.make("apply", {
     const from = Option.getOrElse(args.from, () => PROPOSAL_FILE)
     // Protected-file changes the agent prepared go first, so the baseline is recorded after them.
     if (!(yield* applyChanges(root, args.dryRun))) return
+    // Setup is finishing, so an adoption window left open closes here, with its record.
+    const window = yield* readAdoption(root)
+    if (Option.isSome(window) && !args.dryRun) {
+      yield* output.out(renderAdoptionReport(window.value, Option.isSome(yield* openAdoption(root))))
+      yield* endAdoption(root)
+      yield* output.out(style.ok("Closed the adoption window: protected tests are guarded again."))
+    }
     if (yield* fs.exists(path.resolve(root, from))) {
       if (!(yield* applyProposal(root, from, args.dryRun))) return
     } else if (Option.isSome(args.from)) {
