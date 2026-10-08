@@ -24,23 +24,23 @@ change, and found the bug the edit was hiding.*
 
 ## Get started
 
-**GitHub only, in five minutes.** In your repository, on its main branch:
+Three steps, in your project, on its main branch:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/matthewjones372/gauntlet/main/install.sh | sh
-gauntlet init
-gauntlet connect github --protect-only
-git add .gauntlet .github && git commit -m "Add Gauntlet" && git push
+gauntlet setup
 ```
 
-Require the `gauntlet` check in your branch's ruleset, then open a pull request
-that replaces an assertion with `assertTrue(true)` (or your language's
-equivalent). The check fails. Details are in
-[the five-minute path](#the-five-minute-path-github-only).
-
-**With Claude Code**, so the agent checks its own work before it finishes, run
-`gauntlet setup` instead, then `/gauntlet-setup` in Claude Code. See
+Then open Claude Code there, type `/gauntlet-setup`, answer its questions, and
+run the `gauntlet apply` it gives you. Claude Code now checks its own work
+before it says it's done. Gauntlet starts in **shadow mode**: it reports, and
+blocks nothing until you switch it on. Details are in
 [With Claude Code](#with-claude-code).
+
+**Just GitHub, no agent setup?** `gauntlet init` then
+`gauntlet connect github --protect-only`, commit, and require the `gauntlet`
+check. A pull request that replaces an assertion with `assertTrue(true)` fails
+it. See [GitHub only, in five minutes](#github-only-in-five-minutes).
 
 ## Contents
 
@@ -188,7 +188,39 @@ verification process itself stayed trustworthy for this change.
 
 ## Getting started in detail
 
-### The five-minute path (GitHub only)
+### With Claude Code
+
+1. **Install** (see [Installing by hand](#more) if you'd rather not pipe to `sh`):
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/matthewjones372/gauntlet/main/install.sh | sh
+   ```
+
+2. **Set up your project.** In its folder, on your main branch:
+
+   ```bash
+   gauntlet setup
+   ```
+
+   If a check's tool is missing (mypy, Ruff or mutmut in a uv or Poetry
+   project, for example), it says "I'll install these for you", shows the
+   command and asks first. Pass `--yes` to skip the question.
+
+3. **Agree the rules with Claude.** Open Claude Code in the same folder and type
+   `/gauntlet-setup`. It describes what your project already has, recommends a
+   policy and asks you about each decision. When you're done, run the command
+   it gives you:
+
+   ```bash
+   gauntlet apply
+   ```
+
+Claude Code now runs Gauntlet before it says a task is done, and its deny rules
+stop it editing protected files or the policy. Nothing is blocked until you say
+so: this path starts in shadow mode, which only reports. Add
+`gauntlet connect github` to check pull requests too.
+
+### GitHub only, in five minutes
 
 This uses `--protect-only` ([spec 0001](docs/specs/0001-protect-only.md)): the
 verification boundary and nothing else. The policy, protected tests and test
@@ -198,11 +230,7 @@ Gauntlet started counts. There are no zones, review levels, mutation testing or
 ratchets, and no baseline to record. The check passes or fails, even if the
 policy says `mode shadow`.
 
-1. **Install** (see [Installing by hand](#more) if you'd rather not pipe to `sh`):
-
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/matthewjones372/gauntlet/main/install.sh | sh
-   ```
+1. **Install**, as above.
 
 2. **Draft a policy and the workflow:**
 
@@ -232,34 +260,6 @@ policy says `mode shadow`.
 
    The original test ran, because protected tests are restored from the base,
    so the bug the edit was hiding is still reported.
-
-### With Claude Code
-
-1. **Install**, as above.
-
-2. **Set up your project.** In its folder, on your main branch:
-
-   ```bash
-   gauntlet setup
-   ```
-
-   If a check's tool is missing (mypy, Ruff or mutmut in a uv or Poetry
-   project, for example), it says "I'll install these for you", shows the
-   command and asks first. Pass `--yes` to skip the question.
-
-3. **Agree the rules with Claude.** Open Claude Code in the same folder and type
-   `/gauntlet-setup`. It describes what your project already has, recommends a
-   policy and asks you about each decision. When you're done, run the command
-   it gives you:
-
-   ```bash
-   gauntlet apply
-   ```
-
-Claude Code now runs Gauntlet before it says a task is done, and its deny rules
-stop it editing protected files or the policy. Nothing is blocked until you say
-so: this path starts in shadow mode, which only reports. Add
-`gauntlet connect github` to check pull requests too.
 
 ## The policy
 
