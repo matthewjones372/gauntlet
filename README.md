@@ -92,41 +92,30 @@ Gauntlet isn't trying to replace those tools. It runs most of them. Its job is
 narrower: stop the agent being evaluated from changing the machinery used to
 evaluate it.
 
-This isn't a made-up edge case. A 2026 survey of reward hacking in agentic LLM
-systems lists test modification among the ways agents game their environment.
-A study of 1.2 million commits found that agent commits touched test files
-more often than other commits (23% against 13%) and added mocks more often
-(36% against 26%). And on a benchmark of reward hacks in code, the best model
-spotted 63% of them when it had a benign run to compare against, and 45% when
-it didn't. None of this says agents are malicious. It says a verification
-signal the agent can reach is a weak one. [References](#research) are at the
-bottom.
+This isn't a made-up edge case. Research on coding agents has found them
+modifying tests, over-mocking and gaming their reward signals, all ways of
+producing a passing result that means less than it looks. None of it
+evaluates Gauntlet, but it's the problem Gauntlet is built for.
+[References](#research), and what each study found in
+[docs/research.md](docs/research.md).
 
 ## How it works
 
-- **The checks come from the base branch.** The policy, protected tests,
-  fixtures, test setup and each language's runner configuration are restored
-  from the base commit before anything runs. Editing them in the change has no
-  effect on the result, and the edit is flagged for review.
-- **Gauntlet produces its own evidence.** Checks run in a fresh worktree and
-  write to directories Gauntlet creates. It reads nothing else, so a planted
-  "all passed" report is ignored. Every check records its command, exit code,
-  report hash and how many tests ran. A check that can't show it ran is
-  missing evidence, never a pass, and a suite that runs zero tests fails.
-- **Weakening is detected directly.** Integrity checks look at the diff for
-  deleted, skipped and weakened tests, new suppressions, test-only branches in
-  main code, `exit` in tests and added retries, with detectors that understand
-  each language's test frameworks.
-- **Strength can't quietly drop.** A baseline records coverage, mutation score,
-  executed tests, assertions and lint findings. They ratchet: a change can't
-  make them worse.
-- **The decision is deterministic.** The same inputs give the same decision and
-  byte-identical evidence. No model is involved. Every rule that matches
-  nominates a review level, and the strictest one wins.
+- **The checks come from the base branch.** Protected tests, fixtures, test
+  setup and runner configuration are put back to their base versions before
+  anything runs. Editing them can't change the result. The edit is flagged.
+- **Gauntlet produces its own evidence.** Checks run in a fresh worktree, and
+  Gauntlet reads only what the processes it started wrote. A planted report is
+  ignored, and a check that can't prove it ran never counts as a pass.
+- **Weakening is detected.** Deleted, skipped and weakened tests, new
+  suppressions and similar edits are found in the diff.
+- **Strength can't quietly drop.** Coverage, mutation score and test counts
+  ratchet against a baseline.
+- **Decisions are deterministic.** Same inputs, same decision. No model
+  involved.
 
-On GitHub, the job that runs the pull request's code has a read-only token and
-no secrets, and a separate job that never runs that code makes the decision.
-A pull request can't weaken the policy or workflow it's judged by.
+On GitHub, the job that runs the pull request's code gets no secrets, and a
+separate job that never runs it makes the decision.
 
 ## Holdouts
 
@@ -139,21 +128,13 @@ A holdout is a behavioural check the agent never sees. Passing it means the
 code works on cases it wasn't shown. That's a different kind of evidence from
 a test sitting next to the code in the agent's own working copy.
 
-What works today ([ADR 0019](docs/adr/0019-holdout-paths.md)):
-
-- The policy names a holdout's files: `holdout "acceptance" paths "**/*_holdout_test.go" ci only`.
-- Those files are taken out of every checkout Gauntlet builds, and Claude
-  Code's file tools are denied access to them.
-- They run only in the GitHub evidence job, from the base commit. Locally they
-  show as "holdout pending".
-- If the visible tests pass and a holdout fails, the check fails as a
-  **holdout gap**, reported separately from ordinary test failures. The report
-  names the failing tests and nothing more.
-
-What doesn't, yet: holdouts live in the repository, so anyone with read access
-can see them, and an agent with a shell could still read them with a shell
-command. A holdout source outside the repository is planned. There's no test
-generator: you write the holdouts.
+Today a policy can name holdout files, which you write. Gauntlet leaves them
+out of every checkout it runs checks in, blocks Claude Code's file tools from
+them, and runs them only in CI, from the base branch. A change that passes the
+visible tests but fails a holdout fails as a **holdout gap**. The files still
+live in the repository, so they're hidden from the agent, not secret; a source
+outside the repository is planned. Details are in
+[the policy docs](docs/policy.md#holdouts).
 
 ## Try it
 

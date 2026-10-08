@@ -76,7 +76,9 @@ run only in the GitHub evidence job (`check --holdouts`, which
 "holdout pending". A change that passes the visible tests but fails a holdout
 fails the check as a **holdout gap**, counted on its own line in the summary,
 and the report names only the failing tests. Holdouts live in the repository,
-so they're hidden from the agent, not secret from people with read access. See
+so they're hidden from the agent, not secret from people with read access.
+Only Claude Code's file tools are denied: an agent running a shell command
+could still read them. There's no generator; you write the holdouts. See
 [ADR 0019](adr/0019-holdout-paths.md).
 
 `gauntlet explain` describes a policy in plain English and `gauntlet validate`
