@@ -549,7 +549,7 @@ const applyChanges = (root: string, dryRun: boolean) =>
     if (yield* commitIfChanged(root, files, "Changes to protected files for Gauntlet's first baseline")) {
       yield* output.out(style.ok(`Applied and committed the changes to ${files.join(", ")}.`))
     }
-    return true
+    return "applied" as const
   })
 
 const applyProposal = (root: string, from: string, dryRun: boolean) =>
@@ -1126,7 +1126,8 @@ const apply = Command.make("apply", {
     const root = yield* absolute(args.repo)
     const from = Option.getOrElse(args.from, () => PROPOSAL_FILE)
     // Protected-file changes the agent prepared go first, so the baseline is recorded after them.
-    if (!(yield* applyChanges(root, args.dryRun))) return
+    const changes = yield* applyChanges(root, args.dryRun)
+    if (!changes) return
     // Setup is finishing, so an adoption window left open closes here, with its record.
     const window = yield* readAdoption(root)
     if (Option.isSome(window) && !args.dryRun) {
@@ -1150,13 +1151,16 @@ const apply = Command.make("apply", {
     const policyHash = (yield* (yield* PolicySource).load({ repo: root, baseRef: "HEAD" })).compiled.hash
     // A baseline records the policy's hash; another hash means the policy changed since.
     const recordedHash = Option.isSome(recordedBaseline) ? (yield* Effect.option(decodeBaseline(recordedBaseline.value))).pipe(Option.map((b) => b.irHash)) : Option.none<string>()
-    const stale = Option.isSome(recordedBaseline) && Option.getOrUndefined(recordedHash) !== policyHash
+    // Protected-file changes can set up a gate's tool (an sbt plugin, a linter config), so its existing findings are recorded too.
+    const stale = Option.isSome(recordedBaseline) && (Option.getOrUndefined(recordedHash) !== policyHash || changes === "applied")
     if (Option.isSome(recordedBaseline) && !stale) {
       yield* output.out(`${BASELINE_PATH} is already recorded for this policy.`)
       yield* switchOnHooks(root)
     } else if (Option.isSome(recordedBaseline)) {
       // The policy changed since the baseline: record the new gates' existing findings, or every change would fail on them.
-      yield* output.out("The policy changed since the baseline was recorded, so it's recorded again for the new gates.")
+      yield* output.out(changes === "applied"
+        ? "The changes can set up tools that weren't there, so the baseline is recorded again for the gates they let run."
+        : "The policy changed since the baseline was recorded, so it's recorded again for the new gates.")
       const recorded = yield* runBaseline({ repo: root, update: true, allowLower: false, adoptNewGates: true, importDetekt: Option.none(), trunk: Option.none(), commitHint: false })
       if (!recorded) return
       if (yield* commitIfChanged(root, [BASELINE_PATH], "Update Gauntlet baseline for the new gates")) yield* output.out("Committed the baseline.")
