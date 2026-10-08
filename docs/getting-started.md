@@ -75,6 +75,40 @@ policy says `mode shadow`.
    The original test ran, because protected tests are restored from the base,
    so the bug the edit was hiding is still reported.
 
+## A new project
+
+**Kotlin:** one command creates a Kotlin service on Gradle with a functional
+core, property tests, detekt, Kover and Pitest, and a strict policy already in
+enforce mode:
+
+```bash
+gauntlet new kotlin-service my-service --owner @your-github-name
+```
+
+Then, as it tells you:
+
+```bash
+cd my-service && ./gradlew test
+git add -A && git commit -m "New service"
+gauntlet baseline && git add .gauntlet && git commit -m "Gauntlet baseline"
+gauntlet connect claude-code
+```
+
+Add `gauntlet connect github` to check pull requests too.
+
+**Any other language:** create the project the way you normally would (for
+example `uv init`, `cargo new`, `npm create vite@latest` or `go mod init`), add
+at least one test, and commit it. Then:
+
+```bash
+gauntlet setup
+```
+
+`setup` drafts a policy from what it finds and offers to install the missing
+tools (a type checker, linter, coverage or mutation tool) as dev dependencies,
+then `/gauntlet-setup` in Claude Code goes through the rest with you. A new
+project has no old code to grandfather, so it's a good time to choose
+`mode enforce` and strict floors.
 ## When checks already fail
 
 A project adopting Gauntlet often has failing tests or findings already. After

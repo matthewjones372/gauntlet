@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Option, Ref } from "effect"
 import { createInterface } from "node:readline/promises"
+import { GateProgress, type GateProgressShape } from "@gauntlet/core"
 
 /** Where commands print. Tests capture it; the binary writes to stdout and stderr. */
 export class Output extends Context.Service<Output, {
@@ -51,4 +52,37 @@ export const Ask = Context.Reference<{ readonly question: (text: string) => Effe
 export const answers = (...replies: ReadonlyArray<string>) => {
   const queue = [...replies]
   return Layer.succeed(Ask, { question: () => Effect.sync(() => Option.fromNullishOr(queue.shift())) })
+}
+
+/** A duration for people: 850ms, 12s, 3m 05s. */
+const took = (ms: number) =>
+  ms < 1000 ? `${ms}ms` : ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60_000)}m ${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}s`
+
+/**
+ * Gate progress for a terminal: "  mutation... 42s" ticking while a gate runs,
+ * then "  mutation: passed (1m 05s)". Nothing when stderr isn't a terminal.
+ */
+export const terminalGateProgress = (stream: NodeJS.WriteStream = process.stderr): GateProgressShape | undefined => {
+  if (stream.isTTY !== true) return undefined
+  let timer: ReturnType<typeof setInterval> | undefined
+  return {
+    start: (check) =>
+      Effect.sync(() => {
+        const started = Date.now()
+        stream.write(`  ${check}...`)
+        timer = setInterval(() => stream.write(`\r\x1b[K  ${check}... ${took(Date.now() - started)}`), 1000)
+      }),
+    end: (check, status, ms) =>
+      Effect.sync(() => {
+        if (timer !== undefined) clearInterval(timer)
+        timer = undefined
+        stream.write(`\r\x1b[K  ${check}: ${status} (${took(ms)})\n`)
+      }),
+  }
+}
+
+/** Runs a command a person is watching with gate progress shown, when there's a terminal to show it in. */
+export const withGateProgress = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
+  const shown = terminalGateProgress()
+  return shown === undefined ? effect : effect.pipe(Effect.provideService(GateProgress, shown))
 }

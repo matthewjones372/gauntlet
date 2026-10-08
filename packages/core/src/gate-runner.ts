@@ -4,6 +4,7 @@ import { type Baseline, compareMetrics, compareWithBaseline, type Metric, type M
 import { Clock, Effect, type FileSystem, Option, type Path } from "effect"
 import type { DiffFacts } from "./diff-facts.ts"
 import { fingerprintRuns } from "./fingerprints.ts"
+import { GateProgress } from "./gate-progress.ts"
 import type { GateContext, GateRun, SuiteImpl, TestSubset } from "./gate.ts"
 import type { TestRecord } from "./integrity.ts"
 import type { Pack } from "./pack-registry.ts"
@@ -101,6 +102,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       return undefined
     }
     let stoppedBy: string | undefined
+    const progress = yield* GateProgress
     // The directory every check's output directory sits in, once one was made.
     let outputsRoot: string | undefined
 
@@ -117,13 +119,16 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         }
         if (check.kind === "holdout" && input.holdouts) {
           const started = yield* Clock.currentTimeMillis
+          yield* progress.start(base.check)
           const outcome = yield* runHoldout(check.name, dirName(t, i, check))
           if (outcome) {
             durationsMs[base.check] = (yield* Clock.currentTimeMillis) - started
+            yield* progress.end(base.check, outcome.status, durationsMs[base.check]!)
             record(outcome)
             if (outcome.status === "failed") tierFailed = true
             continue
           }
+          yield* progress.end(base.check, "not-executed", (yield* Clock.currentTimeMillis) - started)
         }
         const notInV1 = NOT_IN_V1[check.kind]
         if (notInV1) {
@@ -132,8 +137,10 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         }
 
         const started = yield* Clock.currentTimeMillis
+        yield* progress.start(base.check)
         const outcome = yield* runOne(check, dirName(t, i, check))
         durationsMs[base.check] = (yield* Clock.currentTimeMillis) - started
+        yield* progress.end(base.check, outcome.status, durationsMs[base.check]!)
         record(outcome)
         if (outcome.status === "failed") tierFailed = true
       }

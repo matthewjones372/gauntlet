@@ -17,7 +17,7 @@ import { agentFromEnv } from "./agent.ts"
 import { describeChanges } from "./apply.ts"
 import { exportCorpus } from "./corpus-export.ts"
 import { AuthorRuntime, type AuthorRuntimeShape, renderDropped } from "./author.ts"
-import { Ask, ExitStatus, exitWith, Output, Stdin } from "./output.ts"
+import { Ask, ExitStatus, exitWith, Output, Stdin, withGateProgress } from "./output.ts"
 import { GAUNTLET_VERSION } from "./version.ts"
 
 // The CLI. Handlers stay thin: parse flags, call a core program, print, set
@@ -126,7 +126,7 @@ const check = Command.make("check", {
     yield* output.out(json ? renderJson(result.report) : renderMarkdown(result.report))
     yield* output.err(`Report written to ${outDir}`)
     yield* exitWith(result.exitCode)
-  }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Run the policy's gates and integrity checks and decide the review tier."))
+  }).pipe(withGateProgress, Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Run the policy's gates and integrity checks and decide the review tier."))
 
 // ---------- explain ----------
 
@@ -286,7 +286,7 @@ const baseline = Command.make("baseline", {
   allowLower: Flag.Boolean("allow-lower").pipe(Flag.withDefault(false), Flag.withDescription("accept a lower baseline; the commit changes .gauntlet/ and needs an owner")),
   importDetekt: Flag.optional(Flag.String("import-detekt").pipe(Flag.withDescription("grandfather the findings in a detekt baseline.xml"))),
   trunk: Flag.optional(Flag.String("trunk").pipe(Flag.withDescription("the trunk ref; HEAD must be its tip (default: origin/HEAD, then main or master)"))),
-}, (args) => runBaseline(args).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Record or raise the baseline on trunk."))
+}, (args) => runBaseline(args).pipe(withGateProgress, Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Record or raise the baseline on trunk."))
 
 // ---------- corpus ----------
 
@@ -892,7 +892,7 @@ const apply = Command.make("apply", {
       if (yield* commitIfChanged(root, [BASELINE_PATH], "Record Gauntlet baseline")) yield* output.out("Committed the baseline.")
     }
     yield* output.out("\nDone. Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.")
-  }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Apply the policy, commit it and record the baseline: the end of step 3."))
+  }).pipe(withGateProgress, Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Apply the policy, commit it and record the baseline: the end of step 3."))
 
 const connect = Command.make("connect").pipe(Command.withDescription("Connect Gauntlet to GitHub or a coding agent."), Command.withSubcommands([connectGithub, connectClaudeCode]))
 

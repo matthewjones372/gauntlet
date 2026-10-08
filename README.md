@@ -161,6 +161,12 @@ Commit `.gauntlet` and `.github`, require the `gauntlet` check in your branch
 ruleset, and open a pull request that replaces an assertion with
 `assertTrue(true)`. It fails.
 
+Starting a new project? `gauntlet new kotlin-service my-service --owner @you`
+creates a Kotlin service with a strict policy already in enforce mode
+([next steps](docs/getting-started.md#a-new-project)). For any
+other language, create the project with your usual tool, commit it, then run
+`gauntlet setup`; it offers to install the tools it needs.
+
 Kotlin and Java (Gradle), TypeScript and JavaScript, Python, Go, Rust, Scala
 and Clojure are supported. On Windows, use WSL 2. Step by step:
 [Getting started](docs/getting-started.md).
