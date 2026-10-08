@@ -127,7 +127,11 @@ export const lint: GateImpl = (_check, ctx) =>
         results: run.results.map((x) => ({
           ...x,
           ...(x.locations ? { locations: x.locations.map((l) => ({ ...l, physicalLocation: { ...l.physicalLocation, ...(l.physicalLocation?.artifactLocation ? { artifactLocation: { uri: relativeUri(l.physicalLocation.artifactLocation.uri, ctx.dir) } } : {}) } })) } : {}),
-        })).filter((x) => isTsSource(x.locations?.[0]?.physicalLocation?.artifactLocation?.uri ?? "")),
+        }))
+          .filter((x) => isTsSource(x.locations?.[0]?.physicalLocation?.artifactLocation?.uri ?? ""))
+          // Biome's infos ("note") are suggestions it never fails on itself, and some
+          // (useLiteralKeys) contradict TypeScript settings; findings are warnings and errors.
+          .filter((x) => x.level !== "note" && x.level !== "none"),
       })))
     } else if (chain.deps.has("eslint")) {
       r = yield* tool(ctx, "eslint", [".", "--format", "json", "--output-file", `${ctx.outputDir}/eslint.json`])
