@@ -63,7 +63,10 @@ const StrykerReport = Schema.Struct({
     mutants: Schema.Array(Schema.Struct({
       status: Schema.String,
       mutatorName: Schema.optionalKey(Schema.String),
-      location: Schema.Struct({ start: Schema.Struct({ line: Schema.Number }) }),
+      location: Schema.Struct({
+        start: Schema.Struct({ line: Schema.Number, column: Schema.optionalKey(Schema.Number) }),
+        end: Schema.optionalKey(Schema.Struct({ line: Schema.Number })),
+      }),
     })),
   })),
 })
@@ -73,6 +76,10 @@ export interface Mutant {
   readonly line: number
   readonly status: string
   readonly mutator: string
+  /** Where the mutant starts on its line, telling apart mutants on the same line. */
+  readonly column?: number
+  /** The line the mutant ends on, when it spans several. */
+  readonly endLine?: number
 }
 
 /** Statuses that count towards the score: detected over all that ran. */
@@ -83,7 +90,14 @@ export const UNDETECTED = new Set(["Survived", "NoCoverage"])
 export const parseStryker = (json: string, repoRoot: string): Option.Option<Mutant[]> =>
   Option.map(Schema.decodeUnknownOption(Schema.fromJsonString(StrykerReport))(json), (r) =>
     Object.entries(r.files).flatMap(([file, f]) =>
-      f.mutants.map((m) => ({ path: relativeUri(file, repoRoot), line: m.location.start.line, status: m.status, mutator: m.mutatorName ?? "mutant" }))
+      f.mutants.map((m) => ({
+        path: relativeUri(file, repoRoot),
+        line: m.location.start.line,
+        status: m.status,
+        mutator: m.mutatorName ?? "mutant",
+        ...(m.location.start.column !== undefined ? { column: m.location.start.column } : {}),
+        ...(m.location.end ? { endLine: m.location.end.line } : {}),
+      }))
     ))
 
 const EslintResults = Schema.Array(Schema.Struct({

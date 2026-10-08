@@ -2,8 +2,9 @@ import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gau
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, decodeLog, type Log, relativeUri, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
+import { availableParallelism } from "node:os"
 import { Effect, FileSystem, Option, Path } from "effect"
-import { convertEslintJson, convertJestJson, DETECTED, parseLcov, parseStryker, UNDETECTED } from "./reports.ts"
+import { convertEslintJson, convertJestJson, DETECTED, type Mutant, parseLcov, parseStryker, UNDETECTED } from "./reports.ts"
 import { runRules } from "./rules.ts"
 import { line, ofType, parseTs } from "./syntax.ts"
 import { bun, ensureInstalled, isMainSource, isTsSource, tool, type ToolRun, type Toolchain, toolchain } from "./toolchain.ts"
@@ -233,12 +234,56 @@ export const strykerDefaults = (chain: Toolchain, files: ReadonlyArray<string>):
   }
 }
 
-export const mutation: GateImpl = (_check, ctx) =>
+/** Consecutive line numbers as ranges, for Stryker's \`file:start-end\` mutate entries. */
+export const lineRanges = (lines: ReadonlyArray<number>): Array<readonly [number, number]> => {
+  const sorted = [...new Set(lines)].sort((a, b) => a - b)
+  const ranges: Array<[number, number]> = []
+  for (const n of sorted) {
+    const last = ranges.at(-1)
+    if (last && n === last[1] + 1) last[1] = n
+    else ranges.push([n, n])
+  }
+  return ranges
+}
+
+/** The test files \`bun test\` runs: \`*.test.*\`, \`*_test.*\`, \`*.spec.*\` and \`*_spec.*\`. */
+const BUN_TEST_FILE = /[._](test|spec)\.[cm]?[jt]sx?$/
+const shellQuote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`
+
+/**
+ * The test files that load any of \`targets\`, found by running each test file
+ * on its own with coverage. Bun has no Stryker plugin, so without this every
+ * mutant runs the whole suite; a test that never loads a file can't kill a
+ * mutant in it. (Bun's line counts aren't exact enough to go by line.) None
+ * when no test file loads them (code reached only through a subprocess, say):
+ * then the whole suite runs, as before.
+ */
+const relatedTests = (ctx: GateContext, targets: ReadonlyArray<string>) =>
+  Effect.gen(function*() {
+    const tests = ctx.files.filter((f) => isTsSource(f) && BUN_TEST_FILE.test(f))
+    if (tests.length < 2) return Option.none<ReadonlyArray<string>>()
+    yield* Effect.forEach(tests, (t, i) =>
+      bun(ctx, ["test", `./${t}`, "--coverage", "--coverage-reporter=lcov", `--coverage-dir=${ctx.outputDir}/related/${i}`]), { concurrency: Math.max(1, availableParallelism() - 1), discard: true })
+    const lcovs = yield* reports(ctx, (p) => p.startsWith("related/") && p.endsWith("lcov.info"))
+    const wanted = new Set(targets)
+    const related = lcovs.flatMap((l) => {
+      const test = tests[Number(l.path.split("/")[1])]
+      return test && parseLcov(l.content, ctx.dir).some((f) => wanted.has(f.path)) ? [test] : []
+    })
+    return related.length > 0 ? Option.some([...new Set(related)].sort()) : Option.none<ReadonlyArray<string>>()
+  })
+
+export const mutation: GateImpl = (check, ctx) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const inScope = ctx.scope?.filter(isMainSource)
     if (inScope !== undefined && inScope.length === 0) return { command: [], exitCode: 0, runs: [], nothingInScope: "no main source files in scope to mutate" }
+    // On changed code only the added lines are mutated: a one-line fix in a big file judges that line, not the file.
+    const changedLines = inScope !== undefined && check.scope === "changed"
+      ? inScope.flatMap((f) => lineRanges((ctx.facts.addedLines.get(f) ?? []).map((l) => l.line)).map(([a, b]) => `${f}:${a}-${b}`))
+      : undefined
+    if (changedLines !== undefined && changedLines.length === 0) return { command: [], exitCode: 0, runs: [], nothingInScope: "no changed lines to mutate" }
     const { chain, blocked } = yield* prepared(ctx, "stryker")
     if (blocked) return blocked
     if (!chain.deps.has("@stryker-mutator/core")) return failed(["stryker"], "StrykerJS isn't installed: add @stryker-mutator/core and its test runner plugin")
@@ -246,8 +291,8 @@ export const mutation: GateImpl = (_check, ctx) =>
     // A config next to the output directories that extends the project's (or
     // Gauntlet's defaults, when it has none), so Gauntlet decides the files, the
     // report location and that no cache is used.
-    const generated = path.join(path.dirname(ctx.outputDir), "gauntlet.stryker.config.mjs")
     let importBase: string
+    let commandRunner = false
     if (config) {
       const project = path.join(ctx.dir, config)
       importBase = config.endsWith("json") || config === ".strykerrc"
@@ -257,21 +302,44 @@ export const mutation: GateImpl = (_check, ctx) =>
       const defaults = strykerDefaults(chain, ctx.files)
       if (typeof defaults === "string") return failed(["stryker"], defaults)
       importBase = `const base = ${JSON.stringify(defaults)}`
+      commandRunner = defaults.testRunner === "command"
     }
-    const overrides = {
-      ...(inScope ? { mutate: inScope } : {}),
-      reporters: ["json"],
-      jsonReporter: { fileName: `${ctx.outputDir}/mutation/mutation.json` },
-      incremental: false,
-      cleanTempDir: "always",
-    }
-    yield* fs.writeFileString(generated, `${importBase}\nexport default { ...base, ...${JSON.stringify(overrides)} }\n`).pipe(Effect.orElseSucceed(() => undefined))
-    const r = yield* tool(ctx, "stryker", ["run", generated])
+    const stryker = (name: string, mutate: ReadonlyArray<string> | undefined, tests: ReadonlyArray<string> | undefined) =>
+      Effect.gen(function*() {
+        const generated = path.join(path.dirname(ctx.outputDir), `gauntlet.stryker.${name}.config.mjs`)
+        const overrides = {
+          ...(mutate ? { mutate } : {}),
+          // bun test stops at the first failing test: a mutant is killed as soon as one test catches it.
+          ...(commandRunner ? { commandRunner: { command: ["bun test --bail", ...(tests ?? []).map((t) => shellQuote(`./${t}`))].join(" ") } } : {}),
+          reporters: ["json"],
+          jsonReporter: { fileName: `${ctx.outputDir}/mutation/${name}.json` },
+          incremental: false,
+          cleanTempDir: "always",
+        }
+        yield* fs.writeFileString(generated, `${importBase}\nexport default { ...base, ...${JSON.stringify(overrides)} }\n`).pipe(Effect.orElseSucceed(() => undefined))
+        return yield* tool(ctx, "stryker", ["run", generated])
+      })
+    const mutate = changedLines ?? inScope
+    const subset = commandRunner && inScope !== undefined ? yield* relatedTests(ctx, inScope) : Option.none<ReadonlyArray<string>>()
+    const r = yield* stryker("mutation", mutate, Option.getOrUndefined(subset))
     if (r.error) return base(r)
-    const report = (yield* reports(ctx, (p) => p === "mutation/mutation.json"))[0]
-    const mutants = report ? parseStryker(report.content, ctx.dir) : Option.none()
-    if (Option.isNone(mutants)) return base(r)
-    const counted = mutants.value.filter((m) => (DETECTED.has(m.status) || UNDETECTED.has(m.status)) && (inScope === undefined || inScope.includes(m.path)))
+    const read = (name: string) => reports(ctx, (p) => p === `mutation/${name}.json`).pipe(Effect.map((f) => f[0] ? parseStryker(f[0].content, ctx.dir) : Option.none()))
+    const first = yield* read("mutation")
+    if (Option.isNone(first)) return base(r)
+    let mutants = first.value
+    // A mutant the selected tests didn't kill runs again against the whole suite, for code a test
+    // reaches only through a subprocess, which coverage can't see. When the whole suite can't run
+    // under Stryker, the selected tests' verdict stands: no test that loads the file killed it.
+    const key = (m: Mutant) => `${m.path}:${m.line}:${m.column ?? 0}:${m.mutator}`
+    const survived = mutants.filter((m) => UNDETECTED.has(m.status))
+    if (Option.isSome(subset) && survived.length > 0) {
+      const again = yield* stryker("confirm", [...new Set(survived.map((m) => `${m.path}:${m.line}-${m.endLine ?? m.line}`))], undefined)
+      const confirmed = again.error ? Option.none() : yield* read("confirm")
+      // Only survivors the whole suite ran again take its verdict; any it didn't keep theirs.
+      const verdict = new Map(Option.getOrElse(confirmed, () => []).map((m) => [key(m), m.status]))
+      mutants = mutants.map((m) => UNDETECTED.has(m.status) && verdict.has(key(m)) ? { ...m, status: verdict.get(key(m))! } : m)
+    }
+    const counted = mutants.filter((m) => (DETECTED.has(m.status) || UNDETECTED.has(m.status)) && (inScope === undefined || inScope.includes(m.path)))
     if (counted.length === 0) return { ...base(r), nothingInScope: "Stryker generated no mutants for the code in scope" }
     const pct = (ms: typeof counted) => Math.round((ms.filter((m) => DETECTED.has(m.status)).length / ms.length) * 10000) / 100
     const perFile: Record<string, number> = {}
