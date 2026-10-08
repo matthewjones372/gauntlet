@@ -842,7 +842,8 @@ const adopt = Command.make("adopt", {
     }
     if (Option.isSome(open)) return yield* output.out(`The adoption window is already open (since ${open.value.openedAt}). It closes at your next commit, or with \`gauntlet adopt --close\`.`)
     yield* output.out([
-      "This lets your coding agent edit protected tests, once, so a project adopting Gauntlet can fix tests that already fail.",
+      "This lets your coding agent edit protected tests once, for the first baseline, so a project adopting Gauntlet can fix tests that already fail.",
+      "Review every change it makes after setup: `gauntlet adopt --close` lists them.",
       "",
       "  - Only protected tests: .gauntlet/ and protected configuration stay locked.",
       "  - Integrity checks still run, so weakening a test is still caught.",
