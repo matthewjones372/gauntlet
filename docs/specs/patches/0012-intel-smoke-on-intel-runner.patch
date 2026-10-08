@@ -1,0 +1,48 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 51502b9..aa789d9 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -156,7 +156,8 @@ jobs:
+         include:
+           - { target: linux-x64, os: ubuntu-latest }
+           - { target: darwin-arm64, os: macos-latest }
+-          - { target: darwin-x64, os: macos-latest, rosetta: true }
++          # GitHub's Intel macOS runner (until August 2027), not Rosetta on Apple Silicon.
++          - { target: darwin-x64, os: macos-15-intel }
+     runs-on: ${{ matrix.os }}
+     timeout-minutes: 15
+     steps:
+@@ -170,9 +171,6 @@ jobs:
+         with:
+           name: binaries
+           path: dist/
+-      - name: Install Rosetta for the x64 binary
+-        if: matrix.rosetta
+-        run: softwareupdate --install-rosetta --agree-to-license
+       - name: Check the downloaded binaries against their checksums
+         run: cd dist && shasum -a 256 -c checksums.txt
+       - run: chmod +x dist/gauntlet-${{ matrix.target }}
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 74eb6c8..bdb9c54 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -46,7 +46,8 @@ jobs:
+         include:
+           - { target: linux-x64, os: ubuntu-latest }
+           - { target: darwin-arm64, os: macos-latest }
+-          - { target: darwin-x64, os: macos-latest, rosetta: true }
++          # GitHub's Intel macOS runner (until August 2027), not Rosetta on Apple Silicon.
++          - { target: darwin-x64, os: macos-15-intel }
+     runs-on: ${{ matrix.os }}
+     timeout-minutes: 15
+     steps:
+@@ -60,9 +61,6 @@ jobs:
+         with:
+           name: binaries
+           path: dist/
+-      - name: Install Rosetta for the x64 binary
+-        if: matrix.rosetta
+-        run: softwareupdate --install-rosetta --agree-to-license
+       - run: cd dist && shasum -a 256 -c checksums.txt
+       - run: chmod +x dist/gauntlet-${{ matrix.target }}
+       - run: bun scripts/smoke.ts dist/gauntlet-${{ matrix.target }}
