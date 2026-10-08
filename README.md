@@ -188,7 +188,7 @@ was writing it more than once.
 
 ## Status
 
-Release candidate (v0.1.0-rc.4). Claude Code is the only agent integration so
+Release candidate (v0.1.0-rc.5). Claude Code is the only agent integration so
 far; Codex, Cursor, Copilot and Gemini are planned. Performance budgets, .NET,
 Ruby, PHP, Maven and native Windows aren't done yet. The roadmap is
 [PLAN.md](PLAN.md).
