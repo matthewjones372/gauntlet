@@ -1,0 +1,8 @@
+flowchart TD
+    P["Policy read from the base branch"] --> R["Protected tests and runner config restored from the base"]
+    R --> F["Checks run in a fresh worktree, writing to fresh evidence directories"]
+    F --> O["Only output from processes Gauntlet started is read"]
+    O --> I["Integrity checks compare the change with the base for weakened verification"]
+    I --> B["Tests, coverage, mutation and architecture compared with the baseline"]
+    B --> N["Every matching rule nominates a review level; the strictest wins"]
+    N --> GH["On GitHub, the required approval is checked for that exact commit"]

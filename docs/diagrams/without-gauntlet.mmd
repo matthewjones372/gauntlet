@@ -1,0 +1,7 @@
+flowchart LR
+    I["Change the implementation"] --> X(("+"))
+    W["Weaken an assertion"] --> X
+    S["Disable a test"] --> X
+    C["Change the runner config"] --> X
+    R["Leave a passing report file"] --> X
+    X --> OK["Green CI"]

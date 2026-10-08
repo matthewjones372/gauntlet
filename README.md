@@ -103,25 +103,10 @@ Every check in Gauntlet is designed against one test:
 
 Gauntlet sits between a change and the decision to trust it.
 
-```mermaid
-flowchart TD
-    A["AI agent (or a person)"] --> B["Code + tests + configuration"]
-    B --> G
-    subgraph G["Gauntlet"]
-        direction TB
-        G1["Protects the verification:<br/>policy, tests and runner config come from the base"]
-        G2["Runs the checks itself,<br/>in fresh evidence directories"]
-        G3["Detects tampering:<br/>deleted, skipped or weakened tests, suppressions"]
-        G4["Compares verification strength<br/>with the baseline"]
-        G5["Produces deterministic evidence"]
-        G1 --> G2 --> G3 --> G4 --> G5
-    end
-    G --> D{"Review decision"}
-    D --> T1["auto"]
-    D --> T2["skim"]
-    D --> T3["review"]
-    D --> T4["owner"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/what-gauntlet-does.dark.svg">
+  <img alt="An agent's change goes through Gauntlet, which protects the verification, runs the checks itself, detects tampering, compares with the baseline and produces evidence, then a review decision: auto, skim, review or owner." src="docs/diagrams/what-gauntlet-does.light.svg">
+</picture>
 
 It doesn't decide whether your code is correct. Your tests, linters,
 architecture rules and other checks still do that. Gauntlet makes sure those
@@ -132,28 +117,17 @@ from this run.
 
 Without it, one change can do all of this and still produce a green build:
 
-```mermaid
-flowchart LR
-    I["Change the implementation"] --> X(("+"))
-    W["Weaken an assertion"] --> X
-    S["Disable a test"] --> X
-    C["Change the runner config"] --> X
-    R["Leave a passing report file"] --> X
-    X --> OK["Green CI"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/without-gauntlet.dark.svg">
+  <img alt="Changing the implementation, weakening an assertion, disabling a test, changing the runner config and leaving a passing report file together still give green CI." src="docs/diagrams/without-gauntlet.light.svg">
+</picture>
 
 With it, the verification machinery itself needs integrity guarantees:
 
-```mermaid
-flowchart TD
-    P["Policy read from the base branch"] --> R["Protected tests and runner config<br/>restored from the base"]
-    R --> F["Checks run in a fresh worktree,<br/>writing to fresh evidence directories"]
-    F --> O["Only output from processes<br/>Gauntlet started is read"]
-    O --> I["Integrity checks compare the change<br/>with the base for weakened verification"]
-    I --> B["Tests, coverage, mutation and architecture<br/>compared with the baseline"]
-    B --> N["Every matching rule nominates a review level;<br/>the strictest wins"]
-    N --> GH["On GitHub, the required approval<br/>is checked for that exact commit"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/with-gauntlet.dark.svg">
+  <img alt="Policy from the base branch, protected files restored, checks run fresh, only Gauntlet's own output read, integrity checks, baseline comparison, strictest rule wins, approval checked on GitHub for that exact commit." src="docs/diagrams/with-gauntlet.light.svg">
+</picture>
 
 The result isn't another AI reviewer saying "LGTM". It's a deterministic
 decision backed by evidence: the same inputs always give the same decision and

@@ -1,0 +1,17 @@
+flowchart TD
+    A["AI agent (or a person)"] --> B["Code + tests + configuration"]
+    B --> G
+    subgraph G["Gauntlet"]
+        direction TB
+        G1["Protects the verification: policy, tests and runner config come from the base"]
+        G2["Runs the checks itself, in fresh evidence directories"]
+        G3["Detects tampering: deleted, skipped or weakened tests, suppressions"]
+        G4["Compares verification strength with the baseline"]
+        G5["Produces deterministic evidence"]
+        G1 --> G2 --> G3 --> G4 --> G5
+    end
+    G --> D{"Review decision"}
+    D --> T1["auto"]
+    D --> T2["skim"]
+    D --> T3["review"]
+    D --> T4["owner"]
