@@ -1,6 +1,6 @@
 import type { GateContext } from "@gauntlet/core"
 import { ProcessRunner } from "@gauntlet/core"
-import { Effect, FileSystem, Path } from "effect"
+import { Effect, FileSystem, Option, Path } from "effect"
 import initScript from "./assets/gauntlet.init.gradle" with { type: "text" }
 
 export interface GradleRun {
@@ -43,14 +43,31 @@ export const buildJvmArgs = (properties: string | undefined): string => {
  * check (or the user's own builds) is ever reused, and `stopDaemon` ends it
  * when the check is done (ADR 0020).
  */
+/**
+ * The Gradle wrapper for the build in \`dir\`: its own, or for an included
+ * build without one (ADR 0022), the nearest above it inside the checkout. The
+ * search stops at the checkout's root, which holds \`.git\`.
+ */
+export const findWrapper = (dir: string) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const exists = (p: string) => fs.exists(p).pipe(Effect.orElseSucceed(() => false))
+    for (let at = dir; ; at = path.dirname(at)) {
+      if (yield* exists(path.join(at, "gradlew"))) return Option.some(path.join(at, "gradlew"))
+      if ((yield* exists(path.join(at, ".git"))) || path.dirname(at) === at) return Option.none<string>()
+    }
+  })
+
 export const gradle = (ctx: GateContext, tasks: ReadonlyArray<string>, env: Readonly<Record<string, string>> = {}) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const runner = yield* ProcessRunner
-    const wrapper = path.join(ctx.dir, "gradlew")
-    const command = ["./gradlew", ...tasks]
-    if (!(yield* fs.exists(wrapper).pipe(Effect.orElseSucceed(() => false)))) {
+    const found = yield* findWrapper(ctx.dir)
+    const own = Option.isSome(found) && path.dirname(found.value) === ctx.dir
+    const command = [own || Option.isNone(found) ? "./gradlew" : path.relative(ctx.dir, found.value), ...tasks]
+    if (Option.isNone(found)) {
       return { command, exitCode: -1, stderr: "", error: "no Gradle wrapper (gradlew) in the repository" } satisfies GradleRun
     }
     // Next to the output directories, never inside one, so it isn't read as a report.
@@ -62,7 +79,7 @@ export const gradle = (ctx: GateContext, tasks: ReadonlyArray<string>, env: Read
       "--daemon", `-Dorg.gradle.jvmargs=${jvmargs}`, `-Dorg.gradle.daemon.idletimeout=${IDLE_MS}`,
       "--no-build-cache", "--no-configuration-cache", "--no-watch-fs", "--console=plain", "-q", "--init-script", script, ...tasks,
     ]
-    const result = yield* Effect.exit(runner.run({ command: "sh", args: ["./gradlew", ...args], cwd: ctx.dir, env: { GAUNTLET_OUT: ctx.outputDir, ...env } }))
+    const result = yield* Effect.exit(runner.run({ command: "sh", args: [own ? "./gradlew" : found.value, ...args], cwd: ctx.dir, env: { GAUNTLET_OUT: ctx.outputDir, ...env } }))
     if (result._tag === "Failure") return { command, exitCode: -1, stderr: "", error: "Gradle couldn't be started or timed out" } satisfies GradleRun
     return { command, exitCode: result.value.exitCode, stderr: result.value.stderr } satisfies GradleRun
   })

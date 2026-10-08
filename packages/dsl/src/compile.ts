@@ -72,6 +72,8 @@ export interface Draft {
     readonly review?: Span
     readonly stack?: Span
     readonly integrity?: Span
+    /** Where each build folder is named, for checks against the repository's files. */
+    readonly builds?: ReadonlyArray<{ readonly pack: string; readonly dir: string; readonly span: Span }>
   }
 }
 
@@ -197,9 +199,32 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
     switch (block.$type) {
       case "Use":
         if (!once("use", block)) break
-        for (const p of named(block, "packs", block.packs)) {
-          refs.push({ kind: "pack", ...p })
-          ir.packs.push(p.name)
+        {
+          const builds: { pack: string; dir: string; span: Span }[] = []
+          for (const entry of block.entries) {
+            refs.push({ kind: "pack", name: entry.name, span: propertySpan(entry, "name") })
+            ir.packs.push(entry.name)
+            const spans = itemSpans(entry, "dirs")
+            for (const [i, raw] of entry.dirs.entries()) {
+              const span = spans[i] ?? nodeSpan(entry)
+              const dir = raw.trim().replace(/^\.\/+/, "").replace(/\/+$/, "") || "."
+              if (dir.startsWith("/") || dir.split("/").includes("..")) {
+                error("build-dir-outside", span, `"${raw}" isn't a folder inside the repository.`, "a folder path from the repository's root", `Write the folder as it appears from the root, such as "services/payments".`)
+                continue
+              }
+              if (builds.some((b) => b.pack === entry.name && b.dir === dir)) {
+                error("duplicate-build", span, `"${dir}" is listed twice for '${entry.name}'.`, "each folder once per pack", `Remove the second "${dir}".`)
+                continue
+              }
+              builds.push({ pack: entry.name, dir, span })
+            }
+          }
+          // Once one pack names folders, a pack that names none builds at the root.
+          if (builds.length > 0) {
+            for (const entry of block.entries) if (entry.dirs.length === 0) builds.push({ pack: entry.name, dir: ".", span: propertySpan(entry, "name") })
+            ir.builds = builds.map(({ pack, dir }) => ({ pack, dir }))
+            spans.builds = builds
+          }
         }
         break
       case "Mode":

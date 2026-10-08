@@ -34,7 +34,12 @@ export interface GithubOptions {
 const indent = (text: string, spaces: number) => text.split("\n").map((l) => (l === "" ? l : `${" ".repeat(spaces)}${l}`)).join("\n")
 
 /** Toolchain setup steps for the packs the policy uses. */
-export const toolchainSteps = (o: GithubOptions): string[] => {
+export const toolchainSteps = (options: GithubOptions): string[] => {
+  // With builds in folders (ADR 0022), each build's own files say which tools it needs.
+  const o = options.ir.builds === undefined ? options : {
+    ...options,
+    files: [...new Set(options.ir.builds.flatMap((b) => b.dir === "." ? options.files : options.files.filter((f) => f.startsWith(`${b.dir}/`)).map((f) => f.slice(b.dir.length + 1))))],
+  }
   const steps: string[] = []
   if (o.ir.packs.includes("jvm") || o.ir.packs.includes("scala") || o.ir.packs.includes("clojure")) {
     steps.push(`- name: Set up Java\n  uses: ${pinned(ACTIONS.setupJava)}\n  with:\n    distribution: temurin\n    java-version: "${o.javaVersion ?? "21"}"`)

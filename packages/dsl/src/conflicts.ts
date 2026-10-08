@@ -29,6 +29,15 @@ export const conflicts = (draft: Draft, report: Report, files?: ReadonlyArray<st
     }
   }
 
+  // A build folder with no files in it is probably a typo.
+  if (files) {
+    for (const b of draft.spans.builds ?? []) {
+      if (b.dir === "." || files.some((f) => f.startsWith(`${b.dir}/`))) continue
+      warning("build-dir-empty", b.span, `"${b.dir}" for '${b.pack}' has no files in the repository.`,
+        "a folder that holds a build", "Check the folder's name. It's fine to keep it if the build will be added later.")
+    }
+  }
+
   // With the repository's file list, a pattern that matches nothing is probably a typo.
   if (files) {
     for (const ref of refs) {

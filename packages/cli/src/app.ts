@@ -591,7 +591,7 @@ const applyProposal = (root: string, from: string, dryRun: boolean) =>
       const existingMcp = yield* read(".mcp.json")
       const result = claudeCode({
         ir: compiled.value.ir,
-        runnerConfig: runnerConfigFor(registry.packs, compiled.value.ir.packs),
+        runnerConfig: runnerConfigFor(registry.packs, compiled.value.ir.packs, compiled.value.ir.builds),
         existingSettings,
         ...(existingMcp !== undefined ? { existingMcp } : {}),
       })
@@ -843,6 +843,19 @@ const requireCheck = (root: string, adminBypass: boolean) =>
     yield* output.out(adminBypass ? "Repository admins can still push to the default branch directly." : "Nobody can push to the default branch without the check, admins included.")
   })
 
+/** The highest \`jvmToolchain(N)\` the Gradle builds ask for, so CI sets up a JDK that can build them. */
+const toolchainJava = (root: string, files: ReadonlyArray<string>) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    let highest = 0
+    for (const f of files.filter((f) => /(^|\/)build\.gradle(\.kts)?$/.test(f))) {
+      const text = yield* fs.readFileString(path.join(root, f)).pipe(Effect.orElseSucceed(() => ""))
+      for (const m of text.matchAll(/jvmToolchain\(\s*(\d+)\s*\)|JavaLanguageVersion\.of\(\s*(\d+)\s*\)/g)) highest = Math.max(highest, Number(m[1] ?? m[2]))
+    }
+    return highest > 0 ? Option.some(String(highest)) : Option.none<string>()
+  })
+
 const connectGithub = Command.make("github", {
   repo: repoFlag,
   mode: Flag.Literals("mode", ["repo", "org"]).pipe(Flag.withDefault("repo" as const), Flag.withDescription("repo: a pull_request_target workflow here; org: a workflow for a policy repository and an org ruleset")),
@@ -870,7 +883,7 @@ const connectGithub = Command.make("github", {
       gauntletVersion: GAUNTLET_VERSION,
       downloadUrl: Option.getOrElse(args.downloadUrl, () => DEFAULT_DOWNLOAD(GAUNTLET_VERSION)),
       ...(Option.isSome(args.sha256) ? { sha256: args.sha256.value } : {}),
-      ...(Option.isSome(args.java) ? { javaVersion: args.java.value } : {}),
+      ...(Option.isSome(args.java) ? { javaVersion: args.java.value } : Option.match(yield* toolchainJava(root, files), { onNone: () => ({}), onSome: (v) => ({ javaVersion: v }) })),
     }), args.dryRun)
     if (!args.dryRun) yield* (yield* Output).out("Next: commit and push these files, then run `gauntlet connect github --require-check` to require the `gauntlet` check on the default branch.")
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Generate GitHub enforcement: workflow, CODEOWNERS and the PR check."))
@@ -904,7 +917,7 @@ const connectClaude = (root: string, dryRun: boolean, options: { readonly hooks?
     const existingMcp = yield* read(".mcp.json")
     const result = claudeCode({
       ir: loaded.compiled.ir,
-      runnerConfig: runnerConfigFor(registry.packs, loaded.compiled.ir.packs),
+      runnerConfig: runnerConfigFor(registry.packs, loaded.compiled.ir.packs, loaded.compiled.ir.builds),
       ...(existingSettings !== undefined ? { existingSettings } : {}),
       ...(existingMcp !== undefined ? { existingMcp } : {}),
     })
@@ -1349,7 +1362,7 @@ const hookPreToolUse = Command.make("pre-tool-use", {}, () =>
     const loaded = yield* Effect.option((yield* PolicySource).load({ repo: top.value }))
     if (Option.isNone(loaded)) return
     const registry = yield* PackRegistry
-    const hit = protectionFor(relative, loaded.value.compiled.ir.protect, runnerConfigFor(registry.packs, loaded.value.compiled.ir.packs))
+    const hit = protectionFor(relative, loaded.value.compiled.ir.protect, runnerConfigFor(registry.packs, loaded.value.compiled.ir.packs, loaded.value.compiled.ir.builds))
     if (!hit) return
     // Tests are the agent's to write and, when a requirement changes, to change: a new test runs, and an
     // edited one runs as edited and puts the change up for review. Integrity checks still catch weakening.

@@ -106,7 +106,7 @@ const prepare = (request: { readonly repo: string; readonly policyRef?: string; 
     const ir = request.protectOnly ? protectOnlyIr(loaded.compiled.ir) : loaded.compiled.ir
     const base = loaded.baseSha.value
     const head = yield* git.revParse(request.repo, request.head ?? "HEAD")
-    const runnerConfig = runnerConfigFor(registry.packs, ir.packs)
+    const runnerConfig = runnerConfigFor(registry.packs, ir.packs, ir.builds)
     // Protect-only judges with the base's tests, pass or fail; otherwise an edited test runs as edited and needs review.
     const facts = yield* diffFacts(request.repo, base, head, ir, registry.packs, runnerConfig, !request.protectOnly)
     const baseline = yield* (yield* BaselineStore).at(request.repo, base)
