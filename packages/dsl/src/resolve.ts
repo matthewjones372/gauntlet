@@ -200,8 +200,11 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
       warning("unused-budget", span, `Budget '${budget.name}' is never checked by a gate.`, `\`budget ${budget.name}\` in a gate tier`,
         `Add it to a tier, for example: perf { budget ${budget.name} }, or remove the budget.`)
     }
-    info("not-executed-in-v1", span, `Budget '${budget.name}' is a perf budget. ${NOT_EXECUTED}`,
-      "Nothing to fix. Remove the budget if changes should be able to reach auto or skim in v1.")
+    // Gauntlet reads only what the command writes to {json} (spec 0006).
+    if (budget.command !== "" && !budget.command.includes("{json}")) {
+      warning("budget-without-json", span, `Budget '${budget.name}''s command never mentions {json}, so Gauntlet has nothing to read.`, "a command that writes its measurements to {json}",
+        "Write the results to {json}: your own JSON (p99, errors, throughput...), `hyperfine --export-json {json} ...` or `k6 run --summary-export {json} ...`.")
+    }
   }
 
   const gateNames = [...checkNames.keys()]

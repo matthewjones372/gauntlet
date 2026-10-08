@@ -21,7 +21,7 @@ const describeCheck = (c: Check): string => {
   switch (c.kind) {
     case "suite": return `the ${c.name} suite passes and runs at least one test`
     case "holdout": return `the ${c.name} holdout passes (CI only; not executed in v1)`
-    case "budget": return `perf budget ${c.budget} holds (not executed in v1)`
+    case "budget": return `perf budget ${c.budget} holds`
     case "llm-review": return `${c.reviews} independent LLM reviews (caution only; not executed in v1)`
     case "gate": {
       const parts = [c.name]

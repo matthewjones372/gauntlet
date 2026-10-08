@@ -2,13 +2,14 @@ import { type GateSpec, globMatches } from "@gauntlet/dsl"
 import { type Check, type PolicyIR, sha256 } from "@gauntlet/ir"
 import { type Baseline, compareMetrics, compareWithBaseline, type Metric, type MetricDelta, type Proof, resultPath, resultRegion, type Run } from "@gauntlet/sarif"
 import { Clock, Effect, type FileSystem, Option, type Path } from "effect"
+import { judgeBudget, parseBudgetResults } from "./budget.ts"
 import type { DiffFacts } from "./diff-facts.ts"
+import { ProcessRunner } from "./process-runner.ts"
 import { fingerprintRuns } from "./fingerprints.ts"
 import { GateProgress } from "./gate-progress.ts"
 import type { GateContext, GateRun, SuiteImpl, TestSubset } from "./gate.ts"
 import type { TestRecord } from "./integrity.ts"
 import type { Pack } from "./pack-registry.ts"
-import type { ProcessRunner } from "./process-runner.ts"
 import type { CheckRecord } from "./report/build.ts"
 import type { NewViolation, Regression } from "./review.ts"
 import { assessStability, failuresOf, REPEATS } from "./stability.ts"
@@ -51,7 +52,6 @@ export interface GateRunnerOutput {
 
 const NOT_IN_V1: Partial<Record<Check["kind"], string>> = {
   holdout: "holdout pending: holdouts run only in CI and are not executed in v1",
-  budget: "perf budgets are not executed in v1",
   "llm-review": "llm review is not executed in v1",
 }
 
@@ -130,6 +130,16 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           }
           yield* progress.end(base.check, "not-executed", (yield* Clock.currentTimeMillis) - started)
         }
+        if (check.kind === "budget") {
+          const started = yield* Clock.currentTimeMillis
+          yield* progress.start(base.check)
+          const outcome = yield* runBudget(check.budget, dirName(t, i, check))
+          durationsMs[base.check] = (yield* Clock.currentTimeMillis) - started
+          yield* progress.end(base.check, outcome.status, durationsMs[base.check]!)
+          record(outcome)
+          if (outcome.status === "failed") tierFailed = true
+          continue
+        }
         const notInV1 = NOT_IN_V1[check.kind]
         if (notInV1) {
           record({ status: "not-executed", reason: notInV1 })
@@ -162,6 +172,36 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       ids: [...new Set(suiteTests.flatMap((t) => t.ids))].sort(),
     }
     return { checks, runs, newViolations, regressions, ratchets, ...(tests ? { tests } : {}), metrics, durationsMs }
+
+    /**
+     * A performance budget (spec 0006): its command runs in the judged
+     * checkout and writes its measurements to {json}, a fresh file in the
+     * check's output directory, which is the only thing read.
+     */
+    function runBudget(name: string, dir: string): Effect.Effect<Omit<CheckRecord, "tier" | "check" | "pointer" | "advisory">, never, ProcessRunner | FileSystem.FileSystem | Path.Path> {
+      return Effect.gen(function*() {
+        const budget = ir.budgets.find((b) => b.name === name)
+        if (!budget) return { status: "not-executed", reason: `the policy has no budget '${name}'` }
+        const made = yield* Effect.exit(workspace.outputDir(dir))
+        if (made._tag === "Failure") return { status: "errored", reason: "couldn't create an output directory" }
+        const target = `${made.value}/budget.json`
+        const command = budget.command.replaceAll("{json}", `'${target.replaceAll("'", "'\\''")}'`)
+        const runner = yield* ProcessRunner
+        const result = yield* Effect.exit(runner.run({ command: "sh", args: ["-c", command], cwd: workspace.dir, env: { GAUNTLET_OUT: made.value } }))
+        const files = yield* workspace.collect(dir).pipe(Effect.orElseSucceed(() => []))
+        const exitCode = result._tag === "Success" ? result.value.exitCode : -1
+        const proof: Proof = { command: ["sh", "-c", budget.command], exitCode, reports: Object.fromEntries(files.map((f) => [f.path, sha256(f.content)])) }
+        if (result._tag === "Failure") return { status: "errored", reason: "the budget's command couldn't be started or timed out", proof }
+        if (exitCode !== 0) return { status: "failed", reason: `the budget's command exited with ${exitCode}`, proof }
+        const report = files.find((f) => f.path === "budget.json")
+        if (!report) return { status: "not-executed", reason: "the budget's command wrote nothing to {json}", proof }
+        const parsed = parseBudgetResults(report.content)
+        if (!parsed) return { status: "errored", reason: "{json} isn't JSON Gauntlet can read (its own format, hyperfine's --export-json or k6's --summary-export)", proof }
+        const outcome = judgeBudget(budget, parsed, Option.match(baseline, { onNone: () => ({}), onSome: (b) => b.metrics }))
+        Object.assign(metrics, outcome.metrics)
+        return { status: outcome.status, ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}), proof }
+      })
+    }
 
     /** Runs part of a suite again in its own fresh output directory. */
     function rerun(s: { readonly suite: { readonly name: string; readonly location: string }; readonly runner: SuiteImpl }, ctx: GateContext, dir: string, subset: TestSubset, label: string) {
