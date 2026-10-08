@@ -1,5 +1,5 @@
 import {
-  agentSummary, BASELINE_PATH, BLOCKED_ACK, CheckFailed, checkWorkingTree, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
+  agentSummary, BASELINE_PATH, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
   ProcessRunner, protectOnlyIr, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, Report, Review, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
@@ -11,7 +11,7 @@ import { Compiler, DEFAULT_POLICY_FILE, type Diagnostic, formatDiagnostics, Poli
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { BunStdio } from "@effect/platform-bun"
 import { GauntletTools, mcpServer } from "@gauntlet/mcp"
-import { Data, Effect, FileSystem, Layer, Option, Path, Ref, Schema } from "effect"
+import { Clock, Data, Effect, FileSystem, Layer, Option, Path, Ref, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { agentFromEnv } from "./agent.ts"
 import { describeChanges } from "./apply.ts"
@@ -708,6 +708,47 @@ const connectClaudeCode = Command.make("claude-code", {
     }
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Set up Claude Code: Stop and PreToolUse hooks, deny rules, MCP server, agent instructions and /gauntlet-setup."))
 
+// ---------- adopt: the one-time window for fixing protected tests ----------
+
+const adopt = Command.make("adopt", {
+  repo: repoFlag,
+  close: Flag.Boolean("close").pipe(Flag.withDefault(false), Flag.withDescription("close the window and print its report")),
+  status: Flag.Boolean("status").pipe(Flag.withDefault(false), Flag.withDescription("say whether the window is open and what was edited")),
+}, (args) =>
+  Effect.gen(function*() {
+    const output = yield* Output
+    const root = yield* absolute(args.repo)
+    const recorded = yield* readAdoption(root)
+    const open = yield* openAdoption(root)
+    if (args.status || args.close) {
+      if (Option.isNone(recorded)) return yield* output.out("No adoption window is open.")
+      yield* output.out(renderAdoptionReport(recorded.value, Option.isSome(open)))
+      if (args.close) {
+        yield* endAdoption(root)
+        yield* output.out("Closed. Protected tests are guarded again.")
+      }
+      return
+    }
+    if (Option.isSome(open)) return yield* output.out(`The adoption window is already open (since ${open.value.openedAt}). It closes at your next commit, or with \`gauntlet adopt --close\`.`)
+    yield* output.out([
+      "This lets your coding agent edit protected tests, once, so a project adopting Gauntlet can fix tests that already fail.",
+      "",
+      "  - Only protected tests: .gauntlet/ and protected configuration stay locked.",
+      "  - Integrity checks still run, so weakening a test is still caught.",
+      "  - Every protected test the agent edits is recorded; `gauntlet adopt --close` prints the report.",
+      "  - It closes by itself at your next commit.",
+      "  - In CI nothing changes: protected tests are still put back to their base versions.",
+      "",
+    ].join("\n"))
+    // A person at a terminal, not the agent: its shell has no terminal to answer in.
+    const reply = yield* (yield* Ask).question("Type 'adopt' to open the window: ")
+    if (Option.isNone(reply)) return yield* fail("`gauntlet adopt` needs you at a terminal, so a coding agent can't open it for itself. Run it in your own terminal.")
+    if (reply.value !== "adopt") return yield* output.out("Not opened.")
+    const now = new Date(yield* Clock.currentTimeMillis).toISOString()
+    yield* startAdoption(root, now)
+    yield* output.out("Open. Tell your agent it can fix the failing protected tests now, and to report every change. Commit when you're happy; that closes the window.")
+  }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Let the coding agent fix protected tests once, while a project adopts Gauntlet."))
+
 // ---------- setup and apply: the three-step start ----------
 
 /** The files `setup` and `apply` create, committed together by `apply`. */
@@ -938,9 +979,14 @@ const hookStop = Command.make("stop", {}, () =>
     // Already blocked once in this stop: let the agent stop rather than loop.
     if (input.stop_hook_active) return
     const root = input.cwd ?? process.cwd()
+    // Nothing but Gauntlet's own setup files changed: no code to judge, and failures
+    // already in the project aren't this agent's to fix (they'd trap it in a loop).
+    if (yield* nothingToJudge(root)) return
     const git = yield* Git
     const outDir = `${yield* git.gitDir(root)}/gauntlet/hook`
-    const result = yield* Effect.exit(checkWorkingTree({ repo: root, outDir, gauntletVersion: GAUNTLET_VERSION, agent: agentFromEnv(process.env) }))
+    // While the adoption window is open, the agent's fixes to protected tests are what's judged.
+    const adoption = Option.isSome(yield* openAdoption(root))
+    const result = yield* Effect.exit(checkWorkingTree({ repo: root, outDir, gauntletVersion: GAUNTLET_VERSION, agent: agentFromEnv(process.env), ...(adoption ? { adoption: true } : {}) }))
     // If Gauntlet can't run here (no policy, no base), don't trap the agent; CI still decides.
     if (result._tag === "Failure") return
     // The agent reported it's blocked on exactly this state: a person decides now.
@@ -968,6 +1014,11 @@ const hookPreToolUse = Command.make("pre-tool-use", {}, () =>
       fs.realPath(p).pipe(Effect.catch(() => path.dirname(p) === p ? Effect.succeed(p) : realTarget(path.dirname(p)).pipe(Effect.map((d) => path.join(d, path.basename(p))))))
     const relative = path.relative(top.value, yield* realTarget(path.resolve(cwd, target)))
     if (relative.startsWith("..")) return
+    // Gauntlet's own state (the adoption window, blocked reports) is the person's, never the agent's.
+    if (relative.startsWith(".git/")) {
+      yield* output.out(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: `${relative} is inside .git, which the agent doesn't edit.` } }))
+      return
+    }
     const loaded = yield* Effect.option((yield* PolicySource).load({ repo: top.value }))
     if (Option.isNone(loaded)) return
     const registry = yield* PackRegistry
@@ -976,11 +1027,16 @@ const hookPreToolUse = Command.make("pre-tool-use", {}, () =>
     // New test files are welcome: they run in CI. Existing protected files are not to be edited.
     const exists = yield* fs.exists(path.join(top.value, relative)).pipe(Effect.orElseSucceed(() => true))
     if (hit.kind === "tests" && !exists) return
+    // The adoption window (spec 0005): the person let the agent fix protected tests until the next commit.
+    if (hit.kind === "tests" && Option.isSome(yield* openAdoption(top.value))) {
+      yield* recordAdoptionEdit(top.value, relative)
+      return
+    }
     yield* output.out(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "deny",
-        permissionDecisionReason: `${relative} is protected by the Gauntlet policy (${hit.group}). In CI it is put back to the base version, so editing it can't make a check pass, and changing it needs ${hit.kind === "gauntlet" ? "an owner" : "review"}. If the task needs it changed, call the report_blocked tool with the reason.`,
+        permissionDecisionReason: `${relative} is protected by the Gauntlet policy (${hit.group}). In CI it is put back to the base version, so editing it can't make a check pass, and changing it needs ${hit.kind === "gauntlet" ? "an owner" : "review"}. If the task needs it changed, call the report_blocked tool with the reason. When a project is first adopting Gauntlet and its own tests need fixing, ask the person to run \`gauntlet adopt\` in their terminal.`,
       },
     }))
   })).pipe(Command.withDescription("Claude Code PreToolUse hook: deny edits to protected files."))
@@ -1024,7 +1080,7 @@ const report = Command.make("report").pipe(Command.withDescription("Reports over
 
 export const root = Command.make("gauntlet").pipe(
   Command.withDescription("Gauntlet: verification integrity for agent-written code."),
-  Command.withSubcommands([setup, apply, validate, check, explain, init, newProject, author, baseline, selftest, corpus, override, report, connect, githubStatusCommand, hook, mcp, doctor]),
+  Command.withSubcommands([setup, apply, adopt, validate, check, explain, init, newProject, author, baseline, selftest, corpus, override, report, connect, githubStatusCommand, hook, mcp, doctor]),
 )
 
 /** Runs the CLI on `args` (without the program name) and returns the exit code. */

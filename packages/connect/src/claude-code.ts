@@ -102,6 +102,9 @@ Help me set up Gauntlet's policy for this repository. Gauntlet checks AI-written
 7. Write the whole policy to \`${PROPOSAL_FILE}\` in the repository root, then check it with Gauntlet's \`validate\` tool, passing \`file: "${PROPOSAL_FILE}"\` (not the text). Fix any problem until it's valid. You can't and mustn't edit \`.gauntlet/\` yourself.
 8. Show me a short summary headed "This will be applied:", one plain line per change from the draft, and mark anything that loosens it. Don't paste the whole policy.
 9. Tell me to apply it by running \`gauntlet apply\` myself. It shows the changes again, then writes the policy, commits it and records the baseline. Don't run it for me.
+10. When I say it's applied, run Gauntlet's \`check\` tool on the project as it is. If everything passes, say so and stop. If something fails (tests, lint, coverage, a missing tool), tell me what failed in plain words, then ask: "Do you want me to try to fix these? I'll report every change I make." Use AskUserQuestion if you have it, with "Fix them" first and "Leave them for now" second.
+11. If I say fix them, fix what you can. Protected tests and test setup are locked, so an edit to one will be refused. When a fix needs one, don't work around it: explain which test and why, and ask me to run \`gauntlet adopt\` in my own terminal. That opens a one-time window in which you can edit protected tests (never \`.gauntlet/\` or protected configuration); it closes at my next commit. Never weaken a test to make it pass: integrity checks still run.
+12. When you're done, give me a report: every file you changed and why, with protected tests listed separately. If the adoption window was opened, ask me to run \`gauntlet adopt --close\` to see Gauntlet's own record of the protected tests you edited, and then to commit.
 `
 
 export const managedSettings = (ir: PolicyIR, runnerConfig: ReadonlyArray<string>) => `${JSON.stringify({

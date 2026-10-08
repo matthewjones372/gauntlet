@@ -55,6 +55,11 @@ export interface CheckRequest {
   readonly protectOnly?: boolean
   /** Run holdouts that name their files (the GitHub evidence job only; ADR 0019). */
   readonly holdouts?: boolean
+  /**
+   * The adoption window is open (spec 0005): protected tests are judged as
+   * edited rather than restored from base. Local working-tree checks only.
+   */
+  readonly adoption?: boolean
 }
 
 export interface CheckResult {
@@ -188,7 +193,8 @@ export const runCheck = (request: CheckRequest) =>
     const git = yield* Git
     const p = yield* prepare(request)
     const { report, executed } = yield* Effect.scoped(Effect.gen(function*() {
-      const workspace = yield* (yield* Workspace).prepare({ repo: request.repo, base: p.base, head: p.head, protect: p.ir.protect, runnerConfig: p.runnerConfig, holdouts: holdoutsOf(p.ir) })
+      const protect = request.adoption ? p.ir.protect.filter((g) => g.kind !== "tests") : p.ir.protect
+      const workspace = yield* (yield* Workspace).prepare({ repo: request.repo, base: p.base, head: p.head, protect, runnerConfig: p.runnerConfig, holdouts: holdoutsOf(p.ir) })
       const files = yield* git.listWorkingFiles(workspace.dir)
       const today = yield* git.commitDate(request.repo, p.head)
       const gates: GateRunnerOutput = request.skipGates

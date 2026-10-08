@@ -1,3 +1,4 @@
+export * from "./adoption.ts"
 export * from "./baseline-record.ts"
 export * from "./blocked.ts"
 export * from "./baseline-store.ts"

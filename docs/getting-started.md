@@ -75,6 +75,25 @@ policy says `mode shadow`.
    The original test ran, because protected tests are restored from the base,
    so the bug the edit was hiding is still reported.
 
+## When checks already fail
+
+A project adopting Gauntlet often has failing tests or findings already. After
+you run `gauntlet apply`, `/gauntlet-setup` runs a first check and, if anything
+fails, offers to fix it and reports every change.
+
+Protected tests are locked, even for those fixes. If one needs changing, run
+this yourself, in your own terminal:
+
+```bash
+gauntlet adopt
+```
+
+It lets the agent edit protected tests (never `.gauntlet/` or protected
+configuration) until your next commit, records every protected test it
+touches, and `gauntlet adopt --close` prints that record. Integrity checks keep
+running, and CI still restores protected tests from the base, so a pull request
+that changes them still needs review.
+
 ## Who this is for
 
 - Teams letting AI coding agents (Claude Code today) change code that matters,
