@@ -729,6 +729,16 @@ const projectFormatter = (root: string) =>
     return Option.none<string[]>()
   })
 
+/** Runs the project's own formatter (Biome or Prettier) over files Gauntlet edited, when it has one. */
+const formatWithProject = (root: string, files: ReadonlyArray<string>) =>
+  Effect.gen(function*() {
+    const path = yield* Path.Path
+    const formatter = yield* projectFormatter(root)
+    if (Option.isNone(formatter) || files.length === 0) return
+    const [command, ...args] = formatter.value
+    yield* (yield* ProcessRunner).run({ command: path.join(root, command!), args: [...args, ...files], cwd: root, timeout: "2 minutes" }).pipe(Effect.ignore)
+  })
+
 const writeGenerated = (root: string, files: ReadonlyArray<GeneratedFile>, dryRun: boolean) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
@@ -923,9 +933,11 @@ export const ignoreInKnip = (root: string, packages: ReadonlyArray<string>) =>
       const added = packages.filter((p) => !existing.includes(p))
       if (added.length === 0) return
       yield* fs.writeFileString(file, `${JSON.stringify({ ...parsed.value, ignoreDependencies: [...existing, ...added] }, null, 2)}\n`)
-      return yield* output.out(style.ok(`Told knip about them (${name}), so it doesn't call them unused.`))
+      yield* output.out(style.ok(`Told knip about them (${name}), so it doesn't call them unused.`))
+      return name
     }
-  }).pipe(Effect.ignore)
+      return undefined
+  }).pipe(Effect.orElseSucceed(() => undefined))
 
 /** Claude Code's per-person settings: never committed, so the project's own formatters and linters skip it. */
 const keepLocalSettingsOut = (root: string) =>
@@ -971,7 +983,8 @@ const offerInstall = (root: string, commands: ReadonlyArray<ReadonlyArray<string
     }
     // Tools Gauntlet runs aren't imported by the project's code, so a dependency
     // checker would call them unused and fail the project's own checks.
-    yield* ignoreInKnip(root, commands.flatMap((c) => c.filter((a, i) => i > 0 && !a.startsWith("-") && !["add", "install", "--dev", "-d", "-D", "--group", "dev"].includes(a))).filter((p) => p !== "typescript"))
+    const knip = yield* ignoreInKnip(root, commands.flatMap((c) => c.filter((a, i) => i > 0 && !a.startsWith("-") && !["add", "install", "--dev", "-d", "-D", "--group", "dev"].includes(a))).filter((p) => p !== "typescript"))
+    if (knip !== undefined) yield* formatWithProject(root, [knip])
     return true
   })
 
@@ -987,7 +1000,9 @@ const setup = Command.make("setup", {
     const root = yield* absolute(args.repo)
     const target = path.join(root, DEFAULT_POLICY_FILE)
     const existed = yield* fs.exists(target)
-    yield* output.out(`${style.step(2, 3, "Set up your project")}\n`)
+    // A project with a baseline finished setup; running setup again only refreshes Claude Code's files.
+    const finished = yield* fs.exists(path.join(root, BASELINE_PATH))
+    if (!finished) yield* output.out(`${style.step(2, 3, "Set up your project")}\n`)
     if (existed) {
       yield* output.out(style.ok(`${DEFAULT_POLICY_FILE} already exists; keeping it.`))
     } else {
@@ -1015,9 +1030,14 @@ const setup = Command.make("setup", {
     }
     // Gauntlet's hooks switch on at the end of `gauntlet apply`, once the policy is settled.
     // A project that finished setup (it has a baseline) keeps them.
-    const finished = yield* fs.exists(path.join(root, BASELINE_PATH))
     if (!(yield* connectClaude(root, false, finished ? {} : { hooks: false }))) return
     yield* keepLocalSettingsOut(root)
+    if (finished) {
+      return yield* output.out([
+        style.ok("Gauntlet is already set up here; Claude Code's files are up to date."),
+        `To change the policy, open Claude Code here and type ${style.command("/gauntlet-setup")}.`,
+      ].join("\n"))
+    }
     yield* output.out([
       style.ok("Connected Claude Code."),
       "",
