@@ -29,6 +29,14 @@ the check ends (ADR 0020).
   one gate (report directories, `coverage`) never carries into the next.
   `SBT_OPTS` carries the same `-Dgauntlet.check=` marker. ANSI escapes the
   client prints are stripped before output is read.
+- **sbt's build definition, cached.** Before any gate, sbt compiles
+  `project/` (plugins, `build.properties`, build code). `project/**` is runner
+  configuration restored from base, so its compiled form depends only on base
+  content and the JDK. It's built once per key (those files plus `java
+  -version`) in a clean directory containing only them, stored under
+  `~/.cache/gauntlet/sbt-build-definition/` (or `$GAUNTLET_CACHE_DIR`), and
+  copied into each checkout before its first sbt call. Nothing is copied back
+  from a checkout that ran the change's code.
 - **Ending them.** A pack may define `stop`, which the gate runner calls once
   after the check's tiers: the JVM pack ends its daemon, the Scala pack asks
   its server to shut down. Both then end any process still carrying the
@@ -44,10 +52,11 @@ is shared across checks.
 ## Measured
 
 `packs/jvm/test/e2e.test.ts` on an M-series Mac, same machine, same fixture:
-400.7 s before, 73.3 s after. `packs/scala/test/e2e.test.ts` with the sbt
-server (branch `sbt-client`): 594.5 s before, 652.9 s after. One Scala check
-drops to about 32 s, but the file as a whole didn't get faster, so the sbt half
-claims no speed-up until that's understood.
+400.7 s before, 73.3 s after. An earlier Scala comparison (594.5 s against 652.9 s) is void: the second run
+overlapped the JVM run, which used two to three cores. Measured cleanly, one
+sbt start costs about 14 CPU seconds before any work, and a check made five;
+compiling the build definition costs about 5 more. The Scala numbers with the
+server and the cache are in the pull request.
 
 ## Protected test
 
