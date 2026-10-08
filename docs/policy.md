@@ -85,6 +85,10 @@ could still read them. There's no generator; you write the holdouts. See
 checks it. The DSL compiles to a canonical, hashed policy IR, so two policies
 that mean the same thing have the same hash.
 
+## Removing a feature
+
+Deleting a test is forbidden: it's the oldest way to make a check pass. But removing a feature removes its tests too. When a change deletes a test file together with the source file it's named after (`FxTest.kt` with `Fx.kt`, `fx.test.ts` with `fx.ts`, `fx_test.go` with `fx.go`, `test_fx.py` with `fx.py`), it's flagged instead: the change needs a person's review, not a fix. Those tests don't count against the executed-tests ratchet either. A test deleted while its code stays is still forbidden.
+
 ## Review levels
 
 | Level | What it means |

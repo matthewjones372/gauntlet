@@ -95,8 +95,29 @@ const commentOf = (text: string): string | undefined => {
 const SPECIAL_CASE_COMMENT =
   /\b(?:only\s+(?:in|for|during)\s+tests?|for\s+(?:the\s+)?tests?\s+(?:only|to\s+pass)|make\s+(?:the\s+)?tests?\s+pass|test[- ]only|hack\s+for\s+(?:the\s+)?tests?|if\s+(?:we(?:'re|\s+are)\s+)?(?:running\s+)?(?:in\s+)?tests?\b)/i
 
+/** A test file's name without its extension, lower case, \`_\` as \`-\`: how test ids name it. */
+const testFileName = (path: string) => (path.split("/").at(-1) ?? path).replace(/\.[^.]+$/, "").toLowerCase().replaceAll("_", "-")
+
+/** The name of the code a test file is named after: FooTest.kt, foo.test.ts, foo_test.go, test_foo.py and foo_test.clj all test foo. */
+export const testedName = (path: string): string => {
+  const base = (path.split("/").at(-1) ?? path).replace(/\.[^.]+$/, "")
+  return base
+    .replace(/[._-](test|spec|tests|specs)$/i, "")
+    .replace(/^test[_-]/i, "")
+    .replace(/(Test|Tests|Spec|Specs|Suite|IT)$/, "")
+    .toLowerCase()
+    .replaceAll(/[-_]/g, "")
+}
+
+/** The deleted source file a deleted test file was named after, if the change removed it too. */
+export const codeUnderTest = (testPath: string, removedMain: ReadonlyArray<string>): string | undefined => {
+  const name = testedName(testPath)
+  if (name === "") return undefined
+  return removedMain.find((p) => (p.split("/").at(-1) ?? p).replace(/\.[^.]+$/, "").toLowerCase().replaceAll(/[-_]/g, "") === name)
+}
+
 /** Checks core implements, and what each needs to run. */
-const coreDetector = (input: IntegrityInput): { findings: IntegrityFinding[]; metrics: Record<string, Metric>; covered: IntegrityCheck[] } => {
+const coreDetector = (input: IntegrityInput): { findings: IntegrityFinding[]; metrics: Record<string, Metric>; covered: IntegrityCheck[]; removedWithCode: number } => {
   const findings: IntegrityFinding[] = []
   const metrics: Record<string, Metric> = {}
   const covered: IntegrityCheck[] = []
@@ -109,17 +130,36 @@ const coreDetector = (input: IntegrityInput): { findings: IntegrityFinding[]; me
   }
 
   // Deleted tests: test files removed by the change, and test ids that ran at base but not now.
+  // A test removed together with the code it tested (removing a feature) is
+  // flagged for review rather than forbidden; any other removal is forbidden.
   const removedTestFiles = facts.files.flatMap((f) =>
     f.status === "deleted" && input.isTestPath(f.path) ? [f.path]
     : f.status === "renamed" && f.oldPath !== undefined && input.isTestPath(f.oldPath) && !input.isTestPath(f.path) ? [f.oldPath]
     : [])
+  const removedMain = facts.files.filter((f) => f.status === "deleted" && !input.isTestPath(f.path)).map((f) => f.path)
+  const withCode = new Map<string, string>()
   for (const path of removedTestFiles) {
-    findings.push({ check: "deleted-tests", kind: "forbid", message: `Test file ${path} was deleted.`, path, detector: "core" })
+    const code = codeUnderTest(path, removedMain)
+    if (code !== undefined) {
+      withCode.set(path, code)
+      findings.push({ check: "deleted-tests", kind: "flag", message: `Test file ${path} was removed along with ${code}, the code it tested. Check the feature was meant to go.`, path, detector: "core" })
+    } else {
+      findings.push({ check: "deleted-tests", kind: "forbid", message: `Test file ${path} was deleted.`, path, detector: "core" })
+    }
   }
+  let removedWithCode = 0
   if (input.baseTestIds && input.headTests) {
     const now = new Set(input.headTests.ids)
+    const names = [...withCode.keys()].map(testFileName)
     for (const id of input.baseTestIds) {
-      if (!now.has(id)) findings.push({ check: "deleted-tests", kind: "forbid", message: `Test ${id} ran at base and no longer runs.`, detector: "core" })
+      if (now.has(id)) continue
+      const normal = id.toLowerCase().replaceAll("_", "-")
+      if (names.some((n) => normal.includes(n))) {
+        removedWithCode++
+        findings.push({ check: "deleted-tests", kind: "flag", message: `Test ${id} no longer runs: its test file was removed along with the code it tested.`, detector: "core" })
+      } else {
+        findings.push({ check: "deleted-tests", kind: "forbid", message: `Test ${id} ran at base and no longer runs.`, detector: "core" })
+      }
     }
   }
   covered.push("deleted-tests")
@@ -174,7 +214,7 @@ const coreDetector = (input: IntegrityInput): { findings: IntegrityFinding[]; me
     }
   }
   covered.push("added-retries", "flaky-patterns")
-  return { findings, metrics, covered }
+  return { findings, metrics, covered, removedWithCode }
 }
 
 const TEST_CODE = /\.(kt|kts|java|scala|groovy|[cm]?[jt]sx?|py|go|rs|rb|php|cs|clj)$/
@@ -249,8 +289,10 @@ export const runIntegrity = (input: IntegrityInput, detectors: ReadonlyArray<Int
         notExecuted.add(check)
         continue
       }
-      const base = input.baselineMetrics[key]
-      if (!base) continue
+      const recorded = input.baselineMetrics[key]
+      if (!recorded) continue
+      // Tests removed along with the code they tested don't count against the executed-tests ratchet.
+      const base = check === "executed-tests" && core.removedWithCode > 0 ? { ...recorded, value: recorded.value - core.removedWithCode } : recorded
       for (const r of compareMetrics({ [key]: { ...base, higherIsBetter: RATCHET_DIRECTION[check] } }, { [key]: head }).regressions) {
         findings.push({
           check,
