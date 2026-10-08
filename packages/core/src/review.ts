@@ -208,7 +208,9 @@ export const decide = (input: ReviewInput): Decision => {
     if (p.kind === "gauntlet") {
       nominate("owner", `${p.path} is under .gauntlet/; policy, baseline and self-test changes need an owner.`, implicit("gauntlet-changed"))
     } else {
-      nominate("review", `${p.path} is protected (${p.group}); the change is ${p.action === "restored" ? "undone for the run" : "left out of the run"} and needs review.`,
+      nominate("review", p.action === "edited"
+        ? `${p.path} is a protected test (${p.group}) the change ${p.change === "deleted" ? "deletes" : "edits"}; it runs as the change has it and needs review.`
+        : `${p.path} is protected (${p.group}); the change is ${p.action === "restored" ? "undone for the run" : "left out of the run"} and needs review.`,
         implicit("protected-changed", groupPointer(p.group)))
     }
   }

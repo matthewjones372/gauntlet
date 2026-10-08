@@ -117,7 +117,7 @@ describe("gauntlet hook pre-tool-use", () => {
 
   test("denies edits to existing protected files and the policy", async () => {
     const { r } = setup()
-    expect(await decide(r, join(r.dir, "src/test/AddTest.txt"))).toBe("deny")
+    expect(await decide(r, join(r.dir, "scripts/lint.sh"))).toBe("deny")
     expect(await decide(r, "scripts/build.sh", "Write")).toBe("deny")
     expect(await decide(r, join(r.dir, ".gauntlet/policy.gx"))).toBe("deny")
     expect(await decide(r, join(r.dir, "scripts/new/dir/tool.sh"), "Write")).toBe("deny")
@@ -125,6 +125,8 @@ describe("gauntlet hook pre-tool-use", () => {
 
   test("allows new test files, main code and paths outside the repo", async () => {
     const { r } = setup()
+    // A changed requirement changes its tests: the edit is allowed, and the check sends the change to review.
+    expect(await decide(r, join(r.dir, "src/test/AddTest.txt"))).toBe("allow")
     expect(await decide(r, join(r.dir, "src/test/NewTest.txt"), "Write")).toBe("allow")
     expect(await decide(r, join(r.dir, "src/main/App.kt"))).toBe("allow")
     expect(await decide(r, "/tmp/elsewhere.txt", "Write")).toBe("allow")
@@ -132,9 +134,9 @@ describe("gauntlet hook pre-tool-use", () => {
 
   test("the reason says why and what to do instead", async () => {
     const { r } = setup()
-    const out = JSON.parse((await hookCli(["hook", "pre-tool-use"], JSON.stringify({ cwd: r.dir, tool_name: "Edit", tool_input: { file_path: "src/test/AddTest.txt" } }))).out)
+    const out = JSON.parse((await hookCli(["hook", "pre-tool-use"], JSON.stringify({ cwd: r.dir, tool_name: "Edit", tool_input: { file_path: "scripts/build.sh" } }))).out)
     expect(out.hookSpecificOutput.hookEventName).toBe("PreToolUse")
-    expect(out.hookSpecificOutput.permissionDecisionReason).toContain("src/test/AddTest.txt is protected by the Gauntlet policy (tests)")
+    expect(out.hookSpecificOutput.permissionDecisionReason).toContain("scripts/build.sh is protected by the Gauntlet policy (config)")
     expect(out.hookSpecificOutput.permissionDecisionReason).toContain("report_blocked")
   })
 })

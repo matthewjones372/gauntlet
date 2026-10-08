@@ -115,18 +115,13 @@ A project adopting Gauntlet often has failing tests or findings already. After
 you run `gauntlet apply`, `/gauntlet-setup` runs a first check and, if anything
 fails, offers to fix it and reports every change.
 
-Protected tests are locked, even for those fixes. If one needs changing, run
-this yourself, in your own terminal:
-
-```bash
-gauntlet adopt
-```
-
-It lets the agent edit protected tests (never `.gauntlet/` or protected
-configuration) until your next commit, records every protected test it
-touches, and `gauntlet adopt --close` prints that record. Integrity checks keep
-running, and CI still restores protected tests from the base, so a pull request
-that changes them still needs review.
+The agent may fix a wrong test, as it may change a test when a requirement
+changes. An edited protected test runs as the change has it and puts the
+change up for review, never auto ([ADR 0021](adr/0021-edited-tests-need-review.md)).
+Integrity checks keep running, so a skipped test, a deleted assertion or a
+test special-cased in main code is still blocked. Protected configuration and
+`.gauntlet/` stay locked; when a fix needs them, the agent writes the change
+to `gauntlet.changes.patch` and asks you before `gauntlet apply` applies it.
 
 ## Who this is for
 

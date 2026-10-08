@@ -14,8 +14,11 @@ export interface Materialised {
   readonly group: string
   readonly kind: ProtectKind | "runner-config"
   readonly change: ChangeStatus
-  /** restored: base content put back. removed: head-only file taken out. kept: head file left to run. */
-  readonly action: "restored" | "removed" | "kept"
+  /**
+   * restored: base content put back. removed: head-only file taken out. kept: a new test left to run.
+   * edited: an existing test the change edits (or deletes) left as the change has it, for review.
+   */
+  readonly action: "restored" | "removed" | "kept" | "edited"
 }
 
 export interface OutputFile {
@@ -59,6 +62,8 @@ export interface PrepareRequest {
   readonly head: string
   readonly protect: ReadonlyArray<ProtectGroup>
   readonly runnerConfig: ReadonlyArray<string>
+  /** Existing tests the change edits run as edited, for review, instead of being restored. */
+  readonly testsAsEdited?: boolean
   /** Files taken out of the checkout entirely (ADR 0019). */
   readonly holdouts?: ReadonlyArray<HoldoutFiles>
 }
@@ -85,7 +90,9 @@ export const protectionFor = (path: string, protect: ReadonlyArray<ProtectGroup>
 
 /**
  * Decides what to do with each changed protected path. New files in a `tests`
- * group run; every other head-side change to protected content is undone.
+ * group run. With \`testsAsEdited\`, so do edits to existing tests (a changed
+ * requirement changes its tests): they run as edited and need review, never
+ * auto. Every other head-side change to protected content is undone.
  * A change under a holdout path is left out, whatever it is: holdout files
  * never join an ordinary run (ADR 0019).
  */
@@ -94,6 +101,7 @@ export const planMaterialisation = (
   protect: ReadonlyArray<ProtectGroup>,
   runnerConfig: ReadonlyArray<string>,
   holdouts: ReadonlyArray<HoldoutFiles> = [],
+  testsAsEdited = false,
 ): Materialised[] => {
   const out: Materialised[] = []
   const at = (path: string) => protectionFor(path, protect, runnerConfig)
@@ -113,6 +121,11 @@ export const planMaterialisation = (
     if (c.status === "renamed" && c.oldPath !== undefined) {
       const from = at(c.oldPath)
       const to = at(c.path)
+      if (testsAsEdited && from?.kind === "tests" && (!to || to.kind === "tests")) {
+        out.push({ path: c.oldPath, ...from, change: "renamed", action: "edited" })
+        if (to) out.push({ path: c.path, ...to, change: "renamed", action: "edited" })
+        continue
+      }
       // A rename is a delete plus an add. When protected content moves, the
       // base file comes back and the moved copy goes, so nothing runs twice.
       if (from) out.push({ path: c.oldPath, ...from, change: "renamed", action: "restored" })
@@ -121,7 +134,7 @@ export const planMaterialisation = (
     }
     const p = at(c.path)
     if (!p) continue
-    const action = c.status === "added" ? (p.kind === "tests" ? "kept" : "removed") : "restored"
+    const action = c.status === "added" ? (p.kind === "tests" ? "kept" : "removed") : testsAsEdited && p.kind === "tests" ? "edited" : "restored"
     out.push({ path: c.path, ...p, change: c.status, action })
   }
   return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
@@ -151,7 +164,7 @@ export const WorkspaceLive = Layer.effect(
 
           const changes = yield* git.diff(request.repo, request.base, request.head)
           const holdouts = request.holdouts ?? []
-          const materialised = planMaterialisation(changes, request.protect, request.runnerConfig, holdouts)
+          const materialised = planMaterialisation(changes, request.protect, request.runnerConfig, holdouts, request.testsAsEdited === true)
           yield* git.restore(dir, request.base, materialised.filter((m) => m.action === "restored").map((m) => m.path))
           for (const m of materialised) {
             if (m.action === "removed") yield* fs.remove(path.join(dir, m.path), { force: true })

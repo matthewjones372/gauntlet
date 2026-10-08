@@ -23,8 +23,8 @@ export interface ProtectedTouch {
   readonly group: string
   readonly kind: ProtectKind | "runner-config"
   readonly change: ChangeStatus
-  /** What the workspace does with it: undo the change, or let a new test run. */
-  readonly action: "restored" | "removed" | "kept"
+  /** What the workspace does with it: undo the change, let a new test run, or run an edited test for review. */
+  readonly action: "restored" | "removed" | "kept" | "edited"
 }
 
 export interface ZoneTouch {
@@ -67,6 +67,8 @@ export interface FactsInput {
   readonly ir: PolicyIR
   readonly runnerConfig: ReadonlyArray<string>
   readonly dependencyChanges: ReadonlyArray<DependencyChange>
+  /** Existing tests the change edits run as edited, for review (not under protect-only). */
+  readonly testsAsEdited?: boolean
 }
 
 const touched = (c: FileChange) => [c.path, ...(c.oldPath !== undefined ? [c.oldPath] : [])]
@@ -96,7 +98,7 @@ export const computeFacts = (input: FactsInput): DiffFacts => {
     head: input.head,
     files,
     linesChanged: files.reduce((n, f) => n + f.added + f.removed, 0),
-    protectedTouched: planMaterialisation(changes, ir.protect, input.runnerConfig, holdoutsOf(ir)),
+    protectedTouched: planMaterialisation(changes, ir.protect, input.runnerConfig, holdoutsOf(ir), input.testsAsEdited === true),
     zonesTouched,
     dependencyChanges: input.dependencyChanges,
     budgetsChanged,
@@ -137,7 +139,7 @@ export const dependencyChanges = (repo: string, base: string, head: string, chan
   })
 
 /** Reads the diff between two commits and computes its facts. */
-export const diffFacts = (repo: string, base: string, head: string, ir: PolicyIR, packs: ReadonlyArray<Pack>, runnerConfig: ReadonlyArray<string>): Effect.Effect<DiffFacts, GitFailure, Git> =>
+export const diffFacts = (repo: string, base: string, head: string, ir: PolicyIR, packs: ReadonlyArray<Pack>, runnerConfig: ReadonlyArray<string>, testsAsEdited = false): Effect.Effect<DiffFacts, GitFailure, Git> =>
   Effect.gen(function*() {
     const git = yield* Git
     const changes = yield* git.diff(repo, base, head)
@@ -145,5 +147,5 @@ export const diffFacts = (repo: string, base: string, head: string, ir: PolicyIR
     const added = yield* git.addedLines(repo, base, head)
     const used = packs.filter((p) => ir.packs.includes(p.spec.name))
     const deps = yield* dependencyChanges(repo, base, head, changes, used, added)
-    return computeFacts({ base, head, changes, lineCounts, addedLines: added, ir, runnerConfig, dependencyChanges: deps })
+    return computeFacts({ base, head, changes, lineCounts, addedLines: added, ir, runnerConfig, dependencyChanges: deps, testsAsEdited })
   })

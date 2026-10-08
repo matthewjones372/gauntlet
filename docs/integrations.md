@@ -13,8 +13,10 @@ Back to the [README](../README.md).
 - a short instructions block in `CLAUDE.md` and `AGENTS.md`;
 - the `/gauntlet-setup` command.
 
-When a task can't be done without changing protected tests or policy, the agent
-calls `report_blocked` with the reason. That's a legitimate outcome: the change
+When a requirement changes, the agent may change the tests that state it: the
+change then needs review, never auto. When a task can't be done without
+changing protected configuration or policy, the agent calls `report_blocked`
+with the reason. That's a legitimate outcome: the change
 goes to a person instead of the agent weakening the checks.
 
 The optional authoring agent (`gauntlet author`) drafts and critiques policies

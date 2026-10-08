@@ -107,7 +107,8 @@ const prepare = (request: { readonly repo: string; readonly policyRef?: string; 
     const base = loaded.baseSha.value
     const head = yield* git.revParse(request.repo, request.head ?? "HEAD")
     const runnerConfig = runnerConfigFor(registry.packs, ir.packs)
-    const facts = yield* diffFacts(request.repo, base, head, ir, registry.packs, runnerConfig)
+    // Protect-only judges with the base's tests, pass or fail; otherwise an edited test runs as edited and needs review.
+    const facts = yield* diffFacts(request.repo, base, head, ir, registry.packs, runnerConfig, !request.protectOnly)
     const baseline = yield* (yield* BaselineStore).at(request.repo, base)
     const renames = renamesOf(facts.files.map((f) => ({ status: f.status, path: f.path, ...(f.oldPath !== undefined ? { oldPath: f.oldPath } : {}) })))
     return { loaded, ir, base, head, used: registry.packs.filter((p) => ir.packs.includes(p.spec.name)), runnerConfig, facts, baseline, renames }
@@ -194,7 +195,7 @@ export const runCheck = (request: CheckRequest) =>
     const p = yield* prepare(request)
     const { report, executed } = yield* Effect.scoped(Effect.gen(function*() {
       const protect = request.adoption ? p.ir.protect.filter((g) => g.kind !== "tests") : p.ir.protect
-      const workspace = yield* (yield* Workspace).prepare({ repo: request.repo, base: p.base, head: p.head, protect, runnerConfig: p.runnerConfig, holdouts: holdoutsOf(p.ir) })
+      const workspace = yield* (yield* Workspace).prepare({ repo: request.repo, base: p.base, head: p.head, protect, runnerConfig: p.runnerConfig, holdouts: holdoutsOf(p.ir), testsAsEdited: !request.protectOnly })
       const files = yield* git.listWorkingFiles(workspace.dir)
       const today = yield* git.commitDate(request.repo, p.head)
       const gates: GateRunnerOutput = request.skipGates

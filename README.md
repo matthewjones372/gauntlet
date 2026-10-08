@@ -101,9 +101,11 @@ evaluates Gauntlet, but it's the problem Gauntlet is built for.
 
 ## How it works
 
-- **The checks come from the base branch.** Protected tests, fixtures, test
-  setup and runner configuration are put back to their base versions before
-  anything runs. Editing them can't change the result. The edit is flagged.
+- **The checks come from the base branch.** Fixtures, test setup and runner
+  configuration are put back to their base versions before anything runs, so
+  editing them can't change the result. A protected test the change edits (a
+  changed requirement changes its tests) runs as edited and always needs
+  review; `--protect-only` restores tests too.
 - **Gauntlet produces its own evidence.** Checks run in a fresh worktree, and
   Gauntlet reads only what the processes it started wrote. A planted report is
   ignored, and a check that can't prove it ran never counts as a pass.

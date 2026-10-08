@@ -8,7 +8,8 @@ import { answers, appLayer, ExitStatus, Output, runCli, stdinText } from "../src
 import { baseRepo } from "./harness.ts"
 
 // Spec 0005. The Stop hook doesn't hold an agent to failures it didn't cause,
-// and the adoption window is the one time an agent may fix protected tests.
+// and the adoption window records the protected tests an agent fixes while
+// a project adopts Gauntlet. Editing a test is never refused: it needs review.
 
 const repos: TempRepo[] = []
 afterEach(() => repos.splice(0).forEach((r) => r.cleanup()))
@@ -54,7 +55,7 @@ describe("the adoption window", () => {
     const res = await run(["adopt", "--repo", r.dir])
     expect(res.code).toBe(2)
     expect(res.out).toContain("needs you at a terminal")
-    expect(denied(await edit(r, "src/test/AddTest.txt"))).toBe(true)
+    expect(denied(await edit(r, "src/test/AddTest.txt"))).toBe(false)
   })
 
   test("open: protected tests may be edited and each one is recorded; the next commit closes it", async () => {
@@ -68,7 +69,7 @@ describe("the adoption window", () => {
     expect((await run(["adopt", "--repo", r.dir, "--status"])).out).toContain("  - src/test/AddTest.txt")
     writeFileSync(join(r.dir, "src/test/AddTest.txt"), "add\n")
     r.commit("fixed the test")
-    expect(denied(await edit(r, "src/test/AddTest.txt"))).toBe(true)
+    expect(denied(await edit(r, "src/test/AddTest.txt"))).toBe(false)
     const closed = await run(["adopt", "--repo", r.dir, "--close"])
     expect(closed.out).toContain("closed by a commit")
     expect(closed.out).toContain("src/test/AddTest.txt")
@@ -77,6 +78,6 @@ describe("the adoption window", () => {
   test("anything but the typed word leaves it shut", async () => {
     const r = failingProject()
     expect((await run(["adopt", "--repo", r.dir], { replies: ["yes"] })).out).toContain("Not opened.")
-    expect(denied(await edit(r, "src/test/AddTest.txt"))).toBe(true)
+    expect(denied(await edit(r, "src/test/AddTest.txt"))).toBe(false)
   })
 })

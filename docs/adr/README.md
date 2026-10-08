@@ -22,3 +22,4 @@
 | 0018 | Clojure: a built-in reader, Gauntlet's own runners, and no mutation gate | accepted |
 | 0019 | Holdouts name their files in the policy and run only in the evidence job, from base | accepted |
 | 0020 | One warm Gradle daemon or sbt server per check, never shared across checks | accepted |
+| 0021 | An edited protected test runs as edited and needs review | accepted |
