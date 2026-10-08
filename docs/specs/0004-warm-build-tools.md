@@ -82,3 +82,12 @@ Gradle and the pack `stop` hook only.
   gate runner calls each pack's `stop` once, after the gates.
 - End to end: the JVM and Scala suites pass unchanged, and no daemon or server
   carrying a check's marker is left running after them.
+
+## Measured on Linux
+
+In a 4-CPU Linux container like CI's runners, a full Scala check (five gates)
+took 51.0s on average over five runs with batch-mode sbt and 51.0s with the
+server: starting sbt is cheap on Linux, and the time is the gates' own work
+(scalafix, scoverage, Stryker4s, the tests). Both caches made it slower, by
+about 6s per check, so they're switched off. What brings the Scala e2e under
+five minutes is running it as parallel CI jobs.

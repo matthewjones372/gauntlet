@@ -1,0 +1,36 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 64bb9d5..7452794 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -46,11 +46,14 @@ jobs:
+       matrix:
+         pack: [jvm, typescript, python, go, rust, clojure]
+         # The Scala suite is the slowest by far (about 25 full checks), so it
+-        # runs as four jobs at once. Each shard records its own baseline.
++        # runs as five jobs at once. Each shard records its own baseline.
+         include:
+           - pack: scala
+-            shard: scenarios 1-5
+-            filter: "ScalaTest service.*(baseline|[1-5][.] )"
++            shard: scenarios 1-2
++            filter: "ScalaTest service.*(baseline|[1-2][.] )"
++          - pack: scala
++            shard: scenarios 3-5
++            filter: "ScalaTest service.*[3-5][.] "
+           - pack: scala
+             shard: scenarios 6-9
+             filter: "ScalaTest service.*[6-9][.] "
+@@ -99,13 +102,6 @@ jobs:
+           tool: cargo-nextest,cargo-llvm-cov,cargo-mutants
+       - if: matrix.pack == 'scala'
+         uses: sbt/setup-sbt@6158cb0903b8ceeae04f830055f3155e1b6a5ad7 # v1.5.11
+-      # Gauntlet's compiled sbt build definitions, kept between runs. Only these
+-      # test jobs read it, and the key covers the fixtures' build files.
+-      - if: matrix.pack == 'scala'
+-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+-        with:
+-          path: ~/.cache/gauntlet/sbt-build-definition
+-          key: gauntlet-sbt-${{ runner.os }}-${{ hashFiles('examples/fixtures/scala-*/**/project/*.sbt', 'examples/fixtures/scala-*/**/project/build.properties', 'examples/fixtures/scala-*/project/*.sbt', 'examples/fixtures/scala-*/project/build.properties') }}
+       - if: matrix.pack == 'clojure'
+         uses: DeLaGuardo/setup-clojure@6d46099eae24853c33c0482f2bb54edf4f1a4c74 # 13.7.0
+         with:

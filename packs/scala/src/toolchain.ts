@@ -186,8 +186,8 @@ export const sbt = (ctx: GateContext, commands: ReadonlyArray<string>, env: Read
   Effect.gen(function*() {
     const runner = yield* ProcessRunner
     const path = yield* Path.Path
-    yield* warmBuildDefinition(ctx).pipe(Effect.ignore)
-    yield* warmCompiledSources(ctx).pipe(Effect.ignore)
+    // The build-definition and compiled-sources caches above made Linux checks slower
+    // (measured: about 6s more per check), so they're not used (spec 0004).
     const argv = ["sbt", "--client", ["session clear-all", "reload", ...commands].join("; ")]
     const result = yield* Effect.exit(runner.run({ command: argv[0]!, args: argv.slice(1), cwd: ctx.dir, env: { NO_COLOR: "1", SBT_OPTS: serverOpts(ctx, path.dirname), ...env } }))
     if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: "sbt couldn't be started or timed out" } satisfies ToolRun
