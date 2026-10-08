@@ -4,7 +4,7 @@ import {
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
-import { claudeCode, codeowners, FIX_COMMAND, type GeneratedFile, github, PROPOSAL_FILE, render } from "@gauntlet/connect"
+import { claudeCode, codeowners, FIX_COMMAND, type GeneratedFile, github, PROPOSAL_FILE, render, requireCheckRuleset } from "@gauntlet/connect"
 import { defaultPackage, invalidVars, render as renderTemplate, TEMPLATES } from "@gauntlet/templates"
 import { type AuthorConfig, authorConfig, authorContext, draftProposals, explainInPlainLanguage, isolationProblem, runSession } from "@gauntlet/author"
 import { Compiler, DEFAULT_POLICY_FILE, type Diagnostic, formatDiagnostics, PolicyInvalid } from "@gauntlet/dsl"
@@ -813,6 +813,36 @@ const writeGenerated = (root: string, files: ReadonlyArray<GeneratedFile>, dryRu
 
 const DEFAULT_DOWNLOAD = (version: string) => `https://github.com/matthewjones372/gauntlet/releases/download/v${version}/gauntlet-linux-x64`
 
+/** Requires the `gauntlet` check on the default branch through a repository ruleset, with the GitHub CLI. */
+const requireCheck = (root: string, adminBypass: boolean) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const runner = yield* ProcessRunner
+    const output = yield* Output
+    const gh = (args: ReadonlyArray<string>) => runner.run({ command: "gh", args, cwd: root, timeout: "1 minute" })
+    const elsewhere = "Or add it by hand: the repository's Settings, Rules, Rulesets, a ruleset for the default branch that requires the `gauntlet` status check."
+    const repo = yield* gh(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]).pipe(Effect.option)
+    if (Option.isNone(repo) || repo.value.exitCode !== 0 || repo.value.stdout.trim() === "") {
+      return yield* fail(`Requiring the check needs the GitHub CLI (gh), signed in, in a repository with a GitHub remote. ${elsewhere}`)
+    }
+    const nwo = repo.value.stdout.trim()
+    // pull_request_target runs the workflow from the default branch: required before it's there, every pull request waits for a check that never comes.
+    const workflow = yield* gh(["api", `repos/${nwo}/contents/.github/workflows/gauntlet.yml`, "-q", ".path"])
+    if (workflow.exitCode !== 0) {
+      return yield* fail(`.github/workflows/gauntlet.yml isn't on ${nwo}'s default branch yet. Push it first, then run this again; required before then, every pull request would wait for a check that never comes.`)
+    }
+    const existing = yield* gh(["api", `repos/${nwo}/rulesets`, "-q", '.[] | select(.name == "gauntlet") | .id'])
+    const id = existing.exitCode === 0 ? existing.stdout.trim().split("\n")[0] ?? "" : ""
+    const body = yield* fs.makeTempFile({ prefix: "gauntlet-ruleset-" })
+    yield* fs.writeFileString(body, JSON.stringify(requireCheckRuleset({ adminBypass })))
+    const saved = yield* gh(["api", "-X", id ? "PUT" : "POST", id ? `repos/${nwo}/rulesets/${id}` : `repos/${nwo}/rulesets`, "--input", body]).pipe(Effect.ensuring(fs.remove(body).pipe(Effect.ignore)))
+    if (saved.exitCode !== 0) {
+      return yield* fail(`GitHub refused the ruleset (it needs admin rights on ${nwo}): ${(saved.stderr || saved.stdout).trim()}\n${elsewhere}`)
+    }
+    yield* output.out(style.ok(`${id ? "Updated" : "Created"} the \`gauntlet\` ruleset on ${nwo}: pull requests into the default branch now need the \`gauntlet\` check to pass.`))
+    yield* output.out(adminBypass ? "Repository admins can still push to the default branch directly." : "Nobody can push to the default branch without the check, admins included.")
+  })
+
 const connectGithub = Command.make("github", {
   repo: repoFlag,
   mode: Flag.Literals("mode", ["repo", "org"]).pipe(Flag.withDefault("repo" as const), Flag.withDescription("repo: a pull_request_target workflow here; org: a workflow for a policy repository and an org ruleset")),
@@ -821,10 +851,13 @@ const connectGithub = Command.make("github", {
   java: Flag.optional(Flag.String("java").pipe(Flag.withDescription("JDK version for the jvm pack (default 21)"))),
   fromSource: Flag.Boolean("from-source").pipe(Flag.withDefault(false), Flag.withDescription("build Gauntlet from the base commit's source instead of downloading it (for the Gauntlet repository itself)")),
   protectOnly: Flag.Boolean("protect-only").pipe(Flag.withDefault(false), Flag.withDescription("judge pull requests with check --protect-only: the verification boundary, pass or fail")),
+  requireCheck: Flag.Boolean("require-check").pipe(Flag.withDefault(false), Flag.withDescription("with the GitHub CLI, require the `gauntlet` check on the default branch through a repository ruleset (writes no files; push the workflow first)")),
+  adminBypass: Flag.Boolean("admin-bypass").pipe(Flag.withDefault(false), Flag.withDescription("with --require-check: repository admins can still push to the default branch directly")),
   dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false), Flag.withDescription("print the files instead of writing them")),
 }, (args) =>
   Effect.gen(function*() {
     const root = yield* absolute(args.repo)
+    if (args.requireCheck) return yield* requireCheck(root, args.adminBypass)
     const loaded = yield* (yield* PolicySource).load({ repo: root })
     const files = yield* (yield* Git).listWorkingFiles(root)
     yield* writeGenerated(root, github({
@@ -839,7 +872,7 @@ const connectGithub = Command.make("github", {
       ...(Option.isSome(args.sha256) ? { sha256: args.sha256.value } : {}),
       ...(Option.isSome(args.java) ? { javaVersion: args.java.value } : {}),
     }), args.dryRun)
-    if (!args.dryRun) yield* (yield* Output).out("Next: read .github/GAUNTLET.md, then require the `gauntlet` check in the default branch's ruleset.")
+    if (!args.dryRun) yield* (yield* Output).out("Next: commit and push these files, then run `gauntlet connect github --require-check` to require the `gauntlet` check on the default branch.")
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Generate GitHub enforcement: workflow, CODEOWNERS and the PR check."))
 
 /** Writes Claude Code's hooks, deny rules, MCP server, instructions and /gauntlet-setup for the policy on disk. */

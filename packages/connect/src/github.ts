@@ -381,3 +381,14 @@ export const github = (o: GithubOptions): ReadonlyArray<GeneratedFile> => [
   codeowners(o.ir),
   { path: ".github/GAUNTLET.md", content: readme(o), mode: "replace" },
 ]
+
+/** The repository ruleset `gauntlet connect github --require-check` creates: the default branch needs the `gauntlet` check. */
+export const requireCheckRuleset = (o: { readonly adminBypass: boolean }) => ({
+  name: "gauntlet",
+  target: "branch",
+  enforcement: "active",
+  conditions: { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } },
+  // Repository role 5 is admin: with the bypass, admins can still push to the default branch directly.
+  bypass_actors: o.adminBypass ? [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" }] : [],
+  rules: [{ type: "required_status_checks", parameters: { strict_required_status_checks_policy: false, required_status_checks: [{ context: "gauntlet" }] } }],
+})
