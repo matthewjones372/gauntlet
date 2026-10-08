@@ -117,6 +117,10 @@ const howToUnblock = (owners: ReadonlyArray<string>): string =>
 
 const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>): GithubStatus => {
   const head = report.policy.headSha
+  // The zones a change touches, in the check's title, so a list of pull requests shows where to look.
+  // A report from an older evidence job may carry no facts.
+  const zones = (report.facts?.zonesTouched ?? []).map((z) => z.zone)
+  const where = zones.length > 0 ? `: touches ${zones.join(", ")}` : ""
   const approvers = approvalsOn(reviews, head)
   const d = report.decision
   // Owners who can approve an owner tier: those the decision names, and the policy owners.
@@ -139,15 +143,15 @@ const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams
       return { conclusion: "success", title: d.tier === "auto" ? "Auto: no review needed" : "Skim", summary: `Tier ${d.tier}.${overridden}`, approvedBy: approvers, honouredOverrides: honoured }
     case "review":
       return approvers.length > 0
-        ? { conclusion: "success", title: "Reviewed", summary: `Tier review, approved by ${approvers.join(", ")}.${overridden}`, approvedBy: approvers, honouredOverrides: honoured }
-        : { conclusion: "action_required", title: "Needs review", summary: `Tier review: an approving review on this commit is required.${howToDecide("a reviewer", head, tierOwners)}`, approvedBy: approvers, honouredOverrides: honoured }
+        ? { conclusion: "success", title: `Approved by ${approvers.join(", ")}`, summary: `Tier review, approved by ${approvers.join(", ")} for commit ${head.slice(0, 12)}.${overridden}`, approvedBy: approvers, honouredOverrides: honoured }
+        : { conclusion: "action_required", title: `Needs review${where}`, summary: `Tier review: an approving review on this commit is required.${howToDecide("a reviewer", head, tierOwners)}`, approvedBy: approvers, honouredOverrides: honoured }
     case "owner": {
       const owning = approvers.filter((a) => isOwner(a, tierOwners, teams))
       return owning.length > 0
-        ? { conclusion: "success", title: "Approved by an owner", summary: `Tier owner, approved by ${owning.join(", ")}.${overridden}`, approvedBy: approvers, honouredOverrides: honoured }
+        ? { conclusion: "success", title: `Approved by ${owning.join(", ")} (owner)`, summary: `Tier owner, approved by ${owning.join(", ")} for commit ${head.slice(0, 12)}.${overridden}`, approvedBy: approvers, honouredOverrides: honoured }
         : {
           conclusion: "action_required",
-          title: "Needs an owner",
+          title: `Needs an owner${where}`,
           summary: `Tier owner: an approving review on this commit from ${tierOwners.length > 0 ? tierOwners.join(", ") : "an owner (the policy names none; add `owners` to .gauntlet/policy.gx)"} is required.${howToDecide(tierOwners.length > 0 ? tierOwners.join(" or ") : "an owner", head, tierOwners)}`,
           approvedBy: approvers,
           honouredOverrides: honoured,

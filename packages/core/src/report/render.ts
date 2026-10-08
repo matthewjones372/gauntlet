@@ -76,6 +76,16 @@ export const renderMarkdown = (r: Report): string => {
   )
   if (d.owners.length > 0) lines.push(`Suggested reviewers: ${d.owners.join(", ")}`, "")
 
+  // Where a person should look: the zones the change touches, with their owners and files.
+  if (d.scope !== "protect-only" && r.facts.zonesTouched.length > 0) {
+    lines.push("### Needs your attention", "")
+    for (const z of r.facts.zonesTouched) {
+      const files = z.files.slice(0, 5).map(code).join(", ")
+      lines.push(`- Zone **${z.zone}**${z.owners.length > 0 ? ` (owner ${z.owners.join(", ")})` : ""}: ${files}${z.files.length > 5 ? ` and ${z.files.length - 5} more` : ""}`)
+    }
+    lines.push("")
+  }
+
   // A review or owner tier waits for an approval on GitHub; say exactly how to give it.
   if (d.scope !== "protect-only" && d.mode === "enforce" && !d.blocking && (d.tier === "review" || d.tier === "owner")) {
     const owners = [...new Set([...d.owners, ...r.policy.owners])]

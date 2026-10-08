@@ -1282,7 +1282,7 @@ const githubStatusCommand = Command.make("github-status", {
         const [first, ...rest] = text.value.split("\n")
         const who = `approved by ${status.approvedBy.join(", ")}`
         const ticked = rest.map((l) => (l.startsWith(`- [ ] ${APPROVE_BOX}`) ? `- [x] ${APPROVE_BOX}: ${who} (commit \`${head.slice(0, 12)}\`)` : l))
-        yield* fs.writeFileString(md, [first, "", `**Approved by ${status.approvedBy.join(", ")}** for commit \`${head.slice(0, 12)}\`.`, ...ticked].join("\n"))
+        yield* fs.writeFileString(md, [first, "", `**${status.title}** for commit \`${head.slice(0, 12)}\`.`, ...ticked].join("\n"))
       }
     }
     yield* output.out(`${status.conclusion}: ${status.title}. ${status.summary}`)
