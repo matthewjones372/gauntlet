@@ -4,7 +4,7 @@ import {
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
-import { claudeCode, FIX_COMMAND, type GeneratedFile, github, PROPOSAL_FILE, render } from "@gauntlet/connect"
+import { claudeCode, codeowners, FIX_COMMAND, type GeneratedFile, github, PROPOSAL_FILE, render } from "@gauntlet/connect"
 import { defaultPackage, invalidVars, render as renderTemplate, TEMPLATES } from "@gauntlet/templates"
 import { type AuthorConfig, authorConfig, authorContext, draftProposals, explainInPlainLanguage, isolationProblem, runSession } from "@gauntlet/author"
 import { Compiler, DEFAULT_POLICY_FILE, type Diagnostic, formatDiagnostics, PolicyInvalid } from "@gauntlet/dsl"
@@ -297,6 +297,32 @@ export const persistentFailures = (checks: ReadonlyArray<CheckRecord>, ir: Polic
       }
     }
     return false
+  })
+
+/** Where GitHub looks for CODEOWNERS. */
+const CODEOWNERS_PATHS = [".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"]
+
+/**
+ * When the repository has no CODEOWNERS, offer one built from the policy's
+ * owners and zones, so GitHub requests the right reviewers. Committed on yes.
+ */
+const offerCodeowners = (root: string, ir: PolicyIR) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const output = yield* Output
+    for (const p of CODEOWNERS_PATHS) if (yield* fs.exists(path.join(root, p))) return
+    if (ir.owners.length === 0) {
+      return yield* output.out(style.warn(`No CODEOWNERS file, and the policy names no owners. Add ${style.command("owners @your-name")} to .gauntlet/policy.gx (or run /gauntlet-setup), then ${style.command("gauntlet apply")} again to create one.`))
+    }
+    yield* output.out(style.warn("No CODEOWNERS file, so GitHub won't ask anyone in particular to review."))
+    const reply = yield* (yield* Ask).question(style.bold(`Create .github/CODEOWNERS from the policy (${ir.owners.join(", ")}${ir.zones.some((z) => z.owners.length > 0) ? " and the zones' owners" : ""})? [Y/n] `))
+    if (Option.isNone(reply)) return yield* output.out(`To add one later: ${style.command("gauntlet connect github")}, or run ${style.command("gauntlet apply")} in a terminal.`)
+    if (!/^(|y|yes)$/i.test(reply.value)) return yield* output.out("No CODEOWNERS file written.")
+    const file = codeowners(ir)
+    yield* fs.makeDirectory(path.join(root, ".github"), { recursive: true })
+    yield* fs.writeFileString(path.join(root, file.path), render(file, undefined))
+    if (yield* commitIfChanged(root, [file.path], "Add CODEOWNERS from the Gauntlet policy")) yield* output.out(style.ok(`Wrote and committed ${file.path}.`))
   })
 
 /** What a first baseline means, and the order to go in when the project already fails. */
@@ -977,6 +1003,7 @@ const apply = Command.make("apply", {
     }
     if (args.dryRun) return
     if (yield* commitIfChanged(root, [...SETUP_FILES, ...DEPENDENCY_FILES], "Add Gauntlet")) yield* output.out("Committed the policy, the Claude Code files and any tools setup installed.")
+    yield* offerCodeowners(root, (yield* (yield* PolicySource).load({ repo: root, baseRef: "HEAD" })).compiled.ir)
     const recordedBaseline = yield* fs.readFileString(path.join(root, BASELINE_PATH)).pipe(Effect.option)
     const policyHash = (yield* (yield* PolicySource).load({ repo: root, baseRef: "HEAD" })).compiled.hash
     // A baseline records the policy's hash; another hash means the policy changed since.
