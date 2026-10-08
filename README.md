@@ -243,6 +243,10 @@ policy says `mode shadow`.
    gauntlet setup
    ```
 
+   If a check's tool is missing (mypy, Ruff or mutmut in a uv or Poetry
+   project, for example), it says "I'll install these for you", shows the
+   command and asks first. Pass `--yes` to skip the question.
+
 3. **Agree the rules with Claude.** Open Claude Code in the same folder and type
    `/gauntlet-setup`. It describes what your project already has, recommends a
    policy and asks you about each decision. When you're done, run the command
@@ -463,10 +467,15 @@ repository and an org ruleset instead. See
 Each language pack brings its own zone rules, integrity detectors and tamper
 fixtures. .NET, Ruby, PHP, Maven and frontend packs are planned.
 
-On Gradle and sbt, the gates of one check share one warm daemon or server that
-only that check can use, and it's shut down when the check ends
+On Gradle, the gates of one check share one warm daemon that only that check
+can use, and it's shut down when the check ends
 ([ADR 0020](docs/adr/0020-one-build-tool-per-check.md)). Nothing carries over
 from one check to the next.
+
+With uv, Gauntlet installs every dependency group, unless the project chooses
+its own: set `default-groups` under `[tool.uv]` in pyproject.toml (for example
+`["dev", "cpu"]`), or declare `conflicts`, and Gauntlet installs uv's default
+selection instead.
 
 ## FAQ
 

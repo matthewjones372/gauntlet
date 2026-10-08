@@ -17,7 +17,7 @@ import { agentFromEnv } from "./agent.ts"
 import { describeChanges } from "./apply.ts"
 import { exportCorpus } from "./corpus-export.ts"
 import { AuthorRuntime, type AuthorRuntimeShape, renderDropped } from "./author.ts"
-import { ExitStatus, exitWith, Output, Stdin } from "./output.ts"
+import { Ask, ExitStatus, exitWith, Output, Stdin } from "./output.ts"
 import { GAUNTLET_VERSION } from "./version.ts"
 
 // The CLI. Handlers stay thin: parse flags, call a core program, print, set
@@ -678,9 +678,44 @@ const connectClaudeCode = Command.make("claude-code", {
 /** The files `setup` and `apply` create, committed together by `apply`. */
 const SETUP_FILES = [DEFAULT_POLICY_FILE, ".claude/settings.json", ".claude/commands/gauntlet-setup.md", ".claude/gauntlet-managed-settings.example.json", ".mcp.json", "CLAUDE.md", "AGENTS.md"]
 
+/**
+ * Offers to install the tools the draft left out (`uv add --dev ...`), runs the
+ * commands when the person says yes (or passed --yes), and says whether anything
+ * was installed.
+ */
+const offerInstall = (root: string, commands: ReadonlyArray<ReadonlyArray<string>>, yes: boolean) =>
+  Effect.gen(function*() {
+    const output = yield* Output
+    if (commands.length === 0) return false
+    yield* output.out(["", "I'll install these for you:", ...commands.map((c) => `  ${c.join(" ")}`)].join("\n"))
+    if (!yes) {
+      const reply = yield* (yield* Ask).question("Go ahead? [Y/n] ")
+      if (Option.isNone(reply)) {
+        yield* output.out("No terminal to ask in, so nothing was installed. Run `gauntlet setup --yes` to install them, or run the commands yourself.")
+        return false
+      }
+      if (!/^(|y|yes)$/i.test(reply.value)) {
+        yield* output.out("Nothing installed. Run the commands yourself when you're ready, then `gauntlet setup` again.")
+        return false
+      }
+    }
+    const runner = yield* ProcessRunner
+    for (const c of commands) {
+      yield* output.out(`Running ${c.join(" ")} ...`)
+      const r = yield* Effect.exit(runner.run({ command: c[0]!, args: c.slice(1), cwd: root, timeout: "10 minutes" }))
+      if (r._tag === "Failure" || r.value.exitCode !== 0) {
+        const why = r._tag === "Failure" ? `${c[0]} couldn't be started` : (r.value.stderr.trim() || r.value.stdout.trim()).split("\n").slice(-5).join("\n")
+        yield* output.out(`That didn't work, so the policy leaves those checks out for now:\n${why}`)
+        return false
+      }
+    }
+    return true
+  })
+
 const setup = Command.make("setup", {
   repo: repoFlag,
   owner: ownersFlag,
+  yes: Flag.Boolean("yes").pipe(Flag.withDefault(false), Flag.withDescription("install missing tools without asking")),
 }, (args) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
@@ -692,12 +727,26 @@ const setup = Command.make("setup", {
     if (existed) {
       yield* output.out(`${DEFAULT_POLICY_FILE} already exists; keeping it.`)
     } else {
-      const draft = yield* templateDraft(root, path.basename(root), ownerList(args.owner))
+      let draft = yield* templateDraft(root, path.basename(root), ownerList(args.owner))
       if (draft._tag === "Refused") return yield* fail(draft.reason)
+      // Listed once: before the offer, or after drafting when there's nothing to install or it was declined.
+      let listed = false
+      if (draft.setup.length > 0 && draft.install.length > 0) {
+        yield* output.out(["Checks left out until their tools are set up:", ...draft.setup.map((x) => `  - ${x}`)].join("\n"))
+        listed = true
+        // Installed tools are now dependencies, so a fresh draft gates them.
+        if (yield* offerInstall(root, draft.install, args.yes)) {
+          listed = false
+          const again = yield* templateDraft(root, path.basename(root), ownerList(args.owner))
+          if (again._tag === "Draft") draft = again
+          yield* output.out("Installed. Commit the dependency changes with the policy.")
+        }
+        yield* output.out("")
+      }
       yield* fs.makeDirectory(path.dirname(target), { recursive: true })
       yield* fs.writeFileString(target, draft.text)
       yield* output.out(`Drafted ${DEFAULT_POLICY_FILE} for ${draft.packs.join(", ")} (shadow mode: it reports, it never blocks).`)
-      if (draft.setup.length > 0) yield* output.out(["Checks left out until their tools are set up:", ...draft.setup.map((x) => `  - ${x}`)].join("\n"))
+      if (draft.setup.length > 0 && !listed) yield* output.out(["Checks still left out until their tools are set up:", ...draft.setup.map((x) => `  - ${x}`)].join("\n"))
     }
     if (!(yield* connectClaude(root, false))) return
     yield* output.out([

@@ -17,13 +17,29 @@ export const onboard = (repo: RepoView): Onboarding => {
   const setup: string[] = []
   if (repo.files.includes("tsconfig.json")) fast.push("build")
   else setup.push("Add a tsconfig.json at the repository root to gate type checking (build).")
+  // The dev dependencies that would add the missing gates.
+  const missing: string[] = []
   if (deps.has("@biomejs/biome") || deps.has("eslint")) fast.push("lint ratchet")
-  else setup.push("Add @biomejs/biome or eslint to gate lint.")
+  else {
+    setup.push("Add @biomejs/biome or eslint to gate lint.")
+    missing.push("@biomejs/biome")
+  }
   const coverageReady = runner._tag === "Some" && (runner.value !== "vitest" || deps.has("@vitest/coverage-v8") || deps.has("@vitest/coverage-istanbul"))
   if (coverageReady) verify.push("coverage ratchet on changed")
-  else setup.push(runner._tag === "Some" ? "Add @vitest/coverage-v8 to gate coverage." : "Add vitest or jest (or use bun test) to run tests and gate coverage.")
+  else if (runner._tag === "Some") {
+    setup.push("Add @vitest/coverage-v8 to gate coverage.")
+    missing.push("@vitest/coverage-v8")
+  }
+  // Which test runner to adopt is the person's choice, so it's never installed for them.
+  else setup.push("Add vitest or jest (or use bun test) to run tests and gate coverage.")
   if (deps.has("@stryker-mutator/core")) verify.push("mutation ratchet on changed")
-  else setup.push("Add @stryker-mutator/core and its test runner plugin to gate mutation.")
+  else {
+    setup.push("Add @stryker-mutator/core and its test runner plugin to gate mutation.")
+    const plugin = runner._tag === "Some" && runner.value === "vitest" ? ["@stryker-mutator/vitest-runner"] : runner._tag === "Some" && runner.value === "jest" ? ["@stryker-mutator/jest-runner"] : []
+    if (runner._tag === "Some") missing.push("@stryker-mutator/core", ...plugin)
+  }
+  const add = { bun: ["bun", "add", "-d"], pnpm: ["pnpm", "add", "-D"], yarn: ["yarn", "add", "-D"], npm: ["npm", "install", "-D"] }[manager]
+  const install = missing.length > 0 && repo.files.includes("package.json") ? [[...add, ...missing]] : []
   const dirs = directoriesNamed(repo.files, ["test", "tests", "__tests__"])
   const colocated = repo.files.some((f) => /\.(test|spec)\.[cm]?[jt]sx?$/.test(f) && !dirs.some((d) => globMatches(d, f)))
   const tests = [...dirs, ...(colocated ? ["**/*.test.*", "**/*.spec.*"] : [])]
@@ -38,5 +54,6 @@ export const onboard = (repo: RepoView): Onboarding => {
     fast,
     verify,
     setup,
+    ...(install.length > 0 ? { install } : {}),
   }
 }

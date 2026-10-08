@@ -31,6 +31,12 @@ export interface Onboarding {
   readonly verify: ReadonlyArray<string>
   /** What to set up to add the gates that were left out. */
   readonly setup: ReadonlyArray<string>
+  /**
+   * Commands that install the missing tools as project dependencies, for
+   * `gauntlet setup` to offer (each an argv, run in the repository root).
+   * Only for tools a single command sets up; the rest stay hints.
+   */
+  readonly install?: ReadonlyArray<ReadonlyArray<string>>
 }
 
 export interface DraftRequest {
@@ -53,6 +59,8 @@ export interface DraftRequest {
 export interface Draft {
   readonly text: string
   readonly setup: ReadonlyArray<string>
+  /** The packs' install commands, when any tool can be installed for the person. */
+  readonly install?: ReadonlyArray<ReadonlyArray<string>>
 }
 
 const quote = (s: string) => JSON.stringify(s)
@@ -162,7 +170,8 @@ export const draftPolicy = (r: DraftRequest, files: ReadonlyArray<string>): Draf
     ...(fast.length + verify.length > 0 ? ["  auto   when small and all gates pass"] : []),
     "}",
   )
-  return { text: `${lines.join("\n")}\n`, setup: unique(all.flatMap((o) => o.setup)) }
+  const install = all.flatMap((o) => o.install ?? []).filter((c, i, cs) => cs.findIndex((d) => d.join(" ") === c.join(" ")) === i)
+  return { text: `${lines.join("\n")}\n`, setup: unique(all.flatMap((o) => o.setup)), ...(install.length > 0 ? { install } : {}) }
 }
 
 /** Test directories that exist, as globs: `test/**`, or `**\/test/**` when they're nested. */
@@ -208,5 +217,5 @@ export const templateDraft = (root: string, name: string, owners: ReadonlyArray<
     // A draft that doesn't compile is Gauntlet's bug, never the user's to fix.
     const compiled = yield* Effect.exit((yield* Compiler).compile({ file: DEFAULT_POLICY_FILE, text: draft.text, files: files.value }))
     if (compiled._tag === "Failure") return { _tag: "Refused", reason: `Gauntlet drafted a policy it can't compile; please report this.\n${draft.text}` } as const
-    return { _tag: "Draft", text: draft.text, setup: draft.setup, packs: detected.map((p) => p.spec.name) } as const
+    return { _tag: "Draft", text: draft.text, setup: draft.setup, install: draft.install ?? [], packs: detected.map((p) => p.spec.name) } as const
   })

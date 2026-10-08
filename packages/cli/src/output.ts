@@ -1,4 +1,5 @@
-import { Context, Effect, Layer, Ref } from "effect"
+import { Context, Effect, Layer, Option, Ref } from "effect"
+import { createInterface } from "node:readline/promises"
 
 /** Where commands print. Tests capture it; the binary writes to stdout and stderr. */
 export class Output extends Context.Service<Output, {
@@ -28,3 +29,24 @@ export const Stdin = Context.Reference<{ readonly text: Effect.Effect<string> }>
   defaultValue: () => ({ text: Effect.promise(() => Bun.stdin.text()) }),
 })
 export const stdinText = (text: string) => Layer.succeed(Stdin, { text: Effect.succeed(text) })
+
+/** A question for the person at the terminal: none when nobody is there to answer (no TTY). Tests supply answers. */
+export const Ask = Context.Reference<{ readonly question: (text: string) => Effect.Effect<Option.Option<string>> }>("@gauntlet/cli/Ask", {
+  defaultValue: () => ({
+    question: (text) =>
+      process.stdin.isTTY === true && process.stdout.isTTY === true
+        ? Effect.promise(async () => {
+          const rl = createInterface({ input: process.stdin, output: process.stdout })
+          try {
+            return Option.some((await rl.question(text)).trim())
+          } finally {
+            rl.close()
+          }
+        })
+        : Effect.succeed(Option.none()),
+  }),
+})
+export const answers = (...replies: ReadonlyArray<string>) => {
+  const queue = [...replies]
+  return Layer.succeed(Ask, { question: () => Effect.sync(() => Option.fromNullishOr(queue.shift())) })
+}
