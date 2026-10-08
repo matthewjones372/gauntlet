@@ -7,7 +7,7 @@ import { arch, build, coverage, lint, mutation, runSuite } from "./gates.ts"
 import { onboard } from "./onboard.ts"
 import { enclosingSymbol, parseScala, stripLineComment } from "./syntax.ts"
 import { tamper } from "./tamper.ts"
-import { isScala } from "./toolchain.ts"
+import { isScala, stopServer } from "./toolchain.ts"
 
 /** Detects an sbt project from its file list. */
 export const detectScala = (files: ReadonlyArray<string>): boolean => files.includes("build.sbt") && files.some(isScala)
@@ -25,6 +25,8 @@ export const scalaPack: Pack = {
   detectors: [scalaDetector],
   gates: { build, lint, arch, mutation, coverage },
   runSuite,
+  // The check's own sbt server ends with the check (ADR 0020).
+  stop: stopServer,
   reruns: true,
   tamper,
   locate: (path, lines, line) => (isScala(path) ? enclosingSymbol(parseScala(lines.join("\n")), line) : undefined),
