@@ -24,7 +24,7 @@ const project = (extra: Record<string, string> = {}) => {
   const r = new TempRepo()
   repos.push(r)
   r.write({
-    "go.mod": "module example.com/svc\n\ngo 1.25\n",
+    "go.mod": "module example.com/svc\n\ngo 1.21\n",
     "settlement/fx.go": "package settlement\n\nfunc Convert(minor int64, rateBp int64) int64 {\n\treturn minor * rateBp / 10000\n}\n",
     "settlement/fx_test.go": "package settlement\n\nimport \"testing\"\n\nfunc TestConvert(t *testing.T) {\n\tif Convert(100, 9200) != 92 {\n\t\tt.Fatal(\"wrong\")\n\t}\n}\n",
     ...extra,
