@@ -73,6 +73,20 @@ export const renderMarkdown = (r: Report): string => {
   )
   if (d.owners.length > 0) lines.push(`Suggested reviewers: ${d.owners.join(", ")}`, "")
 
+  // A review or owner tier waits for an approval on GitHub; say exactly how to give it.
+  if (d.scope !== "protect-only" && d.mode === "enforce" && !d.blocking && (d.tier === "review" || d.tier === "owner")) {
+    const owners = [...new Set([...d.owners, ...r.policy.owners])]
+    const who = d.tier === "owner" ? (owners.length > 0 ? `An owner (${owners.join(", ")})` : "An owner") : "A reviewer"
+    lines.push(
+      "### How to approve",
+      "",
+      `- ${who} opens the pull request on GitHub, then Files changed, Review changes, and chooses Approve. The \`gauntlet\` check turns green for this commit.`,
+      `- GitHub won't let you approve a pull request you opened, which includes one an agent opened for you. Then ${owners.length > 0 ? `an owner (${owners.join(", ")})` : "an owner"} comments \`/gauntlet approve ${r.policy.headSha.slice(0, 12)}\` on it instead.`,
+      "- An approval counts for this commit only: a new push needs a new one.",
+      "",
+    )
+  }
+
   lines.push("### Why", "")
   lines.push(...table(["Tier", "Reason", "Source", "Blocks"], capped(d.nominations, (n) =>
     `| ${n.tier} | ${cell(n.reason)} | ${n.source ? cite(n.source) : code(n.rule)} | ${n.blocking ? "yes" : ""} |`)))
