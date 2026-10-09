@@ -32,6 +32,18 @@ describe("a change to comments only", () => {
     expect((await cli(["needs-build", "--repo", r.dir, "--policy-ref", base, "--head", "HEAD"])).out).toBe("false")
   })
 
+  test("doesn't ask for approval because no tests ran, and says so in plain words", async () => {
+    const { r, base } = setup()
+    r.write({ "src/main/App.kt": "// The app.\nclass App\n" })
+    r.commit("document the app")
+    const out = join(r.dir, "out")
+    await cli(["check", "--repo", r.dir, "--base", base, "--out", out, "--no-record"])
+    const report = JSON.parse(readFileSync(join(out, "gauntlet-report.json"), "utf8"))
+    expect(report.integrity.notExecuted).not.toContain("executed-tests")
+    expect(report.integrity.notExecuted).not.toContain("skipped-tests")
+    expect(readFileSync(join(out, "gauntlet-report.md"), "utf8")).toContain("only comments or documentation, so nothing needed building or testing.")
+  })
+
   test("a code change runs the checks as ever, and needs building", async () => {
     const { r, base } = setup()
     r.write({ "src/main/App.kt": "class App { fun x() = 1 }\n" })

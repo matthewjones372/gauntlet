@@ -48,6 +48,78 @@ const proofText = (c: Report["checks"][number]) => {
   return parts.join("; ")
 }
 
+const COMMENT_ONLY = "the change only edits comments or documentation"
+
+/** A reason as a person would say it. */
+const plainReason = (n: Report["decision"]["nominations"][number]): string | undefined => {
+  if (n.reason.startsWith("The policy's ")) return undefined // The rules a policy matched say nothing on their own; the zones and files below do.
+  switch (n.rule) {
+    case "no-rule-matched": return "No rule in the policy says a change like this can merge on its own, so a person should look at it."
+    case "missing-evidence":
+    case "integrity-not-executed": return `Gauntlet has no evidence for one of its checks: ${n.reason.charAt(0).toLowerCase()}${n.reason.slice(1)}`
+    default: return n.reason
+  }
+}
+
+/** A nomination as a few words for "because ...", or undefined when it says nothing on its own. */
+const because = (n: Report["decision"]["nominations"][number]): string | undefined => {
+  if (n.reason.startsWith("The policy's ")) return undefined
+  switch (n.rule) {
+    case "gate-failed": return `${n.reason.split(":")[0]}`
+    case "new-violation": return "it adds a lint finding"
+    case "ratchet-regression": return "a score dropped below the baseline"
+    case "integrity-forbid": return "it weakens or skips a test"
+    case "integrity-flag": return "it has a risky pattern"
+    case "missing-evidence":
+    case "integrity-not-executed": return "a check didn't run"
+    case "protected-changed": return / is a protected test /.test(n.reason) ? "it edits a protected test" : "it changes protected build configuration"
+    case "gauntlet-changed": return "it changes Gauntlet's policy or baseline"
+    case "no-rule-matched": return "no rule in the policy marks it as safe"
+    case "flaky-test": return "a test is flaky"
+    case "reported-blocked": return "the agent reported it was blocked"
+    default: return /dependency/i.test(n.reason) ? "it adds a dependency" : undefined
+  }
+}
+
+const sentence = (parts: ReadonlyArray<string>) =>
+  parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`
+
+/**
+ * The report's first lines, in plain words and in colour (a GitHub alert):
+ * red when blocked, orange for an owner's careful review, purple for review,
+ * green for a low-risk change. Then each thing a person should look at, the
+ * zones with their owners and files among them.
+ */
+export const plainSummary = (r: Report): string[] => {
+  const d = r.decision
+  const owners = [...new Set([...d.owners, ...r.policy.owners])]
+  const commentOnly = r.checks.length > 0 && r.checks.every((c) => c.reason?.startsWith(COMMENT_ONLY))
+  const blockingNoms = d.nominations.filter((n) => n.blocking)
+  const reviewNoms = d.nominations.filter((n) => !n.blocking && n.tier !== "auto" && n.tier !== "skim")
+  const zoneWords = r.facts.zonesTouched.map((z) => `it touches the ${z.zone} zone`)
+  const why = [...new Set([...(d.blocking || d.wouldBlock ? blockingNoms : []).flatMap((n) => because(n) ?? []), ...zoneWords, ...reviewNoms.flatMap((n) => because(n) ?? [])])]
+  const [alert, title] = d.blocking ? ["CAUTION", "Blocked"]
+    : d.wouldBlock ? ["WARNING", "Would be blocked (shadow mode, so nothing is blocked yet)"]
+    : d.tier === "owner" ? ["WARNING", `Needs careful review by an owner${owners.length > 0 ? ` (${owners.join(", ")})` : ""}`]
+    : d.tier === "review" ? ["IMPORTANT", "Needs review"]
+    : ["TIP", "Low-risk change"]
+  const lowRisk = alert === "TIP"
+  const what = `It changes ${plural(r.facts.files.length, "file")} (${plural(r.facts.linesChanged, "line")})${commentOnly ? ", only comments or documentation, so nothing needed building or testing" : ""}.`
+  const headline = lowRisk ? `**${title}**: it can merge without anyone's approval. ${what}` : `**${title}**${why.length > 0 ? ` because ${sentence(why)}` : ""}. ${what}`
+  const blocking = blockingNoms.flatMap((n) => plainReason(n) ?? [])
+  const zones = r.facts.zonesTouched.map((z) =>
+    `It changes code in the **${z.zone}** zone${z.owners.length > 0 ? ` (owner ${z.owners.join(", ")})` : ""}: ${z.files.slice(0, 3).map(code).join(", ")}${z.files.length > 3 ? ` and ${z.files.length - 3} more` : ""}.`)
+  const things = [...new Set([...blocking, ...zones, ...reviewNoms.flatMap((n) => plainReason(n) ?? [])])]
+  return [
+    `> [!${alert}]`,
+    `> ${headline}`,
+    ...(things.length > 0
+      ? [">", `> ${blocking.length > 0 ? `${plural(blocking.length, "thing")} to fix${things.length > blocking.length ? `, and ${plural(things.length - blocking.length, "more thing")} to look at` : ""}:` : `${plural(things.length, "thing")} to look at:`}`, ">", ...things.map((t, i) => `> ${i + 1}. ${t}`)]
+      : []),
+    "",
+  ]
+}
+
 /** The box an owner ticks in the pull request's report to approve its commit. */
 export const APPROVE_BOX = "**Approve this change**"
 
@@ -67,6 +139,7 @@ export const renderMarkdown = (r: Report): string => {
     : [
       `## Gauntlet: ${d.tier}`,
       "",
+      ...plainSummary(r),
       `**Tier ${d.tier}.** Gauntlet ${verdict}. Mode ${d.mode}${r.policy.firstAdoption ? " (first adoption)" : ""}.`,
       "",
     ]

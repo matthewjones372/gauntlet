@@ -120,6 +120,9 @@ const prepare = (request: { readonly repo: string; readonly policyRef?: string; 
 
 type Prepared = Effect.Success<ReturnType<typeof prepare>>
 
+/** Integrity checks that need tests to have run. */
+const COUNTS_TESTS: ReadonlySet<string> = new Set(["executed-tests", "skipped-tests"])
+
 /** Integrity in the judged checkout, then the decision and the report. */
 const judge = (
   repo: string,
@@ -147,11 +150,14 @@ const judge = (
       headFiles: yield* git.listTree(repo, p.head),
       dir,
     }, p.used.flatMap((pack) => pack.detectors))
+    // A change to comments or documentation runs no tests (ADR 0023): the checks that count tests have nothing to count.
+    const unchanged = !request.protectOnly && (yield* changeLeavesBehaviour(git, repo, p.base, p.head, p.facts.files))
+    const counted = unchanged ? { ...integrity, notExecuted: integrity.notExecuted.filter((c) => !COUNTS_TESTS.has(c)) } : integrity
     const evidence: Evidence = {
       checks: executed.checks,
       newViolations: executed.newViolations,
       regressions: executed.regressions,
-      integrity,
+      integrity: counted,
       caution: executed.caution,
       ...(request.blocked ? { blocked: request.blocked } : {}),
     }
@@ -173,7 +179,7 @@ const judge = (
       facts: p.facts,
       checks: executed.checks,
       ratchets: executed.ratchets,
-      integrity,
+      integrity: counted,
       violations: executed.newViolations,
       imports: executed.imports,
       decision,
