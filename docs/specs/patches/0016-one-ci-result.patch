@@ -1,0 +1,20 @@
+Add a ci job that passes only when every CI job passed, for the branch rules on
+main to require: a failing end-to-end suite then blocks the merge.
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -179,3 +179,13 @@
+         run: cd dist && shasum -a 256 -c checksums.txt
+       - run: chmod +x dist/gauntlet-${{ matrix.target }}
+       - run: bun scripts/smoke.ts dist/gauntlet-${{ matrix.target }}
++
++  # One result for the branch rules to require: every job above passed, the
++  # end-to-end suites included, so nothing merges past a failing one.
++  ci:
++    if: always()
++    needs: [test, e2e, build, smoke]
++    runs-on: ubuntu-latest
++    timeout-minutes: 5
++    steps:
++      - run: test "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}" = false

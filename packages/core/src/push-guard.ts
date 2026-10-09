@@ -10,7 +10,9 @@ const strip = (ref: string) => ref.replace(/^\+/, "").replace(/^refs\/heads\//, 
  * current branch; `--all` and `--mirror` push every branch.
  */
 export const pushTarget = (command: string, current: string, defaults: ReadonlyArray<string>): string | undefined => {
-  for (const part of command.split(/&&|\|\||;|\||\n/)) {
+  // Quoted text (a commit message, a pull request's body) is never a command, whatever it says.
+  const unquoted = command.replace(/'[^']*'/g, "''").replace(/"(?:\\.|[^"\\])*"/g, '""')
+  for (const part of unquoted.split(/&&|\|\||;|\||\n/)) {
     const words = part.trim().split(/\s+/)
     const at = words.findIndex((w, i) => w === "push" && words.slice(0, i).includes("git"))
     if (at < 0) continue
