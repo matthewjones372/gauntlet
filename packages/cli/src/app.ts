@@ -1,10 +1,10 @@
 import {
   agentSummary, BASELINE_PATH, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
-  ProcessRunner, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, PrComment, Report, Review, runnerConfigFor, Teams,
+  ProcessRunner, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
-import { claudeCode, codeowners, FIX_COMMAND, type GeneratedFile, github, PROPOSAL_FILE, render, requireCheckRuleset } from "@gauntlet/connect"
+import { claudeCode, codeowners, draftCiConfig, FIX_COMMAND, type GeneratedFile, github, PROPOSAL_FILE, render, renderCiConfig, requireCheckRuleset } from "@gauntlet/connect"
 import { defaultPackage, invalidVars, render as renderTemplate, TEMPLATES } from "@gauntlet/templates"
 import { type AuthorConfig, authorConfig, authorContext, draftProposals, explainInPlainLanguage, isolationProblem, runSession } from "@gauntlet/author"
 import { Compiler, DEFAULT_POLICY_FILE, type Diagnostic, formatDiagnostics, PolicyInvalid } from "@gauntlet/dsl"
@@ -99,7 +99,8 @@ const check = Command.make("check", {
   workingTree: Flag.Boolean("working-tree").pipe(Flag.withDefault(false), Flag.withDescription("judge the working tree, uncommitted and new files included, instead of a commit (never recorded)")),
   protectOnly: Flag.Boolean("protect-only").pipe(Flag.withDefault(false), Flag.withDescription("check only the verification boundary: the base commit's policy, protected files restored, gates run fresh; no zones, review levels, mutation or ratchets; pass or fail")),
   holdouts: Flag.Boolean("holdouts").pipe(Flag.withDefault(false), Flag.withDescription("also run holdouts that name their files, from the base commit (for the CI evidence job; elsewhere they show as pending)")),
-}, ({ repo, policyRef, base, head, out, json, noRecord, workingTree, protectOnly, holdouts }) =>
+  ci: Flag.Boolean("ci").pipe(Flag.withDefault(false), Flag.withDescription("run each build's tools as .gauntlet/ci.yml at the base says (Gauntlet's GitHub check)")),
+}, ({ repo, policyRef, base, head, out, json, noRecord, workingTree, protectOnly, holdouts, ci }) =>
   Effect.gen(function*() {
     const output = yield* Output
     const root = yield* absolute(repo)
@@ -122,6 +123,7 @@ const check = Command.make("check", {
       record: !noRecord,
       ...(protectOnly ? { protectOnly: true } : {}),
       ...(holdouts ? { holdouts: true } : {}),
+      ...(ci ? { ci: true } : {}),
     })
     yield* output.out(json ? renderJson(result.report) : renderMarkdown(result.report))
     yield* output.err(`Report written to ${outDir}`)
@@ -875,6 +877,40 @@ const requireCheck = (root: string, adminBypass: boolean) =>
     yield* output.out(adminBypass ? "Repository admins can still push to the default branch directly." : "Nobody can push to the default branch without the check, admins included.")
   })
 
+/**
+ * How Gauntlet's GitHub check builds the project as its own CI does
+ * (\`.gauntlet/ci.yml\`): the file when it's there, otherwise drafted from the
+ * project's workflows, written, and summed up for the person to check.
+ */
+const ciSetupFor = (root: string, files: ReadonlyArray<string>, ir: PolicyIR, dryRun: boolean) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const output = yield* Output
+    const existing = yield* fs.readFileString(path.join(root, CI_CONFIG_PATH)).pipe(Effect.option)
+    if (Option.isSome(existing)) return parseCiConfig(existing.value)
+    const workflows: { path: string; text: string }[] = []
+    for (const f of files.filter((f) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(f) && !f.endsWith("/gauntlet.yml"))) {
+      const text = yield* fs.readFileString(path.join(root, f)).pipe(Effect.option)
+      if (Option.isSome(text)) workflows.push({ path: f, text: text.value })
+    }
+    const draft = draftCiConfig(workflows, buildsOf(ir).map((b) => b.dir))
+    if (!draft) return Option.none<CiConfig>()
+    const text = renderCiConfig(draft)
+    if (dryRun) {
+      yield* output.out(`--- ${CI_CONFIG_PATH}\n${text}`)
+    } else {
+      yield* fs.writeFileString(path.join(root, CI_CONFIG_PATH), text)
+      yield* output.out([
+        `Wrote ${CI_CONFIG_PATH}, so Gauntlet's GitHub check builds this project as your CI does (from ${workflows.map((w) => w.path).join(", ")}):`,
+        `  - ${draft.setup.length} setup step${draft.setup.length === 1 ? "" : "s"} first (${[...new Set(draft.setup.map((s) => String(s.name ?? s.uses ?? "a script")))].slice(0, 4).join("; ")}${draft.setup.length > 4 ? "; ..." : ""})`,
+        ...Object.entries(draft.builds).map(([dir, b]) => `  - ${dir}: ${[b.wrap, b.tool].filter(Boolean).join(" ") || "as usual"}`),
+        "Check it before committing: it's protected, so later changes need an owner.",
+      ].join("\n"))
+    }
+    return Option.some(draft as CiConfig)
+  })
+
 /** The highest \`jvmToolchain(N)\` the Gradle builds ask for, so CI sets up a JDK that can build them. */
 const toolchainJava = (root: string, files: ReadonlyArray<string>) =>
   Effect.gen(function*() {
@@ -905,7 +941,9 @@ const connectGithub = Command.make("github", {
     if (args.requireCheck) return yield* requireCheck(root, args.adminBypass)
     const loaded = yield* (yield* PolicySource).load({ repo: root })
     const files = yield* (yield* Git).listWorkingFiles(root)
+    const ci = yield* ciSetupFor(root, files, loaded.compiled.ir, args.dryRun)
     yield* writeGenerated(root, github({
+      ...(Option.isSome(ci) ? { ciSetup: ci.value.setup } : {}),
       fromSource: args.fromSource,
       ...(args.protectOnly ? { protectOnly: true } : {}),
       mode: args.mode,
@@ -1322,6 +1360,30 @@ const githubStatusCommand = Command.make("github-status", {
 
 // ---------- doctor ----------
 
+/**
+ * Whether a change needs building: false when it only edits comments or
+ * documentation (ADR 0023). The GitHub workflow asks first, so a comment
+ * change skips the toolchain and the project's CI setup as well as the checks.
+ */
+const needsBuild = Command.make("needs-build", {
+  repo: repoFlag,
+  policyRef: Flag.String("policy-ref").pipe(Flag.withDescription("the base commit")),
+  head: Flag.String("head"),
+}, (args) =>
+  Effect.gen(function*() {
+    const root = yield* absolute(args.repo)
+    const git = yield* Git
+    const base = yield* git.revParse(root, args.policyRef)
+    const head = yield* git.revParse(root, args.head)
+    const changes = yield* git.diff(root, base, head)
+    const unchanged = yield* changeLeavesBehaviour(git, root, base, head, changes.map((c) => ({ path: c.path, status: c.status })))
+    yield* (yield* Output).out(unchanged ? "false" : "true")
+    // Anything unclear (no base, a git failure) means build: never skip on a guess.
+  }).pipe(Effect.catch(() => Effect.gen(function*() {
+    yield* (yield* Output).out("true")
+  }))),
+).pipe(Command.withDescription("Print false when a change only edits comments or documentation, true otherwise (for the GitHub workflow)."))
+
 const doctor = Command.make("doctor", { repo: repoFlag }, (args) =>
   Effect.gen(function*() {
     const root = yield* absolute(args.repo)
@@ -1491,7 +1553,7 @@ const report = Command.make("report").pipe(Command.withDescription("Reports over
 
 export const root = Command.make("gauntlet").pipe(
   Command.withDescription("Gauntlet: verification integrity for agent-written code."),
-  Command.withSubcommands([setup, apply, adopt, validate, check, explain, init, newProject, author, baseline, selftest, corpus, override, report, connect, githubStatusCommand, hook, mcp, doctor]),
+  Command.withSubcommands([setup, apply, adopt, validate, check, explain, init, newProject, author, baseline, selftest, corpus, override, report, connect, githubStatusCommand, needsBuild, hook, mcp, doctor]),
 )
 
 /** Runs the CLI on `args` (without the program name) and returns the exit code. */

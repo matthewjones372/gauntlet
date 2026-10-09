@@ -29,6 +29,25 @@ export interface GithubOptions {
   readonly fromSource?: boolean
   /** Judge pull requests with `--protect-only` (spec 0001): the verification boundary, pass or fail. */
   readonly protectOnly?: boolean
+  /**
+   * The project's own CI setup (\`.gauntlet/ci.yml\`): steps the evidence job runs
+   * before the checks, which then run each build's tools as its CI does (\`--ci\`).
+   */
+  readonly ciSetup?: ReadonlyArray<Readonly<Record<string, unknown>>>
+}
+
+const BUILDING = "steps.needs.outputs.build != 'false'"
+
+/** A generated step that runs only when the change needs building (a step's text, its first line \`- name:\`). */
+const onlyWhenBuilding = (step: string) => {
+  const [first, ...rest] = step.split("\n")
+  return [first, `  if: \${{ ${BUILDING} }}`, ...rest].join("\n")
+}
+
+/** A project setup step that runs only when the change needs building, keeping its own condition. */
+const withBuildCondition = (step: Readonly<Record<string, unknown>>) => {
+  const own = typeof step.if === "string" ? step.if.replace(/^\$\{\{\s*|\s*\}\}$/g, "") : undefined
+  return { ...step, if: own ? `\${{ (${own}) && ${BUILDING} }}` : `\${{ ${BUILDING} }}` }
 }
 
 const indent = (text: string, spaces: number) => text.split("\n").map((l) => (l === "" ? l : `${" ".repeat(spaces)}${l}`)).join("\n")
@@ -127,13 +146,23 @@ const evidenceJob = (o: GithubOptions, refs: { readonly base: string; readonly h
         ref: ${refs.checkoutRef}
         fetch-depth: 0
         persist-credentials: false
-${indent([...toolchainSteps(o), installStep(o, refs.base, toolchainSteps(o).some((t) => t.includes("setup-bun")))].join("\n"), 4)}
+${indent(installStep(o, refs.base, false), 4)}${o.protectOnly ? "" : `
+    # A change to comments or documentation only has nothing to build (ADR 0023): skip the tools and setup too.
+    - name: Does the change need building?
+      id: needs
+      env:
+        BASE: ${refs.base}
+        HEAD: ${refs.head}
+      run: echo "build=$("$RUNNER_TEMP/gauntlet" needs-build --policy-ref "$BASE" --head "$HEAD")" >> "$GITHUB_OUTPUT"`}
+${indent(toolchainSteps(o).filter((t) => !(o.fromSource && t.includes("setup-bun"))).map(onlyWhenBuilding).join("\n"), 4)}${o.ciSetup && o.ciSetup.length > 0 ? `
+    # The project's own CI setup, from .gauntlet/ci.yml, so its builds build here as in its CI.
+${indent(o.ciSetup.map((s) => `- ${JSON.stringify(withBuildCondition(s))}`).join("\n"), 4)}` : ""}
     - name: Check the change with the base commit's policy
       env:
         BASE: ${refs.base}
         HEAD: ${refs.head}
       run: |
-        "$RUNNER_TEMP/gauntlet" check --policy-ref "$BASE" --head "$HEAD" --out gauntlet-out --no-record${o.protectOnly ? " --protect-only" : runsHoldouts(o) ? " --holdouts" : ""} || true
+        "$RUNNER_TEMP/gauntlet" check --policy-ref "$BASE" --head "$HEAD" --out gauntlet-out --no-record${o.protectOnly ? " --protect-only" : runsHoldouts(o) ? " --holdouts" : ""}${o.ciSetup !== undefined ? " --ci" : ""} || true
         # When the change edits .gauntlet/, prove the proposed policy still catches tampering.
         if ! git diff --quiet "$BASE" "$HEAD" -- .gauntlet; then
           "$RUNNER_TEMP/gauntlet" selftest --base "$HEAD" --json > gauntlet-out/selftest.json || true

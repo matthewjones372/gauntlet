@@ -4,6 +4,7 @@ import { type Baseline, compareMetrics, compareWithBaseline, type Metric, type M
 import { Clock, Effect, type FileSystem, Option, type Path } from "effect"
 import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy, runFromBuild, toBuild } from "./builds.ts"
 import { judgeBudget, parseBudgetResults } from "./budget.ts"
+import { asInCi, type CiConfig } from "./ci-config.ts"
 import type { DiffFacts } from "./diff-facts.ts"
 import { ProcessRunner } from "./process-runner.ts"
 import { fingerprintRuns } from "./fingerprints.ts"
@@ -42,6 +43,10 @@ export interface GateRunnerInput {
   readonly today?: string
   /** Run holdouts that name their files (`check --holdouts`, the evidence job only; ADR 0019). */
   readonly holdouts?: boolean
+  /** In Gauntlet's GitHub check: how each build runs its tools there (\`.gauntlet/ci.yml\` from the base). */
+  readonly ci?: CiConfig
+  /** The change only edits comments or documentation (ADR 0023): no check has anything to run. */
+  readonly behaviourUnchanged?: boolean
 }
 
 export interface GateRunnerOutput {
@@ -120,6 +125,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       })
     // Each build's tools are stopped in its own folder once the gates are done.
     const startedBuilds = new Map<string, { readonly pack: Pack; readonly dir: string; readonly root: string }>()
+    const processRunner = yield* ProcessRunner
     let stoppedBy: string | undefined
     const progress = yield* GateProgress
     // The directory every check's output directory sits in, once one was made.
@@ -134,6 +140,10 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
 
         if (stoppedBy !== undefined) {
           record({ status: "not-executed", reason: `tier '${stoppedBy}' failed, so later tiers didn't run` })
+          continue
+        }
+        if (input.behaviourUnchanged && !input.recording) {
+          record({ status: "passed", reason: "the change only edits comments or documentation, so there's nothing for this check to run" })
           continue
         }
         if (check.kind === "holdout" && input.holdouts) {
@@ -236,7 +246,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
             files: ownedBy(buildDirs, build.dir, ctx.files),
             ...(scope !== undefined ? { scope } : {}),
           }
-          const r = runFromBuild(yield* run(bctx, target), build.dir)
+          const r = runFromBuild(yield* asInCi(run(bctx, target), input.ci, build.dir, processRunner, ProcessRunner), build.dir)
           const fingerprinted = yield* fingerprintRuns(r.runs, workspace.dir, {
             ...(pack.locate ? { locate: pack.locate } : {}),
             ...(pack.normalise ? { normalise: pack.normalise } : {}),
@@ -415,7 +425,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           files: input.files,
           legacy: Option.match(baseline, { onNone: () => [], onSome: (b) => b.legacy }),
         }
-        const run = yield* start(ctx)
+        // Builds run as CI does inside acrossBuilds; a single build at the root, here.
+        const run = yield* (multi ? start(ctx) : asInCi(start(ctx), input.ci, ".", processRunner, ProcessRunner))
         const files = yield* ctx.collect
         // Temporary paths would make identical runs differ (invariant 4). Builds write under the outputs root.
         const placeholder = (arg: string) =>

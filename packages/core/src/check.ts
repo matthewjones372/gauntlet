@@ -3,10 +3,12 @@ import type { PolicyIR } from "@gauntlet/ir"
 import type { MetricDelta, Run } from "@gauntlet/sarif"
 import { Clock, Data, Effect, Option } from "effect"
 import { BaselineStore, renamesOf } from "./baseline-store.ts"
+import { CI_CONFIG_PATH, type CiConfig, parseCiConfig } from "./ci-config.ts"
 import { diffFacts } from "./diff-facts.ts"
 import { type GateRunnerOutput, runGates } from "./gate-runner.ts"
 import { Git } from "./git.ts"
 import { inferZones } from "./infer.ts"
+import { behaviourUnchanged } from "./no-behaviour.ts"
 import { runImports } from "./imports.ts"
 import { runIntegrity, type TestRecord, testPathMatcher } from "./integrity.ts"
 import { Overrides } from "./overrides.ts"
@@ -55,6 +57,8 @@ export interface CheckRequest {
   readonly protectOnly?: boolean
   /** Run holdouts that name their files (the GitHub evidence job only; ADR 0019). */
   readonly holdouts?: boolean
+  /** Gauntlet's GitHub check: run each build's tools as \`.gauntlet/ci.yml\` at the base says. */
+  readonly ci?: boolean
   /**
    * The adoption window is open (spec 0005): protected tests are judged as
    * edited rather than restored from base. Local working-tree checks only.
@@ -192,6 +196,20 @@ const zoneSuggestions = (p: { readonly ir: PolicyIR; readonly facts: { readonly 
     `This change adds ${z.globs.join(", ")}, which looks like ${z.why} but isn't in a zone. To protect it, run /gauntlet-setup in Claude Code (or add a zone to .gauntlet/policy.gx).`)
 }
 
+/** Whether a change only edits comments or documentation, reading each file at the base and the head. */
+export const changeLeavesBehaviour = (git: Git["Service"], repo: string, base: string, head: string, files: ReadonlyArray<{ readonly path: string; readonly status: string }>) =>
+  Effect.gen(function*() {
+    const contents = new Map<string, string | undefined>()
+    for (const f of files) {
+      if (f.status !== "modified") continue
+      for (const [side, ref] of [["base", base], ["head", head]] as const) {
+        const text = yield* git.show(repo, ref, f.path).pipe(Effect.orElseSucceed(() => Option.none<string>()))
+        contents.set(`${side} ${f.path}`, Option.getOrUndefined(text))
+      }
+    }
+    return yield* Effect.promise(() => behaviourUnchanged(files, (side, path) => Promise.resolve(contents.get(`${side} ${path}`))))
+  })
+
 export const runCheck = (request: CheckRequest) =>
   Effect.gen(function*() {
     const started = yield* Clock.currentTimeMillis
@@ -201,10 +219,19 @@ export const runCheck = (request: CheckRequest) =>
       const protect = request.adoption ? p.ir.protect.filter((g) => g.kind !== "tests") : p.ir.protect
       const workspace = yield* (yield* Workspace).prepare({ repo: request.repo, base: p.base, head: p.head, protect, runnerConfig: p.runnerConfig, holdouts: holdoutsOf(p.ir), testsAsEdited: !request.protectOnly })
       const files = yield* git.listWorkingFiles(workspace.dir)
+      // A change to comments or documentation only has nothing to build or test (ADR 0023). Protect-only always runs.
+      const unchanged = !request.protectOnly && (yield* changeLeavesBehaviour(git, request.repo, p.base, p.head, p.facts.files))
+      // From the base commit, like the policy: a change can't alter how it's built for its own judgement.
+      const ci = request.ci ? Option.flatMap(yield* git.show(request.repo, p.base, CI_CONFIG_PATH).pipe(Effect.orElseSucceed(() => Option.none<string>())), parseCiConfig) : Option.none<CiConfig>()
       const today = yield* git.commitDate(request.repo, p.head)
       const gates: GateRunnerOutput = request.skipGates
         ? { checks: [], newViolations: [], regressions: [], ratchets: [], runs: [], metrics: {}, durationsMs: {} }
-        : yield* runGates({ ir: p.ir, facts: p.facts, workspace, packs: p.used, baseline: p.baseline, renames: p.renames, files, today, ...(request.holdouts ? { holdouts: true } : {}) })
+        : yield* runGates({
+          ir: p.ir, facts: p.facts, workspace, packs: p.used, baseline: p.baseline, renames: p.renames, files, today,
+          ...(request.holdouts ? { holdouts: true } : {}),
+          ...(Option.isSome(ci) ? { ci: ci.value } : {}),
+          ...(unchanged ? { behaviourUnchanged: true } : {}),
+        })
       const imports = request.skipGates
         ? { checks: [], newViolations: [], runs: [], caution: [], records: [] }
         : yield* runImports(p.ir, workspace, p.baseline, p.renames)

@@ -107,8 +107,9 @@ describe("several builds in one repository", () => {
 
   test("a change outside every build has nothing for a scoped check to measure", async () => {
     const { r, base } = setup({ bank: 90, checks: 50 })
-    r.write({ "README.md": "street, now documented\n" })
-    r.commit("docs")
+    // A file outside every build that isn't documentation (a docs-only change runs nothing at all, ADR 0023).
+    r.write({ "deploy/values.txt": "replicas: 3\n" })
+    r.commit("deploy settings")
     const { of } = await check(r, base)
     expect(of("coverage").status).toBe("passed")
     expect(of("coverage").reason).toBe("the change touches none of the builds")
