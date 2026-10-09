@@ -96,7 +96,9 @@ describe.skipIf(!E2E)("several builds end to end (real Gradle and sbt)", () => {
     expect(r.report.checks.map((c: { check: string; status: string }) => `${c.check}:${c.status}`)).toEqual([
       "build:passed", "lint:passed", "coverage:passed", "mutation:passed", "unit:passed",
     ])
-    expect(r.of("unit").proof.command).toEqual(expect.arrayContaining(["[ledger]", "[checks]"]))
+    // Only the build the change touches is built and tested (the project's CI builds the rest).
+    expect(r.of("unit").proof.command).toContain("[checks]")
+    expect(r.of("unit").proof.command).not.toContain("[ledger]")
     expect(r.of("coverage").proof.command).toContain("[checks]")
     expect(r.of("coverage").proof.command).not.toContain("[ledger]")
     expect(r.code).toBe(0)
