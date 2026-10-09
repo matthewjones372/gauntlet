@@ -20,9 +20,16 @@ export const PrComment = Schema.Struct({ user: Schema.String, body: Schema.Strin
 export type PrComment = typeof PrComment.Type
 
 const APPROVE = /^\/gauntlet approve ([0-9a-f]{7,40})$/i
+/** The ticked box in Gauntlet's report, as the person who ticked it sends it. */
+const TICKED = /^- \[x\] \*\*Approve this change\*\* \(commit `([0-9a-f]{7,40})`\)$/im
+/** An approval Gauntlet recorded in its own report comment, which only its workflow writes. */
+const RECORDED = /^- \[x\] \*\*Approve this change\*\*: approved by ([^(]+) \(commit `([0-9a-f]{7,40})`\)$/im
+const WORKFLOW = "github-actions[bot]"
 
 /**
- * Owners' \`/gauntlet approve <commit>\` comments, as approvals of that commit.
+ * Owners' \`/gauntlet approve <commit>\` comments, and the box in Gauntlet's
+ * report ticked by an owner (the workflow passes it as from whoever ticked
+ * it), as approvals of that commit.
  * GitHub never lets an author approve their own pull request, and an agent
  * opens them under its owner's account, so on a repository with one owner a
  * review could never be given. The comment names the commit, so it counts
@@ -30,7 +37,14 @@ const APPROVE = /^\/gauntlet approve ([0-9a-f]{7,40})$/i
  */
 export const commentApprovals = (comments: ReadonlyArray<PrComment>, head: string, owners: ReadonlyArray<string>, teams: Teams): Review[] =>
   comments.flatMap((c) => {
-    const sha = APPROVE.exec(c.body.trim())?.[1]?.toLowerCase()
+    // A box ticked earlier, as Gauntlet's own comment records it: still the owners' approval of that commit.
+    const recorded = c.user === WORKFLOW ? RECORDED.exec(c.body) : null
+    if (recorded) {
+      return head.toLowerCase().startsWith(recorded[2]!.toLowerCase())
+        ? recorded[1]!.split(",").map((u) => u.trim()).filter((u) => isOwner(u, owners, teams)).map((user) => ({ user, state: "APPROVED", commitId: head }))
+        : []
+    }
+    const sha = (APPROVE.exec(c.body.trim())?.[1] ?? TICKED.exec(c.body)?.[1])?.toLowerCase()
     return sha !== undefined && head.toLowerCase().startsWith(sha) && isOwner(c.user, owners, teams) ? [{ user: c.user, state: "APPROVED", commitId: head }] : []
   })
 
