@@ -25,3 +25,4 @@
 | 0021 | An edited protected test runs as edited and needs review | accepted |
 | 0022 | Several builds in one repository | accepted |
 | 0023 | A change to comments or documentation only runs no checks | accepted |
+| 0024 | What the project's CI, or a local run, already ran isn't run again | accepted |

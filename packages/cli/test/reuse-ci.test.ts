@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { convertJUnit } from "@gauntlet/sarif"
 import { Effect } from "effect"
@@ -87,5 +87,40 @@ describe("reusing the CI's run", () => {
     const build = JSON.parse(readFileSync(join(out, "gauntlet-report.json"), "utf8")).checks.find((c: { check: string }) => c.check === "build")
     expect(build).toMatchObject({ status: "failed" })
     expect(build.proof.command[0]).not.toBe("ci")
+  })
+})
+
+describe("reusing a local run", () => {
+  const PASSING = `<testsuite name="unit"><testcase classname="svc.RoundTest" name="round"/></testsuite>`
+  const working = async (r: TempRepo) => {
+    const out = join(r.dir, "out")
+    await cli(["check", "--repo", r.dir, "--working-tree", "--out", out, "--no-record"], readsCi)
+    return JSON.parse(readFileSync(join(out, "gauntlet-report.json"), "utf8")).checks.find((c: { check: string }) => c.check === "unit")
+  }
+  const local = () => {
+    const s = baseRepo()
+    repos.push(s.r)
+    s.r.git("checkout", "-q", "main")
+    s.r.write({ ".gitignore": "target/\nout/\n" })
+    s.r.commit("ignore build output")
+    s.r.write({ "src/main/App.kt": "class App { fun x() = 1 }\n" })
+    return s.r
+  }
+
+  test("tests run here after the last edit aren't run again", async () => {
+    const r = local()
+    r.write({ "target/test-reports/TEST-svc.RoundTest.xml": PASSING })
+    const unit = await working(r)
+    expect(unit.status).toBe("passed")
+    expect(unit.proof.command).toEqual(["ci", "your local run"])
+  })
+
+  test("a report older than the last edit is stale, so the tests run", async () => {
+    const r = local()
+    r.write({ "target/test-reports/TEST-svc.RoundTest.xml": PASSING })
+    const old = new Date(Date.now() - 3_600_000)
+    utimesSync(join(r.dir, "target/test-reports/TEST-svc.RoundTest.xml"), old, old)
+    const unit = await working(r)
+    expect(unit.proof.command[0]).not.toBe("ci")
   })
 })

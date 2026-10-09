@@ -4,6 +4,7 @@ import { blockedFor } from "./blocked.ts"
 import { type CheckResult, runCheck } from "./check.ts"
 import { Git } from "./git.ts"
 import { REPORT_FILES } from "./report/reporter.ts"
+import { ProcessRunner } from "./process-runner.ts"
 import { Report, type ReportAgent } from "./report/schema.ts"
 
 // The check a coding agent gets while it works (Stop hook, MCP `check`): the
@@ -54,6 +55,8 @@ export const checkWorkingTree = (request: { readonly repo: string; readonly outD
       }
     }
     yield* fs.remove(keyFile, { force: true }).pipe(Effect.orElseSucceed(() => undefined))
+    // Tests already run here since the last edit aren't run again (ADR 0024).
+    const local = base === "" ? [] : yield* localReports(request.repo, baseRef ?? base, snapshot.commit)
     const result = yield* runCheck({
       repo: request.repo,
       head: snapshot.commit,
@@ -64,9 +67,39 @@ export const checkWorkingTree = (request: { readonly repo: string; readonly outD
       ...(request.agent ? { agent: request.agent } : {}),
       ...(request.adoption ? { adoption: true } : {}),
       ...(Option.isSome(blocked) ? { blocked: { reason: blocked.value.reason } } : {}),
+      ...(local.length > 0 ? { ciReports: { files: local, source: "your local run" } } : {}),
     })
     if (Option.isNone(blocked)) yield* fs.writeFileString(keyFile, key).pipe(Effect.orElseSucceed(() => undefined))
     return { ...result, snapshot, blocked: Option.getOrUndefined(blocked), cached: false }
+  })
+
+/** Report files a build tool writes by default: JUnit, Kover, JaCoCo, sbt, scoverage. */
+const LOCAL_REPORT = /(^|\/)(build\/test-results\/[^/]+\/[^/]+\.xml|build\/reports\/(kover|jacoco)\/.+\.xml|target\/test-reports\/[^/]+\.xml|target\/scala-[^/]+\/coverage-report\/cobertura\.xml)$/
+
+/**
+ * Test and coverage reports a run on this machine wrote after the last change
+ * (ADR 0024): files git ignores, newer than every file the change touches. An
+ * agent could write such a file, so this only spares the local check a run;
+ * the GitHub check judges the pull request from the CI's own run.
+ */
+export const localReports = (repo: string, base: string, head: string) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const runner = yield* ProcessRunner
+    const git = (args: ReadonlyArray<string>) => runner.run({ command: "git", args, cwd: repo }).pipe(Effect.map((r) => (r.exitCode === 0 ? r.stdout : "")), Effect.orElseSucceed(() => ""))
+    const candidates = (yield* git(["ls-files", "--others", "--ignored", "--exclude-standard"])).split("\n").filter((f) => LOCAL_REPORT.test(f))
+    if (candidates.length === 0) return []
+    const mtime = (f: string) => fs.stat(path.join(repo, f)).pipe(Effect.map((s) => Option.getOrElse(s.mtime, () => new Date(0)).getTime()), Effect.orElseSucceed(() => 0))
+    let newest = 0
+    for (const f of (yield* git(["diff", "--name-only", base, head])).split("\n").filter(Boolean)) newest = Math.max(newest, yield* mtime(f))
+    const out: { path: string; content: string }[] = []
+    for (const f of candidates) {
+      if ((yield* mtime(f)) < newest) continue
+      const content = yield* fs.readFileString(path.join(repo, f)).pipe(Effect.option)
+      if (Option.isSome(content)) out.push({ path: f, content: content.value })
+    }
+    return out
   })
 
 /** Files Gauntlet's own setup writes; a change to nothing else has no code to judge. */

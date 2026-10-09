@@ -1,4 +1,5 @@
 import type { PolicyIR } from "@gauntlet/ir"
+import { CI_REPORTS_PREFIX } from "./ci-reports.ts"
 import { codeowners } from "./codeowners.ts"
 import type { GeneratedFile } from "./files.ts"
 import { ACTIONS, CLOJURE_TOOLS, GO_TOOLS, pinned } from "./pins.ts"
@@ -34,6 +35,12 @@ export interface GithubOptions {
    * before the checks, which then run each build's tools as its CI does (\`--ci\`).
    */
   readonly ciSetup?: ReadonlyArray<Readonly<Record<string, unknown>>>
+  /**
+   * The project's CI keeps its test and coverage reports (ADR 0024): the evidence
+   * job waits for its run on the same commit and reads them instead of running
+   * the tests again.
+   */
+  readonly reuseCi?: boolean
 }
 
 const BUILDING = "steps.needs.outputs.build != 'false'"
@@ -138,7 +145,7 @@ const evidenceJob = (o: GithubOptions, refs: { readonly base: string; readonly h
   runs-on: ubuntu-latest
   timeout-minutes: 90
   permissions:
-    contents: read
+    contents: read${o.reuseCi ? "\n    actions: read" : ""}
   steps:
     - name: Check out the change, without credentials
       uses: ${pinned(ACTIONS.checkout)}
@@ -157,12 +164,34 @@ ${indent(installStep(o, refs.base, false), 4)}${o.protectOnly ? "" : `
 ${indent(toolchainSteps(o).filter((t) => !(o.fromSource && t.includes("setup-bun"))).map(onlyWhenBuilding).join("\n"), 4)}${o.ciSetup && o.ciSetup.length > 0 ? `
     # The project's own CI setup, from .gauntlet/ci.yml, so its builds build here as in its CI.
 ${indent(o.ciSetup.map((s) => `- ${JSON.stringify(withBuildCondition(s))}`).join("\n"), 4)}` : ""}
-    - name: Check the change with the base commit's policy
+${o.reuseCi && !o.protectOnly ? `    # What the project's own CI already ran isn't run again (ADR 0024): wait for its run on this commit and take its reports.
+    - name: Take the project's CI reports for this commit
+      id: ci
+      if: \${{ ${BUILDING} }}
       env:
-        BASE: ${refs.base}
+        GH_TOKEN: \${{ github.token }}
         HEAD: ${refs.head}
       run: |
-        "$RUNNER_TEMP/gauntlet" check --policy-ref "$BASE" --head "$HEAD" --out gauntlet-out --no-record${o.protectOnly ? " --protect-only" : runsHoldouts(o) ? " --holdouts" : ""}${o.ciSetup !== undefined ? " --ci" : ""} || true
+        mkdir -p ci-reports
+        for i in $(seq 1 120); do
+          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEAD&per_page=50" --jq '[.workflow_runs[] | select(.name != "gauntlet")]')
+          if [ "$(echo "$runs" | jq 'length')" -gt 0 ] && [ "$(echo "$runs" | jq '[.[] | select(.status != "completed")] | length')" = "0" ]; then break; fi
+          sleep 30
+        done
+        for id in $(echo "$runs" | jq -r '.[].id'); do
+          for name in $(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts" --jq '.artifacts[] | select(.name | startswith("${CI_REPORTS_PREFIX}")) | .name'); do
+            gh run download "$id" --repo "$GITHUB_REPOSITORY" --name "$name" --dir "ci-reports/$name" || true
+          done
+        done
+        echo "source=$(echo "$runs" | jq -r '.[0].html_url // ""')" >> "$GITHUB_OUTPUT"
+` : ""}    - name: Check the change with the base commit's policy
+      env:
+        BASE: ${refs.base}
+        HEAD: ${refs.head}${o.reuseCi && !o.protectOnly ? `
+        CI_SOURCE: \${{ steps.ci.outputs.source }}` : ""}
+      run: |
+        ${o.reuseCi && !o.protectOnly ? `reports=""; if [ -n "$(ls -A ci-reports 2>/dev/null)" ]; then reports="--ci-reports ci-reports --ci-source $CI_SOURCE"; fi
+        ` : ""}"$RUNNER_TEMP/gauntlet" check --policy-ref "$BASE" --head "$HEAD" --out gauntlet-out --no-record${o.protectOnly ? " --protect-only" : runsHoldouts(o) ? " --holdouts" : ""}${o.ciSetup !== undefined ? " --ci" : ""}${o.reuseCi && !o.protectOnly ? " $reports" : ""} || true
         # When the change edits .gauntlet/, prove the proposed policy still catches tampering.
         if ! git diff --quiet "$BASE" "$HEAD" -- .gauntlet; then
           "$RUNNER_TEMP/gauntlet" selftest --base "$HEAD" --json > gauntlet-out/selftest.json || true

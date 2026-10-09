@@ -4,7 +4,7 @@ import {
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
-import { claudeCode, codeowners, draftCiConfig, FIX_COMMAND, type GeneratedFile, github, PROPOSAL_FILE, render, renderCiConfig, requireCheckRuleset } from "@gauntlet/connect"
+import { CI_REPORTS_PREFIX, claudeCode, codeowners, draftCiConfig, keepCiReports, FIX_COMMAND, type GeneratedFile, github, PROPOSAL_FILE, render, renderCiConfig, requireCheckRuleset } from "@gauntlet/connect"
 import { defaultPackage, invalidVars, render as renderTemplate, TEMPLATES } from "@gauntlet/templates"
 import { type AuthorConfig, authorConfig, authorContext, draftProposals, explainInPlainLanguage, isolationProblem, runSession } from "@gauntlet/author"
 import { Compiler, DEFAULT_POLICY_FILE, type Diagnostic, formatDiagnostics, PolicyInvalid } from "@gauntlet/dsl"
@@ -936,6 +936,52 @@ const readCiReports = (dir: string) =>
     return out
   })
 
+/**
+ * Has the project's own CI keep its test and coverage reports for Gauntlet
+ * (ADR 0024), so what it already ran isn't run again: steps after each build
+ * job's build step, and coverage asked of builds that have Kover or
+ * scoverage. True when the project's CI keeps them (now or already).
+ */
+const keepReportsInCi = (root: string, files: ReadonlyArray<string>, ir: PolicyIR, dryRun: boolean) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const output = yield* Output
+    const read = (f: string) => fs.readFileString(path.join(root, f)).pipe(Effect.orElseSucceed(() => ""))
+    const dirs = buildsOf(ir).map((b) => b.dir)
+    const coverageOf = new Map<string, { gradle: boolean; sbt: boolean }>()
+    for (const dir of dirs) {
+      const inDir = (f: string) => dir === "." || f.startsWith(`${dir}/`)
+      const gradle = files.filter((f) => inDir(f) && /\.gradle(\.kts)?$/.test(f))
+      let kover = false
+      for (const f of gradle) if ((yield* read(f)).includes("kover")) kover = true
+      const plugins = yield* read(dir === "." ? "project/plugins.sbt" : `${dir}/project/plugins.sbt`)
+      coverageOf.set(dir, { gradle: kover, sbt: plugins.includes("sbt-scoverage") })
+    }
+    let keeps = false
+    for (const f of files.filter((f) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(f) && !f.endsWith("/gauntlet.yml"))) {
+      const text = yield* read(f)
+      if (text.includes(CI_REPORTS_PREFIX)) {
+        keeps = true
+        continue
+      }
+      const wired = keepCiReports(text, dirs, (dir) => coverageOf.get(dir) ?? { gradle: false, sbt: false })
+      if (!wired) continue
+      keeps = true
+      if (dryRun) {
+        yield* output.out(`--- ${f}\n${wired.text}`)
+        continue
+      }
+      yield* fs.writeFileString(path.join(root, f), wired.text)
+      yield* output.out([
+        `Updated ${f}, so Gauntlet reads what your CI already ran instead of running it again:`,
+        `  - ${wired.jobs.join(", ")} keep their test and coverage reports for Gauntlet`,
+        ...(wired.coverage.length > 0 ? [`  - ${wired.coverage.join(", ")} also measure coverage while their tests run (Kover or scoverage)`] : []),
+      ].join("\n"))
+    }
+    return keeps
+  })
+
 /** The highest \`jvmToolchain(N)\` the Gradle builds ask for, so CI sets up a JDK that can build them. */
 const toolchainJava = (root: string, files: ReadonlyArray<string>) =>
   Effect.gen(function*() {
@@ -967,8 +1013,10 @@ const connectGithub = Command.make("github", {
     const loaded = yield* (yield* PolicySource).load({ repo: root })
     const files = yield* (yield* Git).listWorkingFiles(root)
     const ci = yield* ciSetupFor(root, files, loaded.compiled.ir, args.dryRun)
+    const reuseCi = yield* keepReportsInCi(root, files, loaded.compiled.ir, args.dryRun)
     yield* writeGenerated(root, github({
       ...(Option.isSome(ci) ? { ciSetup: ci.value.setup } : {}),
+      ...(reuseCi ? { reuseCi: true } : {}),
       fromSource: args.fromSource,
       ...(args.protectOnly ? { protectOnly: true } : {}),
       mode: args.mode,
