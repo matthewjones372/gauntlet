@@ -18,6 +18,7 @@ import { describeChanges } from "./apply.ts"
 import { exportCorpus } from "./corpus-export.ts"
 import { AuthorRuntime, type AuthorRuntimeShape, renderDropped } from "./author.ts"
 import { Ask, ExitStatus, exitWith, LaunchAgent, Output, Stdin, style, withGateProgress } from "./output.ts"
+import { withStopSignals } from "./stop-signals.ts"
 import { GAUNTLET_VERSION } from "./version.ts"
 
 // The CLI. Handlers stay thin: parse flags, call a core program, print, set
@@ -1637,4 +1638,4 @@ export const runCli = (args: ReadonlyArray<string>) =>
       Effect.catch(() => exitWith(2)),
     )
     return yield* Ref.get(status)
-  })
+  }).pipe(withStopSignals)
