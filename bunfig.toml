@@ -1,0 +1,3 @@
+[test]
+# One temporary directory per test run, removed when it ends.
+preload = ["./scripts/test-preload.ts"]
