@@ -1,4 +1,4 @@
-import type { Build, PolicyIR } from "@gauntlet/ir"
+import { type Build, type PolicyIR, sha256 } from "@gauntlet/ir"
 import type { Metric, Run } from "@gauntlet/sarif"
 import type { DiffFacts } from "./diff-facts.ts"
 import type { GateRun } from "./gate.ts"
@@ -127,5 +127,8 @@ export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; read
 export const runnerConfigForBuilds = (builds: ReadonlyArray<Build>, runnerConfigOf: (pack: string) => ReadonlyArray<string>): string[] =>
   [...new Set(builds.flatMap((b) => runnerConfigOf(b.pack).map((g) => fromBuild(b.dir, g))))].sort()
 
-/** The name of a build's output directories: one per build, shared by its checks. */
-export const buildSlug = (dir: string) => `build-${dir === "." ? "root" : dir.replace(/[^A-Za-z0-9._-]+/g, "-")}`
+/**
+ * The name of a build's output directories: one per build, shared by its
+ * checks. The folder's hash keeps "a/b" and "a-b" apart.
+ */
+export const buildSlug = (dir: string) => `build-${dir === "." ? "root" : `${dir.replace(/[^A-Za-z0-9._-]+/g, "-")}-${sha256(dir).slice(0, 8)}`}`

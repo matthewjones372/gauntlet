@@ -53,10 +53,12 @@ export const findWrapper = (dir: string) =>
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const exists = (p: string) => fs.exists(p).pipe(Effect.orElseSucceed(() => false))
-    for (let at = dir; ; at = path.dirname(at)) {
-      if (yield* exists(path.join(at, "gradlew"))) return Option.some(path.join(at, "gradlew"))
+    let at = dir
+    while (!(yield* exists(path.join(at, "gradlew")))) {
       if ((yield* exists(path.join(at, ".git"))) || path.dirname(at) === at) return Option.none<string>()
+      at = path.dirname(at)
     }
+    return Option.some(path.join(at, "gradlew"))
   })
 
 export const gradle = (ctx: GateContext, tasks: ReadonlyArray<string>, env: Readonly<Record<string, string>> = {}) =>
