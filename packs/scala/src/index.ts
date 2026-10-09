@@ -15,6 +15,7 @@ export const detectScala = (files: ReadonlyArray<string>): boolean => files.incl
 export const scalaPack: Pack = {
   spec,
   detect: detectScala,
+  readsCi: true,
   onboard,
   doctor,
   // The build definition in project/ (plugins, build.properties, autoplugins that can

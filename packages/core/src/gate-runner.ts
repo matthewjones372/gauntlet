@@ -1,7 +1,7 @@
 import { type GateSpec, globMatches } from "@gauntlet/dsl"
 import { type Check, type PolicyIR, sha256 } from "@gauntlet/ir"
 import { type Baseline, compareMetrics, compareWithBaseline, type Metric, type MetricDelta, type Proof, resultPath, resultRegion, type Run } from "@gauntlet/sarif"
-import { Clock, Effect, type FileSystem, Option, type Path } from "effect"
+import { Clock, Effect, FileSystem, Option, type Path } from "effect"
 import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy, runFromBuild, toBuild } from "./builds.ts"
 import { judgeBudget, parseBudgetResults } from "./budget.ts"
 import { asInCi, type CiConfig } from "./ci-config.ts"
@@ -47,6 +47,12 @@ export interface GateRunnerInput {
   readonly ci?: CiConfig
   /** The change only edits comments or documentation (ADR 0023): no check has anything to run. */
   readonly behaviourUnchanged?: boolean
+  /**
+   * Reports the project's own CI wrote for this commit (ADR 0024), with paths
+   * from the repository's root, and where they came from. A build's tests,
+   * coverage and compile are read from them instead of run again.
+   */
+  readonly fromCi?: { readonly files: ReadonlyArray<{ readonly path: string; readonly content: string }>; readonly source: string }
 }
 
 export interface GateRunnerOutput {
@@ -126,6 +132,30 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     // Each build's tools are stopped in its own folder once the gates are done.
     const startedBuilds = new Map<string, { readonly pack: Pack; readonly dir: string; readonly root: string }>()
     const processRunner = yield* ProcessRunner
+    const fsys = yield* FileSystem.FileSystem
+    /** The CI's reports for a build, with paths from its folder. */
+    const ciFiles = (dir: string) => (input.fromCi?.files ?? []).filter((f) => ownedBy(buildDirs, dir, [f.path]).length > 0).map((f) => ({ ...f, path: toBuild(dir, f.path) }))
+    /** Checks the CI's reports can stand in for: the test suites, coverage and (since the tests compiled) the build. */
+    const ciCovers = (check: Check) => check.kind === "suite" || (check.kind === "gate" && (check.name === "coverage" || check.name === "build"))
+    /**
+     * Runs a check for one build, reading the CI's reports when its pack can and
+     * the CI wrote some for the build: they go into the check's output directory.
+     */
+    function withCi(check: Check, pack: Pack | undefined, dir: string, ctx: GateContext, run: (ctx: GateContext) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) {
+      return Effect.gen(function*() {
+        const files = pack?.readsCi && ciCovers(check) ? ciFiles(dir) : []
+        if (files.length === 0) return yield* run(ctx)
+        for (const f of files) {
+          const target = `${ctx.outputDir}/${f.path}`
+          yield* fsys.makeDirectory(target.slice(0, target.lastIndexOf("/")), { recursive: true }).pipe(Effect.ignore)
+          yield* fsys.writeFileString(target, f.content).pipe(Effect.ignore)
+        }
+        const source = ["ci", input.fromCi!.source]
+        if (check.kind === "gate" && check.name === "build") return { command: source, exitCode: 0, runs: [] } satisfies GateRun
+        const r = yield* run({ ...ctx, fromCi: true })
+        return { ...r, command: source }
+      })
+    }
     let stoppedBy: string | undefined
     const progress = yield* GateProgress
     // The directory every check's output directory sits in, once one was made.
@@ -217,6 +247,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
      * check's files is left out.
      */
     function acrossBuilds(
+      check: Check,
       targets: ReadonlyArray<{ readonly build: { readonly pack: string; readonly dir: string }; readonly pack: Pack }>,
       name: string,
       ctx: GateContext,
@@ -246,7 +277,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
             files: ownedBy(buildDirs, build.dir, ctx.files),
             ...(scope !== undefined ? { scope } : {}),
           }
-          const r = runFromBuild(yield* asInCi(run(bctx, target), input.ci, build.dir, processRunner, ProcessRunner), build.dir)
+          const r = runFromBuild(yield* withCi(check, pack, build.dir, bctx, (c) => asInCi(run(c, target), input.ci, build.dir, processRunner, ProcessRunner)), build.dir)
           const fingerprinted = yield* fingerprintRuns(r.runs, workspace.dir, {
             ...(pack.locate ? { locate: pack.locate } : {}),
             ...(pack.normalise ? { normalise: pack.normalise } : {}),
@@ -384,9 +415,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           // A suite's location is from the repository's root; a build sees its own part of it.
           const located = (d: string) => ({ name: suite.name, location: suite.location.startsWith(`${d}/`) ? toBuild(d, suite.location) : suite.location })
           suiteRun = { suite: { name: suite.name, location: suite.location }, runner: targets[0]!.pack.runSuite!, reruns: targets.every((t) => t.pack.reruns === true) }
-          start = (ctx) => acrossBuilds(targets, dir, ctx, (bctx, t) => t.pack.runSuite!(located(t.build.dir), bctx))
+          start = (ctx) => acrossBuilds(check, targets, dir, ctx, (bctx, t) => t.pack.runSuite!(located(t.build.dir), bctx))
           multiRerun = (ctx, subset, label) =>
-            acrossBuilds(targets.filter((t) => ownedBy(buildDirs, t.build.dir, subset.files).length > 0), `${dir}-${label}`, ctx, (bctx, t) =>
+            acrossBuilds(check, targets.filter((t) => ownedBy(buildDirs, t.build.dir, subset.files).length > 0), `${dir}-${label}`, ctx, (bctx, t) =>
               t.pack.runSuite!(located(t.build.dir), bctx, { ...subset, files: ownedBy(buildDirs, t.build.dir, subset.files) }))
         } else if (check.kind === "suite") {
           const suite = ir.suites.find((s) => s.name === check.name)
@@ -406,7 +437,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const changedOnly = check.scope === "changed" && !input.recording
           scope = changedOnly || zone ? [...new Set([...changed, ...facts.files.map((f) => f.path)])].filter(inScope).sort() : undefined
           start = multi
-            ? (ctx) => acrossBuilds(targetsFor((p) => p.gates[check.name] !== undefined), dir, ctx, (bctx, t) => t.pack.gates[check.name]!(check, bctx))
+            ? (ctx) => acrossBuilds(check, targetsFor((p) => p.gates[check.name] !== undefined), dir, ctx, (bctx, t) => t.pack.gates[check.name]!(check, bctx))
             : (ctx) => impl(check, ctx)
         } else {
           return { status: "not-executed", reason: "not executed in v1" }
@@ -426,7 +457,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           legacy: Option.match(baseline, { onNone: () => [], onSome: (b) => b.legacy }),
         }
         // Builds run as CI does inside acrossBuilds; a single build at the root, here.
-        const run = yield* (multi ? start(ctx) : asInCi(start(ctx), input.ci, ".", processRunner, ProcessRunner))
+        const run = yield* (multi ? start(ctx) : withCi(check, check.kind === "suite" ? packs.find((p) => p.runSuite) : owner, ".", ctx, (c) => asInCi(start(c), input.ci, ".", processRunner, ProcessRunner)))
         const files = yield* ctx.collect
         // Temporary paths would make identical runs differ (invariant 4). Builds write under the outputs root.
         const placeholder = (arg: string) =>
@@ -457,7 +488,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const c = run.tests.counts
           if (c.executed === 0) return { status: "failed", reason: "no tests ran (a silent green fails)", proof, tests: c }
           // A baseline records what trunk does; flakiness is judged on changes.
-          const st = input.recording || !suiteRun
+          // The CI's own run can't be run again here, so its failures are failures.
+          const st = input.recording || !suiteRun || run.command[0] === "ci"
             ? { rerunFlaky: [], newFlaky: [], quarantined: [], failures: failuresOf(run), expired: [], notes: [] }
             : yield* assessStability({
               suite: suiteRun.suite,

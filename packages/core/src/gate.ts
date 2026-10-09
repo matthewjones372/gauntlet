@@ -26,6 +26,12 @@ export interface GateContext {
   readonly files: ReadonlyArray<string>
   /** Legacy grandfathered entries from the baseline, for tools with their own baseline format. */
   readonly legacy: ReadonlyArray<LegacyEntry>
+  /**
+   * The project's own CI already ran this (ADR 0024): its reports are in
+   * \`outputDir\`, with paths from the build's folder, and the gate reads them
+   * instead of running its tool. A gate that can't read CI's reports runs as usual.
+   */
+  readonly fromCi?: boolean
 }
 
 export interface GateRun {

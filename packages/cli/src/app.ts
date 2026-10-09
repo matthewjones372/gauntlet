@@ -100,7 +100,9 @@ const check = Command.make("check", {
   protectOnly: Flag.Boolean("protect-only").pipe(Flag.withDefault(false), Flag.withDescription("check only the verification boundary: the base commit's policy, protected files restored, gates run fresh; no zones, review levels, mutation or ratchets; pass or fail")),
   holdouts: Flag.Boolean("holdouts").pipe(Flag.withDefault(false), Flag.withDescription("also run holdouts that name their files, from the base commit (for the CI evidence job; elsewhere they show as pending)")),
   ci: Flag.Boolean("ci").pipe(Flag.withDefault(false), Flag.withDescription("run each build's tools as .gauntlet/ci.yml at the base says (Gauntlet's GitHub check)")),
-}, ({ repo, policyRef, base, head, out, json, noRecord, workingTree, protectOnly, holdouts, ci }) =>
+  ciReports: Flag.optional(Flag.String("ci-reports").pipe(Flag.withDescription("the project's own CI reports for this commit, one folder per artifact holding paths from the repository's root: tests, coverage and the build are read from them instead of run again"))),
+  ciSource: Flag.optional(Flag.String("ci-source").pipe(Flag.withDescription("where --ci-reports came from (a CI run's URL), for the proof"))),
+}, ({ repo, policyRef, base, head, out, json, noRecord, workingTree, protectOnly, holdouts, ci, ciReports, ciSource }) =>
   Effect.gen(function*() {
     const output = yield* Output
     const root = yield* absolute(repo)
@@ -124,6 +126,7 @@ const check = Command.make("check", {
       ...(protectOnly ? { protectOnly: true } : {}),
       ...(holdouts ? { holdouts: true } : {}),
       ...(ci ? { ci: true } : {}),
+      ...(Option.isSome(ciReports) ? { ciReports: { files: yield* readCiReports(ciReports.value), source: Option.getOrElse(ciSource, () => ciReports.value) } } : {}),
     })
     yield* output.out(json ? renderJson(result.report) : renderMarkdown(result.report))
     yield* output.err(`Report written to ${outDir}`)
@@ -909,6 +912,28 @@ const ciSetupFor = (root: string, files: ReadonlyArray<string>, ir: PolicyIR, dr
       ].join("\n"))
     }
     return Option.some(draft as CiConfig)
+  })
+
+/**
+ * The project's CI reports as downloaded: one folder per artifact, each
+ * holding files under their paths from the repository's root. Only XML and
+ * JSON reports, and nothing over 50 MB.
+ */
+const readCiReports = (dir: string) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const entries = yield* fs.readDirectory(dir, { recursive: true }).pipe(Effect.orElseSucceed(() => [] as string[]))
+    const out: { path: string; content: string }[] = []
+    for (const e of entries.filter((e) => /\.(xml|json|info)$/.test(e)).sort()) {
+      const full = path.join(dir, e)
+      const info = yield* fs.stat(full).pipe(Effect.option)
+      if (Option.isNone(info) || info.value.type !== "File" || Number(info.value.size) > 50_000_000) continue
+      const content = yield* fs.readFileString(full).pipe(Effect.option)
+      const rel = e.split("/").slice(1).join("/")
+      if (Option.isSome(content) && rel !== "") out.push({ path: rel, content: content.value })
+    }
+    return out
   })
 
 /** The highest \`jvmToolchain(N)\` the Gradle builds ask for, so CI sets up a JDK that can build them. */

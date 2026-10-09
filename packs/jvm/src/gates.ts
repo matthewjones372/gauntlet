@@ -13,6 +13,12 @@ import { isMainSource, packageOf, pitestTargets, sourceIndex } from "./sources.t
 // itself), reads only the reports written into the check's output directory,
 // and hands SARIF and metrics to the gate runner, which decides the outcome.
 
+/** Reports the project's own CI wrote (ADR 0024): Gradle's JUnit results, and Kover's or JaCoCo's XML. */
+const CI_JUNIT = /(^|\/)build\/test-results\/[^/]+\/[^/]+\.xml$/
+const CI_COVERAGE = /(^|\/)build\/reports\/(kover\/(xml\/|project-xml\/)?report|jacoco\/[^/]+\/[^/]+)\.xml$/
+/** Stands in for a Gradle run when the CI already ran it. */
+const FROM_CI: GradleRun = { command: ["ci"], exitCode: 0, stderr: "" }
+
 const base = (r: GradleRun): GateRun => ({ command: r.command, exitCode: r.exitCode, runs: [], ...(r.error ? { error: r.error } : {}) })
 
 const readFiles = (ctx: GateContext, paths: ReadonlyArray<string>) =>
@@ -72,9 +78,9 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     // A rerun selects test classes, and JUnit orders classes and methods randomly with the subset's seed.
     const classes = subset ? testClasses(subset) : []
     if (subset && classes.length === 0) return { command: [], exitCode: -1, runs: [], error: "no test classes to run again" }
-    const r = yield* gradle(ctx, [sourceSet, ...classes.flatMap((c) => ["--tests", c])], subset ? { GAUNTLET_JUNIT_SEED: String(subset.seed) } : {})
+    const r = ctx.fromCi ? FROM_CI : yield* gradle(ctx, [sourceSet, ...classes.flatMap((c) => ["--tests", c])], subset ? { GAUNTLET_JUNIT_SEED: String(subset.seed) } : {})
     if (!r.error && taskMissing(r.stderr, sourceSet)) return { ...base(r), error: `the build has no '${sourceSet}' test task` }
-    const xml = yield* reports(ctx, (p) => p.startsWith("junit/") && p.endsWith(".xml"))
+    const xml = yield* reports(ctx, (p) => (ctx.fromCi ? CI_JUNIT.test(p) : p.startsWith("junit/") && p.endsWith(".xml")))
     if (r.error || xml.length === 0) return base(r)
     const junit = yield* Effect.exit(convertJUnit(suite.name, xml.map((f) => ({ path: f.path, content: f.content }))))
     if (junit._tag === "Failure") return { ...base(r), error: "the JUnit XML couldn't be read" }
@@ -200,9 +206,9 @@ export const mutation: GateImpl = (_check, ctx) =>
 export const coverage: GateImpl = (_check, ctx) =>
   Effect.gen(function*() {
     // The init script defines gauntletCoverage in every JVM module (ADR 0007).
-    const r = yield* gradle(ctx, ["test", "gauntletCoverage"])
+    const r = ctx.fromCi ? FROM_CI : yield* gradle(ctx, ["test", "gauntletCoverage"])
     if (r.error) return base(r)
-    const xml = yield* reports(ctx, (p) => (p.startsWith("kover/") || p.startsWith("jacoco/")) && p.endsWith(".xml"))
+    const xml = yield* reports(ctx, (p) => (ctx.fromCi ? CI_COVERAGE.test(p) : (p.startsWith("kover/") || p.startsWith("jacoco/")) && p.endsWith(".xml")))
     if (xml.length === 0) {
       return taskMissing(r.stderr, "gauntletCoverage") ? { ...base(r), error: "no JVM module to measure: coverage needs the java or kotlin plugin" } : base(r)
     }

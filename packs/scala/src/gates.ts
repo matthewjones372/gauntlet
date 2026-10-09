@@ -12,6 +12,12 @@ import { isMainSource, isScala, isTestFile, packageOf, sbt, scalaString, type To
 // reports are pointed at the check's output directory with `set` commands, or
 // copied there from the tool's own location after the run (ADR 0012).
 
+/** Reports the project's own CI wrote (ADR 0024): sbt's JUnit results, and scoverage's Cobertura XML. */
+const CI_JUNIT = /(^|\/)target\/test-reports\/[^/]+\.xml$/
+const CI_COVERAGE = /(^|\/)target\/scala-[^/]+\/coverage-report\/cobertura\.xml$/
+/** Stands in for an sbt run when the CI already ran it. */
+const FROM_CI: ToolRun = { command: ["ci"], exitCode: 0, stdout: "", stderr: "" }
+
 const base = (r: ToolRun): GateRun => ({ command: [...r.command], exitCode: r.exitCode, runs: [], ...(r.error ? { error: r.error } : {}) })
 const failed = (command: ReadonlyArray<string>, error: string): GateRun => ({ command, exitCode: -1, runs: [], error })
 
@@ -68,14 +74,14 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     const junit = path.join(ctx.outputDir, "junit")
     const suites = subset ? subsetSuites(subset, yield* readFiles(ctx, ctx.files.filter(isTestFile))) : []
     if (subset && suites.length === 0) return failed(["sbt", "testOnly"], "no test suites to run again")
-    const r = yield* sbt(ctx, [
+    const r = ctx.fromCi ? FROM_CI : yield* sbt(ctx, [
       `set every Test / testReportsDirectory := file(${scalaString(junit)})`,
       // The frameworks share no shuffle option; reruns vary parallel execution instead.
       ...(subset ? [`set every Test / parallelExecution := ${subset.seed % 2 === 0}`] : []),
       subset ? `testOnly ${suites.join(" ")}` : "test",
     ])
     if (r.error) return base(r)
-    const xml = yield* reports(ctx, (p) => p.startsWith("junit/") && p.endsWith(".xml"))
+    const xml = yield* reports(ctx, (p) => (ctx.fromCi ? CI_JUNIT.test(p) : p.startsWith("junit/") && p.endsWith(".xml")))
     if (xml.length === 0) return { ...base(r), ...(r.exitCode !== 0 ? { error: `sbt test failed before any test ran: ${lastError(r)}` } : {}) }
     const report = yield* Effect.exit(convertJUnit(suite.name, xml.map((f) => ({ path: f.path, content: f.content }))))
     if (report._tag === "Failure") return { ...base(r), error: "the JUnit XML couldn't be read" }
@@ -202,13 +208,14 @@ const COMMENT_OR_BLANK = /^\s*($|\/\/|\*|\/\*)/
 export const coverage: GateImpl = (_check, ctx) =>
   Effect.gen(function*() {
     const path = yield* Path.Path
-    const r = yield* sbt(ctx, [`set every coverageDataDir := file(${scalaString(path.join(ctx.outputDir, "scoverage"))})`, "coverage", "test", "coverageReport"])
+    const r = ctx.fromCi ? FROM_CI : yield* sbt(ctx, [`set every coverageDataDir := file(${scalaString(path.join(ctx.outputDir, "scoverage"))})`, "coverage", "test", "coverageReport"])
     if (r.error) return base(r)
     if (notAvailable(r, "coverageDataDir") || notAvailable(r, "coverage")) return { ...base(r), error: "scoverage isn't applied; add the org.scoverage sbt-scoverage plugin" }
-    const xml = (yield* reports(ctx, (p) => p === "scoverage/coverage-report/cobertura.xml"))[0]
-    if (!xml) return { ...base(r), error: `scoverage wrote no report (do the tests compile and pass?): ${lastError(r)}` }
+    // The CI's run writes one report per module; Gauntlet's own run, one for the build.
+    const xmls = yield* reports(ctx, (p) => (ctx.fromCi ? CI_COVERAGE.test(p) : p === "scoverage/coverage-report/cobertura.xml"))
+    if (xmls.length === 0) return { ...base(r), error: `scoverage wrote no report (do the tests compile and pass?): ${lastError(r)}` }
     const scoped = ctx.scope?.filter(isMainSource)
-    const files = parseCobertura(xml.content, ctx.files.filter(isScala)).filter((f) => ctx.scope === undefined || ctx.scope.includes(f.path))
+    const files = xmls.flatMap((x) => parseCobertura(x.content, ctx.files.filter(isScala))).filter((f) => ctx.scope === undefined || ctx.scope.includes(f.path))
     const pct = (covered: number, total: number) => Math.round((covered / total) * 10000) / 100
     const perFile: Record<string, number> = {}
     for (const f of files) {

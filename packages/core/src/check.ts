@@ -60,6 +60,11 @@ export interface CheckRequest {
   /** Gauntlet's GitHub check: run each build's tools as \`.gauntlet/ci.yml\` at the base says. */
   readonly ci?: boolean
   /**
+   * Reports the project's own CI wrote for the head commit (ADR 0024), paths
+   * from the repository's root, and where they came from (a run's URL).
+   */
+  readonly ciReports?: { readonly files: ReadonlyArray<{ readonly path: string; readonly content: string }>; readonly source: string }
+  /**
    * The adoption window is open (spec 0005): protected tests are judged as
    * edited rather than restored from base. Local working-tree checks only.
    */
@@ -227,6 +232,11 @@ export const runCheck = (request: CheckRequest) =>
       const files = yield* git.listWorkingFiles(workspace.dir)
       // A change to comments or documentation only has nothing to build or test (ADR 0023). Protect-only always runs.
       const unchanged = !request.protectOnly && (yield* changeLeavesBehaviour(git, request.repo, p.base, p.head, p.facts.files))
+      // The CI's reports stand in for running the tests again only when the change couldn't have shaped them:
+      // it leaves the CI's workflows and the protected build files alone, and no report is a file in the repository.
+      const tracked = new Set(files)
+      const shapesCi = p.facts.files.some((f) => f.path.startsWith(".github/workflows/")) || p.facts.protectedTouched.some((t) => t.kind !== "tests" && t.action !== "kept")
+      const fromCi = request.ciReports && !shapesCi ? request.ciReports.files.filter((f) => !tracked.has(f.path)) : []
       // From the base commit, like the policy: a change can't alter how it's built for its own judgement.
       const ci = request.ci ? Option.flatMap(yield* git.show(request.repo, p.base, CI_CONFIG_PATH).pipe(Effect.orElseSucceed(() => Option.none<string>())), parseCiConfig) : Option.none<CiConfig>()
       const today = yield* git.commitDate(request.repo, p.head)
@@ -237,6 +247,7 @@ export const runCheck = (request: CheckRequest) =>
           ...(request.holdouts ? { holdouts: true } : {}),
           ...(Option.isSome(ci) ? { ci: ci.value } : {}),
           ...(unchanged ? { behaviourUnchanged: true } : {}),
+          ...(fromCi.length > 0 ? { fromCi: { files: fromCi, source: request.ciReports!.source } } : {}),
         })
       const imports = request.skipGates
         ? { checks: [], newViolations: [], runs: [], caution: [], records: [] }
