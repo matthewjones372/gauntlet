@@ -1,5 +1,8 @@
 ## Gauntlet: auto
 
+> [!TIP]
+> **Low-risk change**: it can merge without anyone's approval. It changes 1 file (12 lines).
+
 **Tier auto.** Gauntlet doesn't block. Mode enforce.
 
 Policy `e2dfb6cfa346` from the base; base `111111111111`, head `222222222222`.

@@ -1,5 +1,18 @@
 ## Gauntlet: review
 
+> [!CAUTION]
+> **Blocked** because mutation failed, unit failed, it weakens or skips a test, it adds a lint finding, a score dropped below the baseline, it has a risky pattern and no rule in the policy marks it as safe. It changes 0 files (12 lines).
+>
+> 5 things to fix, and 2 more things to look at:
+>
+> 1. mutation failed: mutation score 71% is below the baseline 80%
+> 2. unit failed: 1 test failed
+> 3. A new @Disabled skips a test. (src/test/FxTest.kt:12)
+> 4. New detekt.style.MagicNumber finding from lint (src/main/Fx.kt:5): 1.1 is a magic number
+> 5. mutation dropped below the baseline (80 to 71).
+> 6. System.getenv is used in a condition. (src/main/Fx.kt:20)
+> 7. No rule in the policy says a change like this can merge on its own, so a person should look at it.
+
 **Tier review.** Gauntlet blocks this change. Mode enforce.
 
 Policy `e2dfb6cfa346` from the base; base `111111111111`, head `222222222222`.

@@ -1,5 +1,14 @@
 ## Gauntlet: owner
 
+> [!WARNING]
+> **Needs careful review by an owner (@payments, @platform)** because it touches the money zone, it changes Gauntlet's policy or baseline and it changes protected build configuration. It changes 0 files (12 lines).
+>
+> 3 things to look at:
+>
+> 1. It changes code in the **money** zone (owner @payments): `src/main/money/Fx.kt`.
+> 2. .gauntlet/policy.gx is under .gauntlet/; policy, baseline and self-test changes need an owner.
+> 3. build.gradle.kts is protected (config); the change is undone for the run and needs review.
+
 **Tier owner.** Gauntlet doesn't block. Mode enforce.
 
 Policy `e2dfb6cfa346` from the base; base `111111111111`, head `222222222222`.

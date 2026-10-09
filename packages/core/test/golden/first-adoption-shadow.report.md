@@ -1,5 +1,16 @@
 ## Gauntlet: owner
 
+> [!WARNING]
+> **Needs careful review by an owner (@platform)** because a check didn't run and no rule in the policy marks it as safe. It changes 0 files (12 lines).
+>
+> 5 things to look at:
+>
+> 1. 1 caution signal (reviewer) raised the tier one step.
+> 2. Gauntlet has no evidence for one of its checks: the integrity check 'assertions per test' was not executed.
+> 3. Gauntlet has no evidence for one of its checks: the integrity check 'mocks of class under test' was not executed.
+> 4. Gauntlet has no evidence for one of its checks: trade-holdout was not executed: holdout pending: holdouts run only in CI
+> 5. No rule in the policy says a change like this can merge on its own, so a person should look at it.
+
 **Tier owner.** Gauntlet doesn't block. Mode shadow (first adoption).
 
 Policy `e2dfb6cfa346` from the working copy; base `111111111111`, head `222222222222`.
