@@ -1,6 +1,6 @@
 import {
   agentSummary, BASELINE_PATH, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
-  ProcessRunner, protectOnlyIr, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, PrComment, Report, Review, runnerConfigFor, Teams,
+  ProcessRunner, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, PrComment, Report, Review, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
@@ -355,8 +355,38 @@ export const firstRunExplained = (mode: "shadow" | "enforce", failing: boolean):
         `  2. Record the baseline again, so it starts clean: ${style.command("gauntlet baseline --update")}`,
         `  3. Then enforce it: ${style.command("mode enforce")} in .gauntlet/policy.gx.`,
       ]
-      : ["", "Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready."]),
+      : ["", "Claude Code now checks its work with Gauntlet before it finishes."]),
   ].join("\n")
+
+/** The branch setup commits to when it starts on the default branch. */
+export const SETUP_BRANCH = "gauntlet/setup"
+
+/**
+ * Moves setup onto its own branch when it starts on the default branch, so
+ * the default branch gets Gauntlet only through a pull request, where the
+ * project's CI runs. Uncommitted work comes along.
+ */
+const onSetupBranch = (root: string) =>
+  Effect.gen(function*() {
+    const { current, defaults } = yield* branches(root)
+    if (current === "" || !defaults.includes(current)) return
+    const runner = yield* ProcessRunner
+    const exists = (yield* runner.run({ command: "git", args: ["rev-parse", "--verify", "--quiet", `refs/heads/${SETUP_BRANCH}`], cwd: root }).pipe(Effect.map((r) => r.exitCode === 0), Effect.orElseSucceed(() => false)))
+    yield* runGit(root, exists ? ["switch", "-q", SETUP_BRANCH] : ["switch", "-q", "-c", SETUP_BRANCH])
+    yield* (yield* Output).out(`Setup commits to the branch ${style.command(SETUP_BRANCH)}, so ${current} gets Gauntlet only through a pull request, where your CI runs.`)
+  })
+
+/** On setup's branch, that branch is where the baseline is recorded: it reaches trunk through the pull request. */
+const setupTrunk = (root: string) =>
+  branches(root).pipe(Effect.map((b) => (b.current === SETUP_BRANCH ? Option.some(SETUP_BRANCH) : Option.none<string>())))
+
+/** How setup's branch reaches the default branch: a pull request. */
+const pullRequestHint = (root: string) =>
+  Effect.gen(function*() {
+    const { current, defaults } = yield* branches(root)
+    if (current === "" || defaults.includes(current)) return ""
+    return ` Push ${style.command(current)} and open a pull request (${style.command(`git push -u origin ${current}`)}, then ${style.command("gh pr create")}); merge it once its checks pass.`
+  })
 
 /** After the first baseline: say what fails, and offer to have Claude Code fix it. */
 const offerFix = (root: string, failing: ReadonlyArray<CheckRecord>) =>
@@ -1173,6 +1203,8 @@ const apply = Command.make("apply", {
     const output = yield* Output
     const root = yield* absolute(args.repo)
     const from = Option.getOrElse(args.from, () => PROPOSAL_FILE)
+    // Setup's commits never land on the default branch: they reach it through a pull request, where the checks run.
+    if (!args.dryRun) yield* onSetupBranch(root)
     // Protected-file changes the agent prepared go first, so the baseline is recorded after them.
     const changes = yield* applyChanges(root, args.dryRun)
     if (!changes) return
@@ -1209,16 +1241,16 @@ const apply = Command.make("apply", {
       yield* output.out(changes === "applied"
         ? "The changes can set up tools that weren't there, so the baseline is recorded again for the gates they let run."
         : "The policy changed since the baseline was recorded, so it's recorded again for the new gates.")
-      const recorded = yield* runBaseline({ repo: root, update: true, allowLower: false, adoptNewGates: true, importDetekt: Option.none(), trunk: Option.none(), commitHint: false, skipChangedMutation: true })
+      const recorded = yield* runBaseline({ repo: root, update: true, allowLower: false, adoptNewGates: true, importDetekt: Option.none(), trunk: yield* setupTrunk(root), commitHint: false, skipChangedMutation: true })
       if (!recorded) return
       if (yield* commitIfChanged(root, [BASELINE_PATH], "Update Gauntlet baseline for the new gates")) yield* output.out("Committed the baseline.")
       yield* switchOnHooks(root)
-      yield* output.out(`\n${style.ok(style.bold("Done."))} Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.`)
+      yield* output.out(`\n${style.ok(style.bold("Done."))} Claude Code now checks its work with Gauntlet before it finishes.${yield* pullRequestHint(root)}`)
       const failing = persistentFailures(recorded.checks, recorded.ir)
       if (failing.length > 0) yield* offerFix(root, failing)
       return
     } else {
-      const recorded = yield* runBaseline({ repo: root, update: false, allowLower: false, importDetekt: Option.none(), trunk: Option.none(), commitHint: false, skipChangedMutation: true })
+      const recorded = yield* runBaseline({ repo: root, update: false, allowLower: false, importDetekt: Option.none(), trunk: yield* setupTrunk(root), commitHint: false, skipChangedMutation: true })
       if (!recorded) return
       // Gauntlet's hooks switch on with the baseline: the last step of setup.
       if (!(yield* connectClaude(root, false))) return
@@ -1226,11 +1258,11 @@ const apply = Command.make("apply", {
         yield* output.out("Committed the baseline, and switched on Gauntlet's Claude Code hooks.")
       }
       const failing = persistentFailures(recorded.checks, recorded.ir)
-      yield* output.out(firstRunExplained(recorded.ir.mode, failing.length > 0))
+      yield* output.out(`${firstRunExplained(recorded.ir.mode, failing.length > 0)}${yield* pullRequestHint(root)}`)
       if (failing.length > 0) yield* offerFix(root, failing)
       return
     }
-    yield* output.out(`\n${style.ok(style.bold("Done."))} Claude Code now checks its work with Gauntlet before it finishes. Push when you're ready.`)
+    yield* output.out(`\n${style.ok(style.bold("Done."))} Claude Code now checks its work with Gauntlet before it finishes.${yield* pullRequestHint(root)}`)
   }).pipe(withGateProgress, Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Apply the policy, commit it and record the baseline: the end of step 3."))
 
 const connect = Command.make("connect").pipe(Command.withDescription("Connect Gauntlet to GitHub or a coding agent."), Command.withSubcommands([connectGithub, connectClaudeCode]))
@@ -1322,8 +1354,18 @@ const decodeHookInput = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.
   cwd: Schema.optionalKey(Schema.String),
   stop_hook_active: Schema.optionalKey(Schema.Boolean),
   tool_name: Schema.optionalKey(Schema.String),
-  tool_input: Schema.optionalKey(Schema.Struct({ file_path: Schema.optionalKey(Schema.String), notebook_path: Schema.optionalKey(Schema.String) })),
+  tool_input: Schema.optionalKey(Schema.Struct({ file_path: Schema.optionalKey(Schema.String), notebook_path: Schema.optionalKey(Schema.String), command: Schema.optionalKey(Schema.String) })),
 })))
+
+/** The current branch and the branches nothing may be pushed to directly: the remote's default, main and master. */
+const branches = (root: string) =>
+  Effect.gen(function*() {
+    const runner = yield* ProcessRunner
+    const git = (args: ReadonlyArray<string>) => runner.run({ command: "git", args, cwd: root }).pipe(Effect.map((r) => (r.exitCode === 0 ? r.stdout.trim() : "")), Effect.orElseSucceed(() => ""))
+    const current = yield* git(["rev-parse", "--abbrev-ref", "HEAD"])
+    const remote = (yield* git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])).replace(/^origin\//, "")
+    return { current, defaults: [...new Set([remote, "main", "master"].filter(Boolean))] }
+  })
 
 const hookStop = Command.make("stop", {}, () =>
   Effect.gen(function*() {
@@ -1355,6 +1397,22 @@ const hookPreToolUse = Command.make("pre-tool-use", {}, () =>
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const input = Option.getOrUndefined(decodeHookInput(yield* readStdin))
+    // A change reaches the default branch only through a pull request, where the checks run.
+    if (input?.tool_name === "Bash" && input.tool_input?.command !== undefined) {
+      if (!/\bgit\b[^\n]*\bpush\b/.test(input.tool_input.command)) return
+      const { current, defaults } = yield* branches(input.cwd ?? process.cwd())
+      const hit = pushTarget(input.tool_input.command, current, defaults)
+      if (hit === undefined) return
+      const branch = current !== "" && !defaults.includes(current) ? current : "<a new branch>"
+      yield* output.out(JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: `This pushes to ${hit}. Changes reach ${hit} only through a pull request, where the checks run. Commit on a branch (git switch -c <name> if you're on ${hit}), push it (git push -u origin ${branch}) and open a pull request (gh pr create), after asking the person.`,
+        },
+      }))
+      return
+    }
     const target = input?.tool_input?.file_path ?? input?.tool_input?.notebook_path
     if (!input || !target) return
     const cwd = input.cwd ?? process.cwd()
