@@ -19,3 +19,27 @@ describe("mutation on changed lines", () => {
     expect(Option.getOrThrow(parseStryker(json, "/repo"))).toEqual([{ path: "src/fx.ts", line: 4, column: 9, endLine: 6, status: "Survived", mutator: "ConditionalExpression" }])
   })
 })
+
+describe("a whole project's mutation in batches", () => {
+  const loads = new Map([
+    ["src/a.test.ts", new Set(["src/a.ts", "src/shared.ts"])],
+    ["src/b.test.ts", new Set(["src/b.ts", "src/shared.ts"])],
+  ])
+
+  test("files with the same tests go together, and files no test loads get no tests", async () => {
+    const { mutationBatches } = await import("../src/gates.ts")
+    expect(mutationBatches(["src/a.ts", "src/b.ts", "src/shared.ts", "src/lonely.ts"], loads)).toEqual([
+      { files: ["src/shared.ts"], tests: ["src/a.test.ts", "src/b.test.ts"] },
+      { files: ["src/a.ts"], tests: ["src/a.test.ts"] },
+      { files: ["src/b.ts"], tests: ["src/b.test.ts"] },
+      { files: ["src/lonely.ts"], tests: [] },
+    ])
+  })
+
+  test("past the batch limit, a group joins the batch whose tests it shares most", async () => {
+    const { mutationBatches } = await import("../src/gates.ts")
+    expect(mutationBatches(["src/a.ts", "src/b.ts", "src/shared.ts"], loads, 1)).toEqual([
+      { files: ["src/a.ts", "src/b.ts", "src/shared.ts"], tests: ["src/a.test.ts", "src/b.test.ts"] },
+    ])
+  })
+})

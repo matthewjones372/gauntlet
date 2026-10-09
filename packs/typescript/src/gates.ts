@@ -1,4 +1,4 @@
-import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
+import type { GateContext, GateImpl, GateRun, ProcessRunner, SuiteImpl, TestSubset } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, decodeLog, type Log, relativeUri, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
@@ -260,18 +260,73 @@ const shellQuote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`
  */
 const relatedTests = (ctx: GateContext, targets: ReadonlyArray<string>) =>
   Effect.gen(function*() {
-    const tests = ctx.files.filter((f) => isTsSource(f) && BUN_TEST_FILE.test(f))
-    if (tests.length < 2) return Option.none<ReadonlyArray<string>>()
-    yield* Effect.forEach(tests, (t, i) =>
-      bun(ctx, ["test", `./${t}`, "--coverage", "--coverage-reporter=lcov", `--coverage-dir=${ctx.outputDir}/related/${i}`]), { concurrency: Math.max(1, availableParallelism() - 1), discard: true })
-    const lcovs = yield* reports(ctx, (p) => p.startsWith("related/") && p.endsWith("lcov.info"))
-    const wanted = new Set(targets)
-    const related = lcovs.flatMap((l) => {
-      const test = tests[Number(l.path.split("/")[1])]
-      return test && parseLcov(l.content, ctx.dir).some((f) => wanted.has(f.path)) ? [test] : []
-    })
-    return related.length > 0 ? Option.some([...new Set(related)].sort()) : Option.none<ReadonlyArray<string>>()
+    const loads = yield* testsLoading(ctx)
+    if (Option.isNone(loads)) return Option.none<ReadonlyArray<string>>()
+    const related = [...loads.value].flatMap(([test, files]) => (targets.some((t) => files.has(t)) ? [test] : []))
+    return related.length > 0 ? Option.some([...new Set(related)]) : Option.none<ReadonlyArray<string>>()
   })
+
+/** Which files each test file loads, from running each one on its own with coverage. None with fewer than two test files. */
+const testsLoading = (ctx: GateContext) =>
+  Effect.gen(function*() {
+    const tests = ctx.files.filter((f) => isTsSource(f) && BUN_TEST_FILE.test(f))
+    if (tests.length < 2) return Option.none<ReadonlyMap<string, ReadonlySet<string>>>()
+    const took = new Map<string, number>()
+    yield* Effect.forEach(tests, (t, i) =>
+      Effect.gen(function*() {
+        const started = Date.now()
+        yield* bun(ctx, ["test", `./${t}`, "--coverage", "--coverage-reporter=lcov", `--coverage-dir=${ctx.outputDir}/related/${i}`])
+        took.set(t, Date.now() - started)
+      }), { concurrency: Math.max(1, availableParallelism() - 1), discard: true })
+    const lcovs = yield* reports(ctx, (p) => p.startsWith("related/") && p.endsWith("lcov.info"))
+    // Fastest first: with --bail a mutant one quick test kills never waits for a slow one.
+    const order = (t: string) => took.get(t) ?? Number.MAX_SAFE_INTEGER
+    const loads = new Map<string, ReadonlySet<string>>()
+    for (const l of [...lcovs].sort((a, b) => order(tests[Number(a.path.split("/")[1])]!) - order(tests[Number(b.path.split("/")[1])]!))) {
+      const test = tests[Number(l.path.split("/")[1])]
+      if (test) loads.set(test, new Set(parseLcov(l.content, ctx.dir).map((f) => f.path)))
+    }
+    return Option.some(loads as ReadonlyMap<string, ReadonlySet<string>>)
+  })
+
+/** How many Stryker runs a whole-project run is split into at most. */
+const MAX_BATCHES = 12
+
+/**
+ * Source files in batches, each with the tests that load any of its files,
+ * for mutating a whole project under bun test without every mutant running
+ * the whole suite. Files with the same tests go together; then each group
+ * joins the batch its tests overlap most, so a batch's tests stay few.
+ * Files no test loads form a batch of their own, with no tests.
+ */
+export const mutationBatches = (sources: ReadonlyArray<string>, loads: ReadonlyMap<string, ReadonlySet<string>>, max = MAX_BATCHES): Array<{ files: string[]; tests: string[] }> => {
+  const groups = new Map<string, { files: string[]; tests: string[] }>()
+  for (const file of [...sources].sort()) {
+    // In the order the map gives them (fastest first), so a batch runs its quick tests before its slow ones.
+    const tests = [...loads].filter(([, files]) => files.has(file)).map(([t]) => t)
+    const key = tests.join("\n")
+    const g = groups.get(key) ?? { files: [], tests }
+    g.files.push(file)
+    groups.set(key, g)
+  }
+  const untested = groups.get("")
+  groups.delete("")
+  const batches: Array<{ files: string[]; tests: Set<string> }> = []
+  for (const g of [...groups.values()].sort((a, b) => b.tests.length - a.tests.length || b.files.length - a.files.length)) {
+    if (batches.length < max - (untested ? 1 : 0)) {
+      batches.push({ files: [...g.files], tests: new Set(g.tests) })
+      continue
+    }
+    const added = (b: { tests: Set<string> }) => g.tests.filter((t) => !b.tests.has(t)).length
+    const best = batches.reduce((x, y) => (added(y) < added(x) ? y : x))
+    best.files.push(...g.files)
+    for (const t of g.tests) best.tests.add(t)
+  }
+  return [
+    ...batches.map((b) => ({ files: b.files.sort(), tests: [...loads.keys()].filter((t) => b.tests.has(t)) })),
+    ...(untested ? [{ files: untested.files, tests: [] }] : []),
+  ]
+}
 
 export const mutation: GateImpl = (check, ctx) =>
   Effect.gen(function*() {
@@ -310,20 +365,29 @@ export const mutation: GateImpl = (check, ctx) =>
         const overrides = {
           ...(mutate ? { mutate } : {}),
           // bun test stops at the first failing test: a mutant is killed as soon as one test catches it.
-          ...(commandRunner ? { commandRunner: { command: ["bun test --bail", ...(tests ?? []).map((t) => shellQuote(`./${t}`))].join(" ") } } : {}),
+          // No tests at all (files no test loads): \`true\`, so every mutant survives without running anything.
+          ...(commandRunner
+            ? { commandRunner: { command: tests !== undefined && tests.length === 0 ? "true" : ["bun test --bail", ...(tests ?? []).map((t) => shellQuote(`./${t}`))].join(" ") } }
+            : {}),
           reporters: ["json"],
           jsonReporter: { fileName: `${ctx.outputDir}/mutation/${name}.json` },
           incremental: false,
           cleanTempDir: "always",
         }
         yield* fs.writeFileString(generated, `${importBase}\nexport default { ...base, ...${JSON.stringify(overrides)} }\n`).pipe(Effect.orElseSucceed(() => undefined))
-        return yield* tool(ctx, "stryker", ["run", generated])
+        // A whole project's mutants can outlast the usual 30 minutes a tool gets.
+        return yield* tool(ctx, "stryker", ["run", generated], {}, "4 hours")
       })
     const mutate = changedLines ?? inScope
+    const read = (name: string) => reports(ctx, (p) => p === `mutation/${name}.json`).pipe(Effect.map((f) => f[0] ? parseStryker(f[0].content, ctx.dir) : Option.none()))
+    // The whole project under bun test (a baseline): in batches, each with only the tests that load its files.
+    if (commandRunner && inScope === undefined) {
+      const loads = yield* testsLoading(ctx)
+      if (Option.isSome(loads)) return yield* wholeProject(ctx, loads.value, stryker, read)
+    }
     const subset = commandRunner && inScope !== undefined ? yield* relatedTests(ctx, inScope) : Option.none<ReadonlyArray<string>>()
     const r = yield* stryker("mutation", mutate, Option.getOrUndefined(subset))
     if (r.error) return base(r)
-    const read = (name: string) => reports(ctx, (p) => p === `mutation/${name}.json`).pipe(Effect.map((f) => f[0] ? parseStryker(f[0].content, ctx.dir) : Option.none()))
     const first = yield* read("mutation")
     if (Option.isNone(first)) return base(r)
     let mutants = first.value
@@ -339,6 +403,11 @@ export const mutation: GateImpl = (check, ctx) =>
       const verdict = new Map(Option.getOrElse(confirmed, () => []).map((m) => [key(m), m.status]))
       mutants = mutants.map((m) => UNDETECTED.has(m.status) && verdict.has(key(m)) ? { ...m, status: verdict.get(key(m))! } : m)
     }
+    return scored(r, mutants, inScope)
+  })
+
+/** The mutation score from Stryker's mutants: overall, per file, and the survivors as findings. */
+const scored = (r: ToolRun, mutants: ReadonlyArray<Mutant>, inScope: ReadonlyArray<string> | undefined): GateRun => {
     const counted = mutants.filter((m) => (DETECTED.has(m.status) || UNDETECTED.has(m.status)) && (inScope === undefined || inScope.includes(m.path)))
     if (counted.length === 0) return { ...base(r), nothingInScope: "Stryker generated no mutants for the code in scope" }
     const pct = (ms: typeof counted) => Math.round((ms.filter((m) => DETECTED.has(m.status)).length / ms.length) * 10000) / 100
@@ -354,6 +423,34 @@ export const mutation: GateImpl = (check, ctx) =>
       })),
     }
     return { ...base(r), exitCode: 0, runs: [survivors], metrics: { mutation: { value: pct(counted), unit: "%", higherIsBetter: true, perFile } } }
+}
+
+/**
+ * Mutating a whole project under bun test: one Stryker run per batch of
+ * files, each running only the tests that load them and stopping at the first
+ * failure. A baseline has no second pass against the whole suite, so a mutant
+ * only a subprocess-launched test would kill counts as survived there.
+ */
+const wholeProject = (
+  ctx: GateContext,
+  loads: ReadonlyMap<string, ReadonlySet<string>>,
+  stryker: (name: string, mutate: ReadonlyArray<string> | undefined, tests: ReadonlyArray<string> | undefined) => Effect.Effect<ToolRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>,
+  read: (name: string) => Effect.Effect<Option.Option<Mutant[]>, never, never>,
+) =>
+  Effect.gen(function*() {
+    const sources = ctx.files.filter(isMainSource)
+    const inSrc = sources.some((f) => f.startsWith("src/")) ? sources.filter((f) => f.startsWith("src/")) : sources
+    const batches = mutationBatches(inSrc, loads)
+    const mutants: Mutant[] = []
+    let last: ToolRun | undefined
+    for (const [i, b] of batches.entries()) {
+      const r = yield* stryker(`mutation-${i}`, b.files, b.tests)
+      last = r
+      if (r.error) return base(r)
+      const found = yield* read(`mutation-${i}`)
+      if (Option.isSome(found)) mutants.push(...found.value)
+    }
+    return scored(last ?? { command: ["stryker"], exitCode: 0, stdout: "", stderr: "" }, mutants, undefined)
   })
 
 // ---------- coverage ----------

@@ -1,6 +1,6 @@
 import type { GateContext } from "@gauntlet/core"
 import { ProcessRunner } from "@gauntlet/core"
-import { Effect, FileSystem, Option, Path, Schema } from "effect"
+import { type Duration, Effect, FileSystem, Option, Path, Schema } from "effect"
 
 // How a TypeScript project builds and tests: its package manager, test
 // runner and installed tools. Everything runs in the judged checkout, which
@@ -60,10 +60,10 @@ export interface ToolRun {
   readonly error?: string
 }
 
-const exec = (ctx: GateContext, argv: ReadonlyArray<string>, env: Readonly<Record<string, string>> = {}) =>
+const exec = (ctx: GateContext, argv: ReadonlyArray<string>, env: Readonly<Record<string, string>> = {}, timeout?: Duration.Input) =>
   Effect.gen(function*() {
     const runner = yield* ProcessRunner
-    const result = yield* Effect.exit(runner.run({ command: argv[0]!, args: argv.slice(1), cwd: ctx.dir, env: { CI: "true", NO_COLOR: "1", ...env } }))
+    const result = yield* Effect.exit(runner.run({ command: argv[0]!, args: argv.slice(1), cwd: ctx.dir, env: { CI: "true", NO_COLOR: "1", ...env }, ...(timeout !== undefined ? { timeout } : {}) }))
     if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: `${argv[0]} couldn't be started or timed out` } satisfies ToolRun
     return { command: argv, ...result.value } satisfies ToolRun
   })
@@ -88,7 +88,7 @@ export const ensureInstalled = (ctx: GateContext, chain: Toolchain) =>
   })
 
 /** Runs a tool installed in the project's node_modules/.bin. */
-export const tool = (ctx: GateContext, bin: string, args: ReadonlyArray<string>, env: Readonly<Record<string, string>> = {}) =>
+export const tool = (ctx: GateContext, bin: string, args: ReadonlyArray<string>, env: Readonly<Record<string, string>> = {}, timeout?: Duration.Input) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -96,7 +96,7 @@ export const tool = (ctx: GateContext, bin: string, args: ReadonlyArray<string>,
     if (!(yield* fs.exists(local).pipe(Effect.orElseSucceed(() => false)))) {
       return { command: [bin, ...args], exitCode: -1, stdout: "", stderr: "", error: `${bin} isn't installed in the project (add it to devDependencies)` } satisfies ToolRun
     }
-    const run = yield* exec(ctx, [local, ...args], env)
+    const run = yield* exec(ctx, [local, ...args], env, timeout)
     return { ...run, command: [bin, ...args] }
   })
 
