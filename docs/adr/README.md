@@ -24,3 +24,4 @@
 | 0020 | One warm Gradle daemon or sbt server per check, never shared across checks | accepted |
 | 0021 | An edited protected test runs as edited and needs review | accepted |
 | 0022 | Several builds in one repository | accepted |
+| 0023 | A change to comments or documentation only runs no checks | accepted |

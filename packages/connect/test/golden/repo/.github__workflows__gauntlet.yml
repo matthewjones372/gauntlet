@@ -39,20 +39,29 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Set up Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
-        with:
-          distribution: temurin
-          java-version: "25"
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
-        with:
-          cache-disabled: true
       - name: Install Gauntlet 0.1.0
         run: |
           curl -fsSL "$GAUNTLET_URL" -o "$RUNNER_TEMP/gauntlet"
           echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  $RUNNER_TEMP/gauntlet" | sha256sum -c -
           chmod +x "$RUNNER_TEMP/gauntlet"
+      # A change to comments or documentation only has nothing to build (ADR 0023): skip the tools and setup too.
+      - name: Does the change need building?
+        id: needs
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: echo "build=$("$RUNNER_TEMP/gauntlet" needs-build --policy-ref "$BASE" --head "$HEAD")" >> "$GITHUB_OUTPUT"
+      - name: Set up Java
+        if: ${{ steps.needs.outputs.build != 'false' }}
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "25"
+      - name: Set up Gradle
+        if: ${{ steps.needs.outputs.build != 'false' }}
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-disabled: true
       - name: Check the change with the base commit's policy
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
