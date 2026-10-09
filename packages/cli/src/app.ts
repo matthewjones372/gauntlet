@@ -1,6 +1,6 @@
 import {
   agentSummary, BASELINE_PATH, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
-  ProcessRunner, protectOnlyIr, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, PrComment, Report, Review, runnerConfigFor, Teams,
+  ProcessRunner, protectOnlyIr, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, PrComment, Report, Review, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
@@ -1274,6 +1274,17 @@ const githubStatusCommand = Command.make("github-status", {
     const comments = Option.isSome(args.comments) ? Option.getOrElse(Option.flatMap(yield* read(args.comments.value), decodeComments), () => []) : []
     const status = githubStatus(report, reviews, teams, overrides, comments)
     yield* fs.writeFileString(path.resolve(root, args.out, "status.json"), `${JSON.stringify(status, null, 2)}\n`)
+    // The report posted on the pull request says who approved, under its first line, and shows its box ticked.
+    if (status.conclusion === "success" && status.approvedBy.length > 0) {
+      const md = path.resolve(root, args.out, "gauntlet-report.md")
+      const text = yield* fs.readFileString(md).pipe(Effect.option)
+      if (Option.isSome(text)) {
+        const [first, ...rest] = text.value.split("\n")
+        const who = `approved by ${status.approvedBy.join(", ")}`
+        const ticked = rest.map((l) => (l.startsWith(`- [ ] ${APPROVE_BOX}`) ? `- [x] ${APPROVE_BOX}: ${who} (commit \`${head.slice(0, 12)}\`)` : l))
+        yield* fs.writeFileString(md, [first, "", `**Approved by ${status.approvedBy.join(", ")}** for commit \`${head.slice(0, 12)}\`.`, ...ticked].join("\n"))
+      }
+    }
     yield* output.out(`${status.conclusion}: ${status.title}. ${status.summary}`)
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("CI's trusted job: recompute what needs no execution, then decide the gauntlet check."))
 

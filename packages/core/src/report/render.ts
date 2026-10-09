@@ -48,6 +48,9 @@ const proofText = (c: Report["checks"][number]) => {
   return parts.join("; ")
 }
 
+/** The box an owner ticks in the pull request's report to approve its commit. */
+export const APPROVE_BOX = "**Approve this change**"
+
 /** The report as markdown, for a PR comment or a terminal. */
 export const renderMarkdown = (r: Report): string => {
   const d = r.decision
@@ -80,9 +83,11 @@ export const renderMarkdown = (r: Report): string => {
     lines.push(
       "### How to approve",
       "",
-      `- ${who} opens the pull request on GitHub, then Files changed, Review changes, and chooses Approve. The \`gauntlet\` check turns green for this commit.`,
-      `- GitHub won't let you approve a pull request you opened, which includes one an agent opened for you. Then ${owners.length > 0 ? `an owner (${owners.join(", ")})` : "an owner"} comments \`/gauntlet approve ${r.policy.headSha.slice(0, 12)}\` on it instead.`,
-      "- An approval counts for this commit only: a new push needs a new one.",
+      `${who === "A reviewer" ? "An owner" : who}${owners.length > 0 && who === "A reviewer" ? ` (${owners.join(", ")})` : ""} ticks this box, and the \`gauntlet\` check turns green:`,
+      "",
+      `- [ ] ${APPROVE_BOX} (commit \`${r.policy.headSha.slice(0, 12)}\`)`,
+      "",
+      `Or approve the pull request in Files changed, Review changes, Approve (GitHub doesn't allow that on a pull request you opened, including one an agent opened for you), or comment \`/gauntlet approve ${r.policy.headSha.slice(0, 12)}\`. An approval counts for this commit only: a new push needs a new one.`,
       "",
     )
   }
