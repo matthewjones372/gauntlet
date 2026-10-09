@@ -31,6 +31,8 @@ export interface Pack {
   readonly ownBuild?: (files: ReadonlyArray<string>) => boolean
   /** Its test suite and coverage can read the reports the project's own CI wrote (ADR 0024). */
   readonly readsCi?: boolean
+  /** Its suite can measure coverage in the same run, for its coverage gate to read (\`withCoverage\`). */
+  readonly suiteWithCoverage?: boolean
   /** Policy defaults for this repository with the tools it already has (`gauntlet init --template`). */
   readonly onboard?: (repo: RepoView) => Onboarding
   /** Runner config materialised from base before suites run (ADR 0003). */

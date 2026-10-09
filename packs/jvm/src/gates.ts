@@ -78,7 +78,9 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     // A rerun selects test classes, and JUnit orders classes and methods randomly with the subset's seed.
     const classes = subset ? testClasses(subset) : []
     if (subset && classes.length === 0) return { command: [], exitCode: -1, runs: [], error: "no test classes to run again" }
-    const r = ctx.fromCi ? FROM_CI : yield* gradle(ctx, [sourceSet, ...classes.flatMap((c) => ["--tests", c])], subset ? { GAUNTLET_JUNIT_SEED: String(subset.seed) } : {})
+    // With withCoverage the same run writes coverage too (gauntletCoverage runs after the tests), for the coverage gate.
+    const coverage = ctx.withCoverage && !subset ? ["gauntletCoverage"] : []
+    const r = ctx.fromCi ? FROM_CI : yield* gradle(ctx, [sourceSet, ...classes.flatMap((c) => ["--tests", c]), ...coverage], subset ? { GAUNTLET_JUNIT_SEED: String(subset.seed) } : {})
     if (!r.error && taskMissing(r.stderr, sourceSet)) return { ...base(r), error: `the build has no '${sourceSet}' test task` }
     const xml = yield* reports(ctx, (p) => (ctx.fromCi ? CI_JUNIT.test(p) : p.startsWith("junit/") && p.endsWith(".xml")))
     if (r.error || xml.length === 0) return base(r)
@@ -206,7 +208,7 @@ export const mutation: GateImpl = (_check, ctx) =>
 export const coverage: GateImpl = (_check, ctx) =>
   Effect.gen(function*() {
     // The init script defines gauntletCoverage in every JVM module (ADR 0007).
-    const r = ctx.fromCi ? FROM_CI : yield* gradle(ctx, ["test", "gauntletCoverage"])
+    const r = ctx.fromCi || ctx.coverageFromSuite ? FROM_CI : yield* gradle(ctx, ["test", "gauntletCoverage"])
     if (r.error) return base(r)
     const xml = yield* reports(ctx, (p) => (ctx.fromCi ? CI_COVERAGE.test(p) : (p.startsWith("kover/") || p.startsWith("jacoco/")) && p.endsWith(".xml")))
     if (xml.length === 0) {

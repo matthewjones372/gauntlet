@@ -22,7 +22,7 @@ const pack: Pack = { spec: jvm, runnerConfig: [], manifests: [], detectors: [], 
 describe("a build's output directories", () => {
   test("one that can't be made errors the check and names the build", async () => {
     const o = await Effect.runPromise(
-      runGates({ ir: compiled(`gauntlet "x"\nuse jvm in "api"\nowners @p\ngates { fast { build } }\n`).ir, facts: noFacts(), workspace, packs: [pack], baseline: Option.none(), renames: new Map(), files: [] })
+      runGates({ ir: compiled(`gauntlet "x"\nuse jvm in "api"\nowners @p\ngates { fast { build } }\n`).ir, facts: noFacts({ files: [{ path: "api/A.kt", status: "modified", added: 1, removed: 0 }] }), workspace, packs: [pack], baseline: Option.none(), renames: new Map(), files: [] })
         .pipe(Effect.provide(Layer.mergeAll(ProcessRunnerLive.pipe(Layer.provide(BunServices.layer)), BunServices.layer))),
     )
     expect(o.checks.map((c) => `${c.check}:${c.status} (${c.reason})`)).toEqual(["build:errored (api: couldn't create an output directory)"])

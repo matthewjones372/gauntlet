@@ -89,6 +89,8 @@ interface Executed {
   readonly ratchets: ReadonlyArray<MetricDelta>
   readonly runs: ReadonlyArray<Run>
   readonly tests?: TestRecord
+  /** The build folders whose tests ran, when the policy names build folders. */
+  readonly testedBuilds?: ReadonlyArray<string>
   readonly caution: ReadonlyArray<CautionSignal>
   readonly imports: ReadonlyArray<ImportRecord>
   readonly durationsMs: Readonly<Record<string, number>>
@@ -150,7 +152,8 @@ const judge = (
       // A runner that reports no test ids can't be compared. One that ran no tests at all, where the base
       // ran some, can: every base test no longer runs (a TestMain or setup that skips the suite, say).
       ...(executed.tests && (executed.tests.ids.length > 0 || executed.tests.counts.executed + executed.tests.counts.skipped === 0) && Option.isSome(p.baseline) && p.baseline.value.testIds.length > 0
-        ? { baseTestIds: p.baseline.value.testIds }
+        // With several builds, only the base's tests of the builds that ran (their ids start "<folder>:") are compared.
+        ? { baseTestIds: executed.testedBuilds ? p.baseline.value.testIds.filter((id) => executed.testedBuilds!.some((d) => id.startsWith(`${d}:`))) : p.baseline.value.testIds }
         : {}),
       headFiles: yield* git.listTree(repo, p.head),
       dir,
@@ -259,6 +262,7 @@ export const runCheck = (request: CheckRequest) =>
         ratchets: gates.ratchets,
         runs: [...gates.runs, ...imports.runs],
         ...(gates.tests ? { tests: gates.tests } : {}),
+        ...(gates.testedBuilds ? { testedBuilds: gates.testedBuilds } : {}),
         caution: imports.caution,
         imports: imports.records,
         durationsMs: gates.durationsMs,

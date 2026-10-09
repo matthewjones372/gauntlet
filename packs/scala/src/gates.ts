@@ -74,11 +74,15 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     const junit = path.join(ctx.outputDir, "junit")
     const suites = subset ? subsetSuites(subset, yield* readFiles(ctx, ctx.files.filter(isTestFile))) : []
     if (subset && suites.length === 0) return failed(["sbt", "testOnly"], "no test suites to run again")
+    // With withCoverage the same run writes scoverage's report too, for the coverage gate.
+    const coverage = ctx.withCoverage && !subset
     const r = ctx.fromCi ? FROM_CI : yield* sbt(ctx, [
       `set every Test / testReportsDirectory := file(${scalaString(junit)})`,
+      ...(coverage ? [`set every coverageDataDir := file(${scalaString(path.join(ctx.outputDir, "scoverage"))})`, "coverage"] : []),
       // The frameworks share no shuffle option; reruns vary parallel execution instead.
       ...(subset ? [`set every Test / parallelExecution := ${subset.seed % 2 === 0}`] : []),
       subset ? `testOnly ${suites.join(" ")}` : "test",
+      ...(coverage ? ["coverageReport"] : []),
     ])
     if (r.error) return base(r)
     const xml = yield* reports(ctx, (p) => (ctx.fromCi ? CI_JUNIT.test(p) : p.startsWith("junit/") && p.endsWith(".xml")))
@@ -208,7 +212,7 @@ const COMMENT_OR_BLANK = /^\s*($|\/\/|\*|\/\*)/
 export const coverage: GateImpl = (_check, ctx) =>
   Effect.gen(function*() {
     const path = yield* Path.Path
-    const r = ctx.fromCi ? FROM_CI : yield* sbt(ctx, [`set every coverageDataDir := file(${scalaString(path.join(ctx.outputDir, "scoverage"))})`, "coverage", "test", "coverageReport"])
+    const r = ctx.fromCi || ctx.coverageFromSuite ? FROM_CI : yield* sbt(ctx, [`set every coverageDataDir := file(${scalaString(path.join(ctx.outputDir, "scoverage"))})`, "coverage", "test", "coverageReport"])
     if (r.error) return base(r)
     if (notAvailable(r, "coverageDataDir") || notAvailable(r, "coverage")) return { ...base(r), error: "scoverage isn't applied; add the org.scoverage sbt-scoverage plugin" }
     // The CI's run writes one report per module; Gauntlet's own run, one for the build.

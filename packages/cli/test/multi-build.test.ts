@@ -71,15 +71,16 @@ const check = async (r: TempRepo, base: string) => {
 }
 
 describe("several builds in one repository", () => {
+  // Named before untouched builds stopped running their tests: only the build the change touches is built and tested now.
   test("tests run in every build; a scoped check only in the build the change touches", async () => {
     const { r, base } = setup()
     r.write({ "bank/src/main/App.kt": "class App { fun x() = 1 }\n" })
     r.commit("change the bank")
     const { res, of } = await check(r, base)
     expect(of("unit").status).toBe("passed")
-    expect(of("unit").tests.executed).toBe(2)
+    expect(of("unit").tests.executed).toBe(1)
     expect(of("unit").proof.command.join(" ")).toContain("[bank]")
-    expect(of("unit").proof.command.join(" ")).toContain("[checks]")
+    expect(of("unit").proof.command.join(" ")).not.toContain("[checks]")
     expect(of("coverage").status).toBe("passed")
     expect(of("coverage").proof.command).toContain("[bank]")
     expect(of("coverage").proof.command).not.toContain("[checks]")
@@ -132,5 +133,19 @@ describe("several builds in one repository", () => {
     const unit = JSON.parse(readFileSync(join(out, "gauntlet-report.json"), "utf8")).checks.find((c: { check: string }) => c.check === "unit")
     expect(unit.status).toBe("failed")
     expect(unit.failures).toEqual(["svc.ScreenTest.screen: screen is broken"])
+  })
+
+  test("an untouched build's tests aren't missing: the baseline names each test with its build", async () => {
+    const { r } = setup()
+    r.git("checkout", "-q", "main")
+    await cli(["baseline", "--repo", r.dir, "--trunk", "main"])
+    const b = JSON.parse(readFileSync(join(r.dir, ".gauntlet", "baseline.sarif"), "utf8"))
+    expect(b.runs[0].properties.gauntlet.testIds).toEqual(["bank:svc.TransferTest.transfer", "checks:svc.ScreenTest.screen"])
+    const base = r.commit("baseline")
+    r.git("checkout", "-q", "-b", "bank-only")
+    r.write({ "bank/src/main/App.kt": "class App { fun x() = 1 }\n" })
+    r.commit("change the bank")
+    const { report } = await check(r, base)
+    expect(report.integrity.findings.filter((f: { check: string }) => f.check === "deleted-tests")).toEqual([])
   })
 })

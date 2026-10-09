@@ -16,6 +16,7 @@ export const scalaPack: Pack = {
   spec,
   detect: detectScala,
   readsCi: true,
+  suiteWithCoverage: true,
   onboard,
   doctor,
   // The build definition in project/ (plugins, build.properties, autoplugins that can

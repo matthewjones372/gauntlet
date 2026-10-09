@@ -63,6 +63,8 @@ export interface GateRunnerOutput {
   readonly ratchets: ReadonlyArray<MetricDelta>
   /** Tests from every suite that ran, merged. */
   readonly tests?: TestRecord
+  /** The build folders whose tests ran, when the policy names build folders (their test ids start "<folder>:"). */
+  readonly testedBuilds?: ReadonlyArray<string>
   /** Every metric the gates reported, including `integrity/*` values. */
   readonly metrics: Readonly<Record<string, Metric>>
   readonly durationsMs: Readonly<Record<string, number>>
@@ -132,6 +134,12 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     // Each build's tools are stopped in its own folder once the gates are done.
     const startedBuilds = new Map<string, { readonly pack: Pack; readonly dir: string; readonly root: string }>()
     const processRunner = yield* ProcessRunner
+    // What a suite's run wrote, by build, for the coverage gate to read (tests run once per check).
+    const suiteReports = new Map<string, ReadonlyArray<{ readonly path: string; readonly content: string }>>()
+    const hasCoverageGate = ir.gates.some((t) => t.checks.some((c) => c.kind === "gate" && c.name === "coverage"))
+    const changedPaths = [...new Set(facts.files.flatMap((f) => [f.path, ...(f.oldPath !== undefined ? [f.oldPath] : [])]))]
+    // The builds whose tests ran, when the policy names build folders.
+    const testedBuilds = new Set<string>()
     const fsys = yield* FileSystem.FileSystem
     /** The CI's reports for a build, with paths from its folder. */
     const ciFiles = (dir: string) => (input.fromCi?.files ?? []).filter((f) => ownedBy(buildDirs, dir, [f.path]).length > 0).map((f) => ({ ...f, path: toBuild(dir, f.path) }))
@@ -144,7 +152,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     function withCi(check: Check, pack: Pack | undefined, dir: string, ctx: GateContext, run: (ctx: GateContext) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) {
       return Effect.gen(function*() {
         const files = pack?.readsCi && ciCovers(check) ? ciFiles(dir) : []
-        if (files.length === 0) return yield* run(ctx)
+        if (files.length === 0) return yield* onceForCoverage(check, pack, dir, ctx, run)
         for (const f of files) {
           const target = `${ctx.outputDir}/${f.path}`
           yield* fsys.makeDirectory(target.slice(0, target.lastIndexOf("/")), { recursive: true }).pipe(Effect.ignore)
@@ -163,10 +171,15 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
 
     for (const [t, tier] of ir.gates.entries()) {
       let tierFailed = false
-      for (const [i, check] of tier.checks.entries()) {
+      // Suites first, so coverage can read their run (tests run once per check); the report keeps the policy's order.
+      const recorded: Array<CheckRecord | undefined> = tier.checks.map(() => undefined)
+      const order = tier.checks.map((c, i) => ({ c, i })).sort((a, b) => Number(b.c.kind === "suite") - Number(a.c.kind === "suite") || a.i - b.i)
+      for (const { c: check, i } of order) {
         const pointer = `/gates/${t}/checks/${i}`
         const base = { tier: tier.name, check: checkName(check), pointer, advisory: tier.advisory }
-        const record = (r: Omit<CheckRecord, keyof typeof base>) => checks.push({ ...base, ...r })
+        const record = (r: Omit<CheckRecord, keyof typeof base>) => {
+          recorded[i] = { ...base, ...r }
+        }
 
         if (stoppedBy !== undefined) {
           record({ status: "not-executed", reason: `tier '${stoppedBy}' failed, so later tiers didn't run` })
@@ -219,6 +232,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         record(outcome)
         if (outcome.status === "failed") tierFailed = true
       }
+      checks.push(...recorded.filter((r): r is CheckRecord => r !== undefined))
       if (tierFailed && !input.recording) stoppedBy = tier.name
     }
     // Daemons and servers the gates shared end with the check (ADR 0020).
@@ -238,7 +252,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       }), { executed: 0, passed: 0, failed: 0, errored: 0, skipped: 0 }),
       ids: [...new Set(suiteTests.flatMap((t) => t.ids))].sort(),
     }
-    return { checks, runs, newViolations, regressions, ratchets, ...(tests ? { tests } : {}), metrics, durationsMs }
+    return { checks, runs, newViolations, regressions, ratchets, ...(tests ? { tests } : {}), metrics, durationsMs, ...(multi ? { testedBuilds: [...testedBuilds].sort() } : {}) }
 
     /**
      * Runs a check in each of the builds given, each in its folder with its own
@@ -259,6 +273,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const { build, pack } = target
           const scope = ctx.scope === undefined ? undefined : ownedBy(buildDirs, build.dir, ctx.scope)
           if (scope !== undefined && scope.length === 0) continue
+          // A build the change doesn't touch isn't built or tested again (the project's CI still builds every build).
+          if (!input.recording && ownedBy(buildDirs, build.dir, changedPaths).length === 0) continue
           const sub = `${buildSlug(build.dir)}/${name}`
           const made = yield* Effect.exit(workspace.outputDir(sub))
           if (made._tag === "Failure") {
@@ -277,7 +293,10 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
             files: ownedBy(buildDirs, build.dir, ctx.files),
             ...(scope !== undefined ? { scope } : {}),
           }
-          const r = runFromBuild(yield* withCi(check, pack, build.dir, bctx, (c) => asInCi(run(c, target), input.ci, build.dir, processRunner, ProcessRunner)), build.dir)
+          const raw = runFromBuild(yield* withCi(check, pack, build.dir, bctx, (c) => asInCi(run(c, target), input.ci, build.dir, processRunner, ProcessRunner)), build.dir)
+          // A build's tests are named with its folder, so the base's tests of a build that didn't run aren't missed.
+          const r = raw.tests && build.dir !== "." ? { ...raw, tests: { ...raw.tests, ids: raw.tests.ids.map((id) => `${build.dir}:${id}`) } } : raw
+          if (raw.tests) testedBuilds.add(build.dir)
           const fingerprinted = yield* fingerprintRuns(r.runs, workspace.dir, {
             ...(pack.locate ? { locate: pack.locate } : {}),
             ...(pack.normalise ? { normalise: pack.normalise } : {}),
@@ -285,6 +304,31 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           parts.push({ dir: build.dir, run: { ...r, runs: fingerprinted } })
         }
         return mergeBuildRuns(parts)
+      })
+    }
+
+    /**
+     * Tests run once per check: a suite measures coverage in the same run when
+     * the policy has a coverage gate and its pack can, and the coverage gate then
+     * reads that run's reports instead of running the tests again.
+     */
+    function onceForCoverage(check: Check, pack: Pack | undefined, dir: string, ctx: GateContext, run: (ctx: GateContext) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) {
+      return Effect.gen(function*() {
+        if (!pack?.suiteWithCoverage || !hasCoverageGate) return yield* run(ctx)
+        if (check.kind === "suite" && hasCoverageGate) {
+          const r = yield* run({ ...ctx, withCoverage: true })
+          // The suite's own run, not a rerun of some of its tests.
+          if (r.error === undefined && !suiteReports.has(dir)) suiteReports.set(dir, yield* ctx.collect)
+          return r
+        }
+        const reused = check.kind === "gate" && check.name === "coverage" ? suiteReports.get(dir) : undefined
+        if (!reused || reused.length === 0) return yield* run(ctx)
+        for (const f of reused) {
+          const target = `${ctx.outputDir}/${f.path}`
+          yield* fsys.makeDirectory(target.slice(0, target.lastIndexOf("/")), { recursive: true }).pipe(Effect.ignore)
+          yield* fsys.writeFileString(target, f.content).pipe(Effect.ignore)
+        }
+        return yield* run({ ...ctx, coverageFromSuite: true })
       })
     }
 

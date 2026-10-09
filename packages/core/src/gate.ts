@@ -32,6 +32,10 @@ export interface GateContext {
    * instead of running its tool. A gate that can't read CI's reports runs as usual.
    */
   readonly fromCi?: boolean
+  /** A suite: measure coverage in the same test run, so the coverage gate needn't run the tests again. */
+  readonly withCoverage?: boolean
+  /** The coverage gate: the suite's run already wrote the coverage reports into \`outputDir\`. */
+  readonly coverageFromSuite?: boolean
 }
 
 export interface GateRun {
