@@ -202,7 +202,7 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
     }
     // Gauntlet reads only what the command writes to {json} (spec 0006).
     if (budget.command !== "" && !budget.command.includes("{json}")) {
-      warning("budget-without-json", span, `Budget '${budget.name}''s command never mentions {json}, so Gauntlet has nothing to read.`, "a command that writes its measurements to {json}",
+      warning("budget-without-json", span, `The command of budget '${budget.name}' never mentions {json}, so Gauntlet has nothing to read.`, "a command that writes its measurements to {json}",
         "Write the results to {json}: your own JSON (p99, errors, throughput...), `hyperfine --export-json {json} ...` or `k6 run --summary-export {json} ...`.")
     }
   }

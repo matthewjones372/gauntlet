@@ -6,6 +6,18 @@ Policy `e2dfb6cfa346` from the base; base `111111111111`, head `222222222222`.
 
 Suggested reviewers: @payments, @platform
 
+### Needs your attention
+
+- Zone **money** (owner @payments): `src/main/money/Fx.kt`
+
+### How to approve
+
+An owner (@payments, @platform) ticks this box, and the `gauntlet` check turns green:
+
+- [ ] **Approve this change** (commit `222222222222`)
+
+Or approve the pull request in Files changed, Review changes, Approve (GitHub doesn't allow that on a pull request you opened, including one an agent opened for you), or comment `/gauntlet approve 222222222222`. An approval counts for this commit only: a new push needs a new one.
+
 ### Why
 
 | Tier | Reason | Source | Blocks |

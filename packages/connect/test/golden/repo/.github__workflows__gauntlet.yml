@@ -14,7 +14,7 @@ on:
   pull_request_review:
     types: [submitted, dismissed]
   issue_comment:
-    types: [created]
+    types: [created, edited]
 
 permissions: {}
 
@@ -72,8 +72,9 @@ jobs:
 
   status:
     needs: [evidence]
-    # Runs again when an owner comments `/gauntlet approve <commit>` (an author can't approve their own pull request).
-    if: always() && (github.event_name != 'issue_comment' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/gauntlet approve')))
+    # Runs again when an owner comments `/gauntlet approve <commit>` or ticks the box in Gauntlet's report
+    # (an author can't approve their own pull request).
+    if: always() && (github.event_name != 'issue_comment' || (github.event.issue.pull_request && (startsWith(github.event.comment.body, '/gauntlet approve') || (github.event.action == 'edited' && startsWith(github.event.comment.body, '<!-- gauntlet-report -->') && contains(github.event.comment.body, '- [x] **Approve this change**')))))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -117,9 +118,15 @@ jobs:
       - name: Fetch reviews and owner team members
         env:
           TEAMS_TOKEN: ${{ secrets.GAUNTLET_TEAMS_TOKEN }}
+          TICKED_BY: ${{ github.event.sender.login }}
+          TICKED_BODY: ${{ github.event.comment.body }}
         run: |
           gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" --jq '.[] | {user: .user.login, state: .state, commitId: .commit_id}' | jq -s . > reviews.json
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --jq '.[] | {user: .user.login, body: .body}' | jq -s . > comments.json
+          # A ticked box in Gauntlet's report counts as from whoever ticked it; only an owner's counts.
+          if [ "${{ github.event_name }}" = "issue_comment" ] && [ "${{ github.event.action }}" = "edited" ]; then
+            jq --arg u "$TICKED_BY" --arg b "$TICKED_BODY" '. + [{user: $u, body: $b}]' comments.json > comments.next && mv comments.next comments.json
+          fi
           echo '{}' > teams.json
           # Team owners can only be checked with a token that may read org teams.
           if [ -n "$TEAMS_TOKEN" ]; then
