@@ -191,6 +191,8 @@ interface BaselineArgs {
   readonly commitHint?: boolean
   /** The policy gained gates since the baseline: grandfather their existing findings (apply). */
   readonly adoptNewGates?: boolean
+  /** Setup's baseline: don't mutate the whole project for a mutation check on changed lines. */
+  readonly skipChangedMutation?: boolean
 }
 
 /** Records (or raises) the baseline on trunk; `gauntlet baseline` and `gauntlet apply` both run it. */
@@ -249,7 +251,7 @@ const runBaseline = (args: BaselineArgs) =>
     }
 
     yield* output.err(`Recording a baseline at ${head.slice(0, 12)}; this runs every gate over the whole project.`)
-    const recorded = yield* recordBaseline(root, head, loaded.compiled.ir)
+    const recorded = yield* recordBaseline(root, head, loaded.compiled.ir, args.skipChangedMutation ? { skipChangedMutation: true } : {})
     const meta = { commit: head, irHash: loaded.compiled.hash, gauntletVersion: GAUNTLET_VERSION }
     let next: Baseline
     if (Option.isNone(existing)) {
@@ -1194,7 +1196,7 @@ const apply = Command.make("apply", {
       yield* output.out(changes === "applied"
         ? "The changes can set up tools that weren't there, so the baseline is recorded again for the gates they let run."
         : "The policy changed since the baseline was recorded, so it's recorded again for the new gates.")
-      const recorded = yield* runBaseline({ repo: root, update: true, allowLower: false, adoptNewGates: true, importDetekt: Option.none(), trunk: Option.none(), commitHint: false })
+      const recorded = yield* runBaseline({ repo: root, update: true, allowLower: false, adoptNewGates: true, importDetekt: Option.none(), trunk: Option.none(), commitHint: false, skipChangedMutation: true })
       if (!recorded) return
       if (yield* commitIfChanged(root, [BASELINE_PATH], "Update Gauntlet baseline for the new gates")) yield* output.out("Committed the baseline.")
       yield* switchOnHooks(root)
@@ -1203,7 +1205,7 @@ const apply = Command.make("apply", {
       if (failing.length > 0) yield* offerFix(root, failing)
       return
     } else {
-      const recorded = yield* runBaseline({ repo: root, update: false, allowLower: false, importDetekt: Option.none(), trunk: Option.none(), commitHint: false })
+      const recorded = yield* runBaseline({ repo: root, update: false, allowLower: false, importDetekt: Option.none(), trunk: Option.none(), commitHint: false, skipChangedMutation: true })
       if (!recorded) return
       // Gauntlet's hooks switch on with the baseline: the last step of setup.
       if (!(yield* connectClaude(root, false))) return

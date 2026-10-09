@@ -22,7 +22,7 @@ export interface RecordedBaseline {
   readonly checks: ReadonlyArray<CheckRecord>
 }
 
-export const recordBaseline = (repo: string, commit: string, ir: PolicyIR) =>
+export const recordBaseline = (repo: string, commit: string, ir: PolicyIR, options: { readonly skipChangedMutation?: boolean } = {}) =>
   Effect.gen(function*() {
     const git = yield* Git
     const registry = yield* PackRegistry
@@ -35,7 +35,7 @@ export const recordBaseline = (repo: string, commit: string, ir: PolicyIR) =>
     return yield* Effect.scoped(Effect.gen(function*() {
       const workspace = yield* (yield* Workspace).prepare({ repo, base: commit, head: commit, protect: ir.protect, runnerConfig, holdouts: holdoutsOf(ir) })
       const files = yield* git.listWorkingFiles(workspace.dir)
-      const gates = yield* runGates({ ir, facts, workspace, packs: used, baseline: Option.none(), renames: new Map(), recording: true, files })
+      const gates = yield* runGates({ ir, facts, workspace, packs: used, baseline: Option.none(), renames: new Map(), recording: true, files, ...(options.skipChangedMutation ? { skipChangedMutation: true } : {}) })
       const imports = yield* runImports(ir, workspace, Option.none(), new Map())
       const isTestPath = testPathMatcher(ir)
       const read = (path: string) => git.show(repo, commit, path).pipe(Effect.orElseSucceed(() => Option.none<string>()))

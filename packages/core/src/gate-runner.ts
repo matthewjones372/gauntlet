@@ -28,6 +28,12 @@ export interface GateRunnerInput {
   readonly renames: ReadonlyMap<string, string>
   /** Recording a baseline: run every tier even after a failure, and every gate over the whole project. */
   readonly recording?: boolean
+  /**
+   * Setup's first baseline (\`gauntlet apply\`): skip a mutation check scoped to
+   * changed lines rather than mutate the whole project, which took an hour.
+   * \`gauntlet baseline\` still records it.
+   */
+  readonly skipChangedMutation?: boolean
   /** Every file in the judged checkout. */
   readonly files: ReadonlyArray<string>
   /** The judged commit's date (YYYY-MM-DD), for quarantines. */
@@ -132,8 +138,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         }
         // Mutation testing the whole project took an hour on a real one. A check that mutates only
         // each change's own lines needs nothing from the baseline but its floor, so recording skips it.
-        if (input.recording && check.kind === "gate" && check.name === "mutation" && check.scope === "changed") {
-          record({ status: "passed", reason: "mutation runs on each change's own lines, so the baseline skips the whole-project run" })
+        if (input.recording && input.skipChangedMutation && check.kind === "gate" && check.name === "mutation" && check.scope === "changed") {
+          record({ status: "passed", reason: "mutation runs on each change's own lines, so setup skips the whole-project run; gauntlet baseline --update records it" })
           continue
         }
         const notInV1 = NOT_IN_V1[check.kind]

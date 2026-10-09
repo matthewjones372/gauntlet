@@ -5,8 +5,9 @@ import type { TempRepo } from "../../core/test/temp-repo.ts"
 import { baseRepo, cli, POLICY } from "./harness.ts"
 
 // Mutation testing a whole project took an hour on a real one. When the
-// policy mutates only each change's own lines, recording the baseline skips
-// it; every change is still held to the floor.
+// policy mutates only each change's own lines, setup's first baseline
+// (gauntlet apply) skips it; every change is still held to the floor, and
+// gauntlet baseline still records it.
 
 const repos: TempRepo[] = []
 afterEach(() => repos.splice(0).forEach((r) => r.cleanup()))
@@ -25,26 +26,28 @@ const setup = (mutation: string) => {
 }
 
 describe("the baseline and mutation testing", () => {
-  test("mutation on changed lines isn't run over the whole project when recording", async () => {
+  test("setup's baseline doesn't mutate the whole project for mutation on changed lines", async () => {
     const r = setup("mutation ratchet >= 60% on changed")
-    const res = await cli(["baseline", "--repo", r.dir, "--trunk", "main"])
-    expect(res.code).toBe(0)
+    const res = await cli(["apply", "--repo", r.dir])
     expect(existsSync(join(r.dir, "mutation-ran"))).toBe(false)
     expect(res.out).not.toContain("Not recorded: verify: mutation")
     const b = JSON.parse(readFileSync(join(r.dir, ".gauntlet", "baseline.sarif"), "utf8"))
     expect(b.runs[0].properties.gauntlet.metrics.mutation).toBeUndefined()
   })
 
-  test("a whole-project mutation ratchet still records it", async () => {
-    const r = setup("mutation ratchet")
-    await cli(["baseline", "--repo", r.dir, "--trunk", "main"])
-    expect(existsSync(join(r.dir, "mutation-ran"))).toBe(true)
+  test("gauntlet baseline still records it, and so does setup for a whole-project ratchet", async () => {
+    const changed = setup("mutation ratchet >= 60% on changed")
+    await cli(["baseline", "--repo", changed.dir, "--trunk", "main"])
+    expect(existsSync(join(changed.dir, "mutation-ran"))).toBe(true)
+    const whole = setup("mutation ratchet")
+    await cli(["apply", "--repo", whole.dir])
+    expect(existsSync(join(whole.dir, "mutation-ran"))).toBe(true)
   })
 
-  test("after such a baseline, a change is still held to the floor", async () => {
+  test("after setup's baseline, a change is still held to the floor", async () => {
     const r = setup("mutation ratchet >= 80% on changed")
-    await cli(["baseline", "--repo", r.dir, "--trunk", "main"])
-    const base = r.commit("baseline")
+    await cli(["apply", "--repo", r.dir])
+    const base = r.git("rev-parse", "HEAD").trim()
     r.git("checkout", "-q", "-b", "change")
     r.write({ "src/main/App.kt": "class App { fun x() = 1 }\n" })
     r.commit("change")
