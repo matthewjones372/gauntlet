@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { TempRepo } from "../../core/test/temp-repo.ts"
+import { scriptPack } from "../../core/test/script-pack.ts"
 import { cli } from "./harness.ts"
 
 // ADR 0022: a repository with several builds, each in its own folder. Every
@@ -119,5 +120,16 @@ describe("several builds in one repository", () => {
     r.commit("tweak a build script")
     const { report } = await check(r, base)
     expect(report.facts.protectedTouched.map((p: { path: string; action: string }) => `${p.action} ${p.path}`)).toEqual(["restored checks/scripts/build.sh"])
+  })
+
+  test("a failing test runs again alone in its own build before it counts", async () => {
+    const { r, base } = setup()
+    r.write({ "checks/src/main/behaviour.txt": "broken screen\n" })
+    r.commit("break screening")
+    const out = join(r.dir, "out")
+    await cli(["check", "--repo", r.dir, "--base", base, "--out", out, "--no-record"], [{ ...scriptPack, reruns: true }])
+    const unit = JSON.parse(readFileSync(join(out, "gauntlet-report.json"), "utf8")).checks.find((c: { check: string }) => c.check === "unit")
+    expect(unit.status).toBe("failed")
+    expect(unit.failures).toEqual(["svc.ScreenTest.screen: screen is broken"])
   })
 })
