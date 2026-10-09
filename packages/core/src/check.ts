@@ -1,6 +1,6 @@
 import { globMatches, type PolicyInvalid } from "@gauntlet/dsl"
 import type { PolicyIR } from "@gauntlet/ir"
-import type { MetricDelta, Run } from "@gauntlet/sarif"
+import type { Metric, MetricDelta, Run } from "@gauntlet/sarif"
 import { Clock, Data, Effect, Option } from "effect"
 import { BaselineStore, renamesOf } from "./baseline-store.ts"
 import { CI_CONFIG_PATH, type CiConfig, parseCiConfig } from "./ci-config.ts"
@@ -127,6 +127,18 @@ const prepare = (request: { readonly repo: string; readonly policyRef?: string; 
 
 type Prepared = Effect.Success<ReturnType<typeof prepare>>
 
+/**
+ * With build folders only the builds a change touches run their tests (ADR
+ * 0022), so the executed-tests ratchet compares the tests of those builds: the
+ * baseline's tests named for them, against the tests that ran, both counted by name.
+ */
+const byBuild = (metrics: Readonly<Record<string, Metric>>, testIds: ReadonlyArray<string>, tested: ReadonlyArray<string> | undefined): Readonly<Record<string, Metric>> => {
+  const key = "integrity/executed-tests"
+  const recorded = metrics[key]
+  if (tested === undefined || !recorded) return metrics
+  return { ...metrics, [key]: { ...recorded, value: testIds.filter((id) => tested.some((d) => id.startsWith(`${d}:`))).length } }
+}
+
 /** Integrity checks that need tests to have run. */
 const COUNTS_TESTS: ReadonlySet<string> = new Set(["executed-tests", "skipped-tests"])
 
@@ -147,8 +159,8 @@ const judge = (
       readBase: read(p.base),
       readHead: read(p.head),
       isTestPath: testPathMatcher(p.ir),
-      baselineMetrics: Option.match(p.baseline, { onNone: () => ({}), onSome: (b) => b.metrics }),
-      ...(executed.tests ? { headTests: executed.tests } : {}),
+      baselineMetrics: Option.match(p.baseline, { onNone: () => ({}), onSome: (b) => byBuild(b.metrics, b.testIds, executed.testedBuilds) }),
+      ...(executed.tests ? { headTests: executed.testedBuilds ? { ...executed.tests, counts: { ...executed.tests.counts, executed: executed.tests.ids.length } } : executed.tests } : {}),
       // A runner that reports no test ids can't be compared. One that ran no tests at all, where the base
       // ran some, can: every base test no longer runs (a TestMain or setup that skips the suite, say).
       ...(executed.tests && (executed.tests.ids.length > 0 || executed.tests.counts.executed + executed.tests.counts.skipped === 0) && Option.isSome(p.baseline) && p.baseline.value.testIds.length > 0

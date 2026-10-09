@@ -147,5 +147,7 @@ describe("several builds in one repository", () => {
     r.commit("change the bank")
     const { report } = await check(r, base)
     expect(report.integrity.findings.filter((f: { check: string }) => f.check === "deleted-tests")).toEqual([])
+    // Nor does the count of tests that ran drop: it's compared for the bank's tests only.
+    expect(report.integrity.findings.filter((f: { check: string }) => f.check === "executed-tests")).toEqual([])
   })
 })
