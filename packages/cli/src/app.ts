@@ -1453,7 +1453,7 @@ const githubStatusCommand = Command.make("github-status", {
         const at = lines.findIndex((l) => l.includes(": tick the box to approve this commit") || l.startsWith(`- [ ] ${APPROVE_BOX}`))
         if (at >= 0) {
           const under = stack.below.map((n) => `#${n}`)
-          lines.splice(at, 0, "> [!WARNING]", `> This pull request is the top of a stack: ${under.join(", ")} ${under.length === 1 ? "is" : "are"} under it. Ticking the box approves ${under.length === 1 ? "that one" : "all of them"} too, with all of their changes, so review ${under.length === 1 ? "it" : "them"} first. Merge the stack bottom first with merge commits (\`gh pr merge --merge\`): a squash or a rebase gives the pull requests above new commits, and they'd need approving again.`, "")
+          lines.splice(at, 0, "> [!WARNING]", `> This pull request is the top of a stack: ${under.join(", ")} ${under.length === 1 ? "is" : "are"} under it. Ticking the box approves ${under.length === 1 ? "that one" : "all of them"} too, with all of their changes, so review ${under.length === 1 ? "it" : "them"} first. Merge the stack bottom first with merge commits (\`gh pr merge --merge\`): a squash or a rebase gives the pull requests above new commits, and they'd need approving again. Delete each branch as it merges (\`--delete-branch\`): GitHub then moves the next pull request onto the default branch, where otherwise it would merge into the branch below.`, "")
           yield* fs.writeFileString(md, lines.join("\n"))
         }
       }

@@ -108,7 +108,10 @@ join the next one. The agent offers to split the change and only does it if
 you agree. Ticking the box on the top pull request of a stack approves every
 pull request under it whose commit it contains, and its report warns of that
 above the box; merge the stack bottom first with merge commits, as a squash
-gives the pull requests above new commits to approve again. Set the size with:
+gives the pull requests above new commits to approve again, and delete each
+branch as it merges (`gh pr merge --merge --delete-branch`): otherwise GitHub
+merges the next pull request into the branch below instead of the default
+branch. Set the size with:
 
 ```
 split when diff > 600 lines
