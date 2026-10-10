@@ -104,7 +104,11 @@ Threshold:
     metric=Metric op=Cmp value=Quantity (vsBaseline?='vs' 'baseline')? ','?;
 
 Metric:
-    (aggregate=Name '(' field=QName ')') | field=QName;
+    (aggregate=AggregateName '(' field=QName ')') | field=QName;
+
+// \`max\` is also a keyword (a stack layer's limits), so it's named here.
+AggregateName returns string:
+    Name | 'max';
 
 Gates:
     'gates' '{' tiers+=GateTier* '}';

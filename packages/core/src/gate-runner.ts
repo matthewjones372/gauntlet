@@ -360,11 +360,14 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         const exitCode = result._tag === "Success" ? result.value.exitCode : -1
         const proof: Proof = { command: ["sh", "-c", budget.command], exitCode, reports: Object.fromEntries(files.map((f) => [f.path, sha256(f.content)])) }
         if (result._tag === "Failure") return { status: "errored", reason: "the budget's command couldn't be started or timed out", proof }
-        if (exitCode !== 0) return { status: "failed", reason: `the budget's command exited with ${exitCode}`, proof }
         const report = files.find((f) => f.path === "budget.json")
+        const parsed = report ? parseBudgetResults(report.content) : undefined
+        // A tool that says its own numbers can't be trusted (a load generator that fell behind) usually exits
+        // non-zero too: that run is not executed, rather than a failure of the change.
+        if (parsed?.untrusted !== undefined) return { status: "not-executed", reason: parsed.untrusted, proof }
+        if (exitCode !== 0) return { status: "failed", reason: `the budget's command exited with ${exitCode}`, proof }
         if (!report) return { status: "not-executed", reason: "the budget's command wrote nothing to {json}", proof }
-        const parsed = parseBudgetResults(report.content)
-        if (!parsed) return { status: "errored", reason: "{json} isn't JSON Gauntlet can read (its own format, hyperfine's --export-json or k6's --summary-export)", proof }
+        if (!parsed) return { status: "errored", reason: "{json} isn't JSON Gauntlet can read (its own format, hyperfine, k6, Proofload or Gatling)", proof }
         const outcome = judgeBudget(budget, parsed, Option.match(baseline, { onNone: () => ({}), onSome: (b) => b.metrics }))
         Object.assign(metrics, outcome.metrics)
         return { status: outcome.status, ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}), proof }
