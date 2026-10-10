@@ -77,6 +77,7 @@ const because = (n: Report["decision"]["nominations"][number]): string | undefin
     case "gauntlet-changed": return "it changes Gauntlet's policy or baseline"
     case "no-rule-matched": return "no rule in the policy marks it as safe"
     case "flaky-test": return "a test is flaky"
+    case "failing-on-base": return "tests fail that were already failing before it"
     case "reported-blocked": return "the agent reported it was blocked"
     default: return /dependency/i.test(n.reason) ? "it adds a dependency" : undefined
   }

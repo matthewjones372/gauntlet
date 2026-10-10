@@ -26,3 +26,4 @@
 | 0022 | Several builds in one repository | accepted |
 | 0023 | A change to comments or documentation only runs no checks | accepted |
 | 0024 | What the project's CI, or a local run, already ran isn't run again | accepted |
+| 0025 | A test already failing before the change doesn't block it | accepted |
