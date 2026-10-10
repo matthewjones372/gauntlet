@@ -20,12 +20,16 @@ export const ReporterLive = Layer.effect(
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
+    // On GitHub Actions the report links each file it names to the commit on GitHub.
+    const server = process.env.GITHUB_SERVER_URL
+    const repo = process.env.GITHUB_REPOSITORY
+    const repoUrl = server && repo ? `${server}/${repo}` : undefined
     return {
       write: (dir, report, evidence, run) =>
         Effect.gen(function*() {
           yield* fs.makeDirectory(dir, { recursive: true })
           yield* fs.writeFileString(path.join(dir, REPORT_FILES.json), renderJson(report))
-          yield* fs.writeFileString(path.join(dir, REPORT_FILES.markdown), renderMarkdown(report))
+          yield* fs.writeFileString(path.join(dir, REPORT_FILES.markdown), renderMarkdown(report, { ...(repoUrl ? { repoUrl } : {}) }))
           yield* fs.writeFileString(path.join(dir, REPORT_FILES.evidence), renderEvidence(evidence))
           yield* fs.writeFileString(path.join(dir, REPORT_FILES.run), `${JSON.stringify(Schema.encodeSync(RunRecord)(run), null, 2)}\n`)
         }),

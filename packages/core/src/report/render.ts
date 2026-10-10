@@ -19,7 +19,6 @@ const LIST_LIMIT = 40
 const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ")
 const code = (s: string) => `\`${s.replace(/`/g, "'")}\``
 const cite = (ref: SourceRef | undefined) => (ref ? `${code(`${ref.file}:${ref.line}`)} ${code(ref.text)}` : "")
-const where = (f: { readonly path?: string; readonly line?: number }) => (f.path ? code(`${f.path}${f.line ? `:${f.line}` : ""}`) : "")
 
 const capped = <A>(items: ReadonlyArray<A>, render: (a: A) => string): string[] => {
   const shown = items.slice(0, LIST_LIMIT).map(render)
@@ -50,13 +49,68 @@ const proofText = (c: Report["checks"][number]) => {
 
 const COMMENT_ONLY = "the change only edits comments or documentation"
 
-/** A reason as a person would say it. */
-const plainReason = (n: Report["decision"]["nominations"][number]): string | undefined => {
+/** How the report names a file: a link to it on GitHub when it knows the repository, else just the path. */
+export interface RenderOptions {
+  /** The repository's web address, such as https://github.com/acme/shop. */
+  readonly repoUrl?: string
+}
+
+type Link = (path: string, line?: number) => string
+
+/** Files as links to the commit being judged (a deleted one, to the base), or as plain paths. */
+const linker = (r: Report, opts: RenderOptions): Link => (path, line) => {
+  const text = code(`${path}${line ? `:${line}` : ""}`)
+  if (!opts.repoUrl) return text
+  const deleted = r.facts.files.some((f) => f.path === path && f.status === "deleted")
+  return `[${text}](${opts.repoUrl}/blob/${deleted ? r.policy.baseSha : r.policy.headSha}/${path}${line ? `#L${line}` : ""})`
+}
+
+const PROTECTED_FILE = /^(.+) is protected \(([^)]+)\); the change is (undone for the run|left out of the run) and needs review\.$/
+const PROTECTED_TEST = /^(.+) is a protected test \(([^)]+)\) the change (edits|deletes); it runs as the change has it and needs review\.$/
+const GAUNTLET_FILE = /^(.+) is under \.gauntlet\/; policy, baseline and self-test changes need an owner\.$/
+const LOCATED = /^(.*) \(([^()\s]+?)(?::(\d+))?\)$/
+const GATE_FAILED = /^(.+?) failed: (.+)$/
+
+/** The file a reason is about, so one file's two reasons can be told apart from two files'. */
+const subject = (reason: string): string | undefined =>
+  PROTECTED_TEST.exec(reason)?.[1] ?? PROTECTED_FILE.exec(reason)?.[1] ?? LOCATED.exec(reason)?.[2]
+
+/** A reason as a person would say it: what happened, to which file (a link), and what to do. */
+const plainReason = (n: Report["decision"]["nominations"][number], link: Link): string | undefined => {
   if (n.reason.startsWith("The policy's ")) return undefined // The rules a policy matched say nothing on their own; the zones and files below do.
   switch (n.rule) {
     case "no-rule-matched": return "No rule in the policy says a change like this can merge on its own, so a person should look at it."
     case "missing-evidence":
     case "integrity-not-executed": return `Gauntlet has no evidence for one of its checks: ${n.reason.charAt(0).toLowerCase()}${n.reason.slice(1)}`
+    case "gate-failed": {
+      const m = GATE_FAILED.exec(n.reason)
+      if (!m) return n.reason
+      const why = m[2]!.replace(/\.$/, "")
+      return m[1]!.startsWith("budget ") ? `The performance budget **${m[1]!.slice(7)}** failed: ${why}.` : `**${m[1]}** failed: ${why}.`
+    }
+    case "protected-changed": {
+      const test = PROTECTED_TEST.exec(n.reason)
+      if (test) {
+        return test[3] === "deletes"
+          ? `It deletes the protected test ${link(test[1]!)}, so a person needs to check that's meant.`
+          : `It edits the protected test ${link(test[1]!)}. Gauntlet ran the edited version, so a person needs to check the edit is right.`
+      }
+      const file = PROTECTED_FILE.exec(n.reason)
+      if (!file) return n.reason
+      return file[3] === "undone for the run"
+        ? `It changes ${link(file[1]!)}, which is protected. Gauntlet checked the change without that edit, so a person needs to look at it.`
+        : `It adds ${link(file[1]!)}, which is protected. Gauntlet left it out of the run, so a person needs to look at it.`
+    }
+    case "gauntlet-changed": {
+      const m = GAUNTLET_FILE.exec(n.reason)
+      return m ? `It changes Gauntlet's own settings (${link(m[1]!)}), so an owner needs to approve.` : n.reason
+    }
+    case "integrity-flag":
+    case "integrity-forbid":
+    case "flaky-test": {
+      const m = LOCATED.exec(n.reason)
+      return m ? `In ${link(m[2]!, m[3] ? Number(m[3]) : undefined)}: ${m[1]}` : n.reason
+    }
     default: return n.reason
   }
 }
@@ -90,14 +144,18 @@ const sentence = (parts: ReadonlyArray<string>) =>
  * green for a low-risk change. Then each thing a person should look at, the
  * zones with their owners and files among them.
  */
-export const plainSummary = (r: Report): string[] => {
+export const plainSummary = (r: Report, opts: RenderOptions = {}): string[] => {
+  const link = linker(r, opts)
   const d = r.decision
   const owners = [...new Set([...d.owners, ...r.policy.owners])]
   const commentOnly = r.checks.length > 0 && r.checks.every((c) => c.reason?.startsWith(COMMENT_ONLY))
   const blockingNoms = d.nominations.filter((n) => n.blocking)
   const reviewNoms = d.nominations.filter((n) => !n.blocking && n.tier !== "auto" && n.tier !== "skim")
   const zoneWords = r.facts.zonesTouched.map((z) => `it touches the ${z.zone} zone`)
-  const why = [...new Set([...(d.blocking || d.wouldBlock ? blockingNoms : []).flatMap((n) => because(n) ?? []), ...zoneWords, ...reviewNoms.flatMap((n) => because(n) ?? [])])]
+  // Several failed checks read as a count, not a list of every one.
+  const failedChecks = (d.blocking || d.wouldBlock ? blockingNoms : []).filter((n) => n.rule === "gate-failed")
+  const blockingWhy = (d.blocking || d.wouldBlock ? blockingNoms : []).filter((n) => failedChecks.length < 2 || n.rule !== "gate-failed").flatMap((n) => because(n) ?? [])
+  const why = [...new Set([...(failedChecks.length >= 2 ? [`${failedChecks.length} checks failed`] : []), ...blockingWhy, ...zoneWords, ...reviewNoms.flatMap((n) => because(n) ?? [])])]
   const [alert, title] = d.blocking ? ["CAUTION", "Blocked"]
     : d.wouldBlock ? ["WARNING", "Would be blocked (shadow mode, so nothing is blocked yet)"]
     : d.tier === "owner" ? ["WARNING", `Needs careful review by an owner${owners.length > 0 ? ` (${owners.join(", ")})` : ""}`]
@@ -106,10 +164,13 @@ export const plainSummary = (r: Report): string[] => {
   const lowRisk = alert === "TIP"
   const what = `It changes ${plural(r.facts.files.length, "file")} (${plural(r.facts.linesChanged, "line")})${commentOnly ? ", only comments or documentation, so nothing needed building or testing" : ""}.`
   const headline = lowRisk ? `**${title}**: it can merge without anyone's approval. ${what}` : `**${title}**${why.length > 0 ? ` because ${sentence(why)}` : ""}. ${what}`
-  const blocking = blockingNoms.flatMap((n) => plainReason(n) ?? [])
+  const blocking = blockingNoms.flatMap((n) => plainReason(n, link) ?? [])
   const zones = r.facts.zonesTouched.map((z) =>
-    `It changes code in the **${z.zone}** zone${z.owners.length > 0 ? ` (owner ${z.owners.join(", ")})` : ""}: ${z.files.slice(0, 3).map(code).join(", ")}${z.files.length > 3 ? ` and ${z.files.length - 3} more` : ""}.`)
-  const things = [...new Set([...blocking, ...zones, ...reviewNoms.flatMap((n) => plainReason(n) ?? [])])]
+    `It changes code in the **${z.zone}** zone${z.owners.length > 0 ? ` (owner ${z.owners.join(", ")})` : ""}: ${z.files.slice(0, 3).map((f) => link(f)).join(", ")}${z.files.length > 3 ? ` and ${z.files.length - 3} more` : ""}.`)
+  // One file's deletion is said once: a test removed with its code needn't also be listed as a protected test deleted.
+  const flagged = new Set(reviewNoms.filter((n) => n.rule.startsWith("integrity-")).flatMap((n) => subject(n.reason) ?? []))
+  const review = reviewNoms.filter((n) => !(n.rule === "protected-changed" && / the change deletes; /.test(n.reason) && flagged.has(subject(n.reason) ?? "")))
+  const things = [...new Set([...blocking, ...zones, ...review.flatMap((n) => plainReason(n, link) ?? [])])]
   return [
     `> [!${alert}]`,
     `> ${headline}`,
@@ -124,7 +185,8 @@ export const plainSummary = (r: Report): string[] => {
 export const APPROVE_BOX = "**Approve this change**"
 
 /** The report as markdown, for a PR comment or a terminal. */
-export const renderMarkdown = (r: Report): string => {
+export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
+  const link = linker(r, opts)
   const d = r.decision
   const verdict = d.blocking ? "blocks this change" : d.wouldBlock ? "would block this change in enforce mode" : "doesn't block"
   const lines: string[] = d.scope === "protect-only"
@@ -139,7 +201,7 @@ export const renderMarkdown = (r: Report): string => {
     : [
       `## Gauntlet: ${d.tier}`,
       "",
-      ...plainSummary(r),
+      ...plainSummary(r, opts),
       `**Tier ${d.tier}.** Gauntlet ${verdict}. Mode ${d.mode}${r.policy.firstAdoption ? " (first adoption)" : ""}.`,
       "",
     ]
@@ -153,7 +215,7 @@ export const renderMarkdown = (r: Report): string => {
   if (d.scope !== "protect-only" && r.facts.zonesTouched.length > 0) {
     lines.push("### Needs your attention", "")
     for (const z of r.facts.zonesTouched) {
-      const files = z.files.slice(0, 5).map(code).join(", ")
+      const files = z.files.slice(0, 5).map((f) => link(f)).join(", ")
       lines.push(`- Zone **${z.zone}**${z.owners.length > 0 ? ` (owner ${z.owners.join(", ")})` : ""}: ${files}${z.files.length > 5 ? ` and ${z.files.length - 5} more` : ""}`)
     }
     lines.push("")
@@ -206,13 +268,13 @@ export const renderMarkdown = (r: Report): string => {
   if (r.integrity.findings.length > 0) {
     lines.push("### Integrity", "")
     lines.push(...table(["Kind", "Check", "Where", "Finding"], capped(r.integrity.findings, (f) =>
-      `| ${f.kind} | ${f.check} | ${where(f)} | ${cell(f.message)} |`)))
+      `| ${f.kind} | ${f.check} | ${f.path ? link(f.path, f.line) : ""} | ${cell(f.message)} |`)))
   }
 
   if (r.violations.length > 0) {
     lines.push("### New findings", "")
     lines.push(...table(["Check", "Rule", "Where", "Message"], capped(r.violations, (v) =>
-      `| ${v.check} | ${code(v.ruleId)} | ${where(v)} | ${cell(v.message)} |`)))
+      `| ${v.check} | ${code(v.ruleId)} | ${v.path ? link(v.path, v.line) : ""} | ${cell(v.message)} |`)))
   }
 
   const moved = r.ratchets.filter((x) => x.delta !== 0)
