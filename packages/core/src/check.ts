@@ -170,9 +170,11 @@ const judge = (
       headFiles: yield* git.listTree(repo, p.head),
       dir,
     }, p.used.flatMap((pack) => pack.detectors))
-    // A change to comments or documentation runs no tests (ADR 0023): the checks that count tests have nothing to count.
+    // A change to comments or documentation runs no tests (ADR 0023), nor does one that touches none of the
+    // builds (ADR 0022): the checks that count tests have nothing to count.
     const unchanged = !request.protectOnly && (yield* changeLeavesBehaviour(git, repo, p.base, p.head, p.facts.files))
-    const counted = unchanged ? { ...integrity, notExecuted: integrity.notExecuted.filter((c) => !COUNTS_TESTS.has(c)) } : integrity
+    const noBuildTouched = executed.testedBuilds !== undefined && executed.testedBuilds.length === 0
+    const counted = unchanged || noBuildTouched ? { ...integrity, notExecuted: integrity.notExecuted.filter((c) => !COUNTS_TESTS.has(c)) } : integrity
     const evidence: Evidence = {
       checks: executed.checks,
       newViolations: executed.newViolations,
