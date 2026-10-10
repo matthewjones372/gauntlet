@@ -9,6 +9,10 @@
 > 2. It changes Gauntlet's own settings (`.gauntlet/policy.gx`), so an owner needs to approve.
 > 3. It changes `build.gradle.kts`, which is protected. Gauntlet checked the change without that edit, so a person needs to look at it.
 
+@payments or @platform: tick the box to approve this commit, and the `gauntlet` check turns green.
+
+- [ ] **Approve this change** (commit `222222222222`)
+
 **Tier owner.** Gauntlet doesn't block. Mode enforce.
 
 Policy `e2dfb6cfa346` from the base; base `111111111111`, head `222222222222`.
@@ -21,11 +25,7 @@ Suggested reviewers: @payments, @platform
 
 ### How to approve
 
-An owner (@payments, @platform) ticks this box, and the `gauntlet` check turns green:
-
-- [ ] **Approve this change** (commit `222222222222`)
-
-Or approve the pull request in Files changed, Review changes, Approve (GitHub doesn't allow that on a pull request you opened, including one an agent opened for you), or comment `/gauntlet approve 222222222222`. An approval counts for this commit only: a new push needs a new one.
+Tick **Approve this change** above, or approve the pull request in Files changed, Review changes, Approve (GitHub doesn't allow that on a pull request you opened, including one an agent opened for you), or comment `/gauntlet approve 222222222222`. An approval counts for this commit only: a new push needs a new one.
 
 ### Why
 

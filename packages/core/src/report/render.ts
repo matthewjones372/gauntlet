@@ -190,6 +190,10 @@ export const APPROVE_BOX = "**Approve this change**"
 export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
   const link = linker(r, opts)
   const d = r.decision
+  // A review or owner tier waits for an approval on GitHub: the owners tick the box.
+  const approvable = d.scope !== "protect-only" && d.mode === "enforce" && !d.blocking && (d.tier === "review" || d.tier === "owner")
+  const boxOwners = [...new Set([...d.owners, ...r.policy.owners])]
+  const approvers = boxOwners.length > 0 ? boxOwners.join(" or ") : "An owner"
   const verdict = d.blocking ? "blocks this change" : d.wouldBlock ? "would block this change in enforce mode" : "doesn't block"
   const lines: string[] = d.scope === "protect-only"
     ? [
@@ -204,6 +208,8 @@ export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
       `## Gauntlet: ${d.tier}`,
       "",
       ...plainSummary(r, opts),
+      // The box sits right under the summary, where the owner is already reading, not halfway down.
+      ...(approvable ? [`${approvers}: tick the box to approve this commit, and the \`gauntlet\` check turns green.`, "", `- [ ] ${APPROVE_BOX} (commit \`${r.policy.headSha.slice(0, 12)}\`)`, ""] : []),
       `**Tier ${d.tier}.** Gauntlet ${verdict}. Mode ${d.mode}${r.policy.firstAdoption ? " (first adoption)" : ""}.`,
       "",
     ]
@@ -223,18 +229,12 @@ export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
     lines.push("")
   }
 
-  // A review or owner tier waits for an approval on GitHub; say exactly how to give it.
-  if (d.scope !== "protect-only" && d.mode === "enforce" && !d.blocking && (d.tier === "review" || d.tier === "owner")) {
-    const owners = [...new Set([...d.owners, ...r.policy.owners])]
-    const who = d.tier === "owner" ? (owners.length > 0 ? `An owner (${owners.join(", ")})` : "An owner") : "A reviewer"
+  // The other ways to approve, for whoever can't or won't tick the box above.
+  if (approvable) {
     lines.push(
       "### How to approve",
       "",
-      `${who === "A reviewer" ? "An owner" : who}${owners.length > 0 && who === "A reviewer" ? ` (${owners.join(", ")})` : ""} ticks this box, and the \`gauntlet\` check turns green:`,
-      "",
-      `- [ ] ${APPROVE_BOX} (commit \`${r.policy.headSha.slice(0, 12)}\`)`,
-      "",
-      `Or approve the pull request in Files changed, Review changes, Approve (GitHub doesn't allow that on a pull request you opened, including one an agent opened for you), or comment \`/gauntlet approve ${r.policy.headSha.slice(0, 12)}\`. An approval counts for this commit only: a new push needs a new one.`,
+      `Tick **Approve this change** above, or approve the pull request in Files changed, Review changes, Approve (GitHub doesn't allow that on a pull request you opened, including one an agent opened for you), or comment \`/gauntlet approve ${r.policy.headSha.slice(0, 12)}\`. An approval counts for this commit only: a new push needs a new one.`,
       "",
     )
   }
