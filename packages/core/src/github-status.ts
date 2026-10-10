@@ -62,6 +62,27 @@ export const commentApprovals = (comments: ReadonlyArray<PrComment>, head: strin
     return sha !== undefined && head.toLowerCase().startsWith(sha) && isOwner(who, owners, teams) ? [{ user: who, state: "APPROVED", commitId: head }] : []
   })
 
+/**
+ * Where a pull request sits in a stack: the pull requests below it (its base,
+ * and theirs), and those above it with their head commit, whether that commit
+ * contains this one (checked with git, not taken from GitHub's bases), and
+ * their comments.
+ */
+export const StackInfo = Schema.Struct({
+  below: Schema.Array(Schema.Number),
+  above: Schema.Array(Schema.Struct({ number: Schema.Number, head: Schema.String, contains: Schema.Boolean, comments: Schema.Array(PrComment) })),
+})
+export type StackInfo = typeof StackInfo.Type
+
+/**
+ * Owners' approvals of a pull request higher in the stack whose commit
+ * contains this one: approving the top approves everything under it. One
+ * that doesn't contain it (its base was pointed here without its commits)
+ * approves nothing here.
+ */
+export const stackApprovals = (stack: StackInfo | undefined, head: string, owners: ReadonlyArray<string>, teams: Teams): Review[] =>
+  (stack?.above ?? []).filter((p) => p.contains).flatMap((p) => commentApprovals(p.comments, p.head, owners, teams).map((r) => ({ ...r, commitId: head })))
+
 /** Who ticked the box or commented an approval of this commit without being an owner. */
 export const nonOwnerApprovals = (comments: ReadonlyArray<PrComment>, head: string, owners: ReadonlyArray<string>, teams: Teams): string[] =>
   [...new Set(comments.flatMap((c) => {
@@ -82,6 +103,8 @@ export interface GithubStatus {
   readonly honouredOverrides: ReadonlyArray<OverrideRecord>
   /** People who ticked the box or commented an approval of this commit but aren't owners: ignored, and said so. */
   readonly notOwners?: ReadonlyArray<string>
+  /** Pull requests higher in the stack whose approved commit contains this one, and so approved it. */
+  readonly approvedVia?: ReadonlyArray<number>
 }
 
 /** Logins whose latest review approves exactly this commit. A later push needs a new approval. */
@@ -103,16 +126,25 @@ const isOwner = (login: string, owners: ReadonlyArray<string>, teams: Teams) =>
  * integrity verdict and then the gate results, so a passing check can't hide
  * a weakened test behind one green badge (spec 0001).
  */
-export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>, comments: ReadonlyArray<PrComment> = []): GithubStatus => {
+export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>, comments: ReadonlyArray<PrComment> = [], stack?: StackInfo): GithubStatus => {
   const owners = [...new Set([...report.decision.owners, ...report.policy.owners])]
-  const all = [...reviews, ...commentApprovals(comments, report.policy.headSha, owners, teams)]
+  const fromAbove = stackApprovals(stack, report.policy.headSha, owners, teams)
+  const all = [...reviews, ...commentApprovals(comments, report.policy.headSha, owners, teams), ...fromAbove]
   const s = report.decision.scope === "protect-only" ? protectOnlyStatus(report, all) : tierStatus(report, all, teams, overrides)
   // A tick from someone who isn't an owner is ignored, and the check says so: the owner ticks the box themselves.
   const notOwners = s.conclusion === "success" ? [] : nonOwnerApprovals(comments, report.policy.headSha, owners, teams)
   const ignored = notOwners.length > 0
     ? [`${notOwners.map((u) => `@${u}`).join(", ")} ticked the box or approved, but only ${owners.length > 0 ? `an owner (${owners.join(", ")})` : "an owner"} can approve, so it doesn't count. The box is unticked again: an owner ticks it.`, ""]
     : []
-  return { ...s, summary: [...verdictLines(report), "", ...ignored, s.summary].join("\n"), ...(notOwners.length > 0 ? { notOwners } : {}) }
+  // An approval that came down the stack says where it was given.
+  const via = s.conclusion === "success" ? (stack?.above ?? []).filter((p) => p.contains && commentApprovals(p.comments, p.head, owners, teams).length > 0).map((p) => p.number) : []
+  const viaLine = via.length > 0 ? [`Approved with its stack: the box was ticked on ${via.map((n) => `#${n}`).join(", ")}, whose commit contains this one.`, ""] : []
+  return {
+    ...s,
+    summary: [...verdictLines(report), "", ...ignored, ...viaLine, s.summary].join("\n"),
+    ...(notOwners.length > 0 ? { notOwners } : {}),
+    ...(via.length > 0 ? { approvedVia: via } : {}),
+  }
 }
 
 /** Protect-only is pass or fail; approvals don't change it. */
