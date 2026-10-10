@@ -233,6 +233,8 @@ export const PolicyIR = Schema.Struct({
   quarantine: Schema.optionalKey(Schema.Array(Quarantine)),
   /** Builds in folders of their own. Omitted when every pack builds at the root, so those policies keep their hashes. */
   builds: Schema.optionalKey(Schema.Array(Build)),
+  /** How many changed lines over several parts suggest stacked pull requests (\`split when diff > 600 lines\`). Omitted for the default. */
+  split: Schema.optionalKey(Schema.Struct({ lines: Schema.Number })),
 })
 export type PolicyIR = typeof PolicyIR.Type
 

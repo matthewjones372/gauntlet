@@ -77,6 +77,20 @@ its own `settings.gradle.kts`).
 - Each build's runner configuration (Gradle's `gradle/**`, sbt's `project/**`)
   is protected in its own folder.
 
+## Stacked pull requests
+
+A change of 400 lines or more that spans several parts of the repository
+(packages, builds, top-level folders) gets a suggestion in the report to
+review it as stacked pull requests: one per part with its tests, each on top
+of the one before, lowest layer first by the policy's `arch` rules, with
+Gauntlet's own settings in a pull request of their own. Parts under 30 lines
+join the next one. The agent offers to split the change and only does it if
+you agree. Set the size with:
+
+```
+split when diff > 600 lines
+```
+
 ## Performance budgets
 
 A budget runs a benchmark and holds its results to limits ([spec 0006](specs/0006-perf-budgets.md)):

@@ -236,6 +236,17 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
             didYouMean(block.value, MODES, "Use `mode shadow` to report only, or `mode enforce` to block on failure."), MODES)
         }
         break
+      case "Split": {
+        if (!once("split", block)) break
+        const c = block.condition
+        if (c.value.unit !== "lines" || (c.op !== ">" && c.op !== ">=")) {
+          error("wrong-split", propertySpan(block, "condition"), "A split is suggested above a number of changed lines.", "'diff > <n> lines'",
+            `Write: split when diff > ${c.value.value} lines`, ["lines"])
+          break
+        }
+        ir.split = { lines: c.op === ">" ? c.value.value + 1 : c.value.value }
+        break
+      }
       case "Owners":
         if (!once("owners", block)) break
         spans.owners = nodeSpan(block)

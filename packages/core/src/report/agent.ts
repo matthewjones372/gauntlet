@@ -45,6 +45,7 @@ const suggestionLines = (s: AgentSummary) => [
     ? [
       `This change is big. Offer the person to split it into ${s.stack.length} stacked pull requests, each on top of the one before, and only do it if they agree:`,
       ...s.stack.map((p, i) => `${i + 1}. ${p.title} (${p.lines} lines): ${p.files.slice(0, 5).join(", ")}${p.files.length > 5 ? ` and ${p.files.length - 5} more` : ""}`),
+      "If they agree: make one branch per part, in this order, each starting from the one before (the first from the default branch), with only that part's files changed, so every branch builds and passes on its own. Push them and open one pull request per branch, each based on the branch before, and say in each which part of the stack it is. Keep the original branch until the stack is open, and tell the person when it is.",
     ]
     : []),
 ]

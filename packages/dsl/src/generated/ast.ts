@@ -83,6 +83,7 @@ export type GauntletKeywordNames =
     | "review"
     | "rule"
     | "skim"
+    | "split"
     | "stack"
     | "suites"
     | "touched"
@@ -128,7 +129,7 @@ export function isArchRule(item: unknown): item is ArchRule {
     return reflection.isInstance(item, ArchRule.$type);
 }
 
-export type Block = Arch | Budget | Gates | Import | Integrity | Mode | OnFail | Owners | Predicate | Protect | Quarantine | Review | Stack | Suites | Use | Zone;
+export type Block = Arch | Budget | Gates | Import | Integrity | Mode | OnFail | Owners | Predicate | Protect | Quarantine | Review | Split | Stack | Suites | Use | Zone;
 
 export const Block = {
     $type: 'Block'
@@ -228,7 +229,7 @@ export function isCondition(item: unknown): item is Condition {
 }
 
 export interface DiffCondition extends langium.AstNode {
-    readonly $container: Predicate | ReviewRule;
+    readonly $container: Predicate | ReviewRule | Split;
     readonly $type: 'DiffCondition';
     op: Cmp;
     value: Quantity;
@@ -420,10 +421,10 @@ export function isIntegrityPhrase(item: unknown): item is IntegrityPhrase {
     return reflection.isInstance(item, IntegrityPhrase.$type);
 }
 
-export type IntegrityWord = 'added' | 'all' | 'baseline' | 'changed' | 'diff' | 'env' | 'fail' | 'fix' | 'from' | 'in' | 'missing' | 'module' | 'no' | 'not' | 'on' | 'only' | 'pass' | 'touched' | string;
+export type IntegrityWord = 'added' | 'all' | 'baseline' | 'changed' | 'diff' | 'env' | 'fail' | 'fix' | 'from' | 'in' | 'missing' | 'module' | 'no' | 'not' | 'on' | 'only' | 'pass' | 'split' | 'touched' | string;
 
 export function isIntegrityWord(item: unknown): item is IntegrityWord {
-    return item === 'in' || item === 'on' || item === 'not' || item === 'env' || item === 'from' || item === 'only' || item === 'module' || item === 'baseline' || item === 'diff' || item === 'fail' || item === 'fix' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'split' || item === 'in' || item === 'on' || item === 'not' || item === 'env' || item === 'from' || item === 'only' || item === 'module' || item === 'baseline' || item === 'diff' || item === 'fail' || item === 'fix' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface LayerProp extends langium.AstNode {
@@ -443,10 +444,10 @@ export function isLayerProp(item: unknown): item is LayerProp {
     return reflection.isInstance(item, LayerProp.$type);
 }
 
-export type LayerWord = 'added' | 'all' | 'arch' | 'auto' | 'baseline' | 'budget' | 'caution' | 'changed' | 'ci' | 'cumulative' | 'depend' | 'diff' | 'env' | 'fail' | 'fix' | 'flag' | 'forbid' | 'from' | 'gates' | 'in' | 'integrity' | 'layer' | 'llm' | 'max' | 'missing' | 'module' | 'must' | 'no' | 'not' | 'on' | 'only' | 'owner' | 'pass' | 'paths' | 'protect' | 'ratchet' | 'review' | 'rule' | 'skim' | 'stack' | 'suites' | 'touched' | 'vs' | 'zone' | string;
+export type LayerWord = 'added' | 'all' | 'arch' | 'auto' | 'baseline' | 'budget' | 'caution' | 'changed' | 'ci' | 'cumulative' | 'depend' | 'diff' | 'env' | 'fail' | 'fix' | 'flag' | 'forbid' | 'from' | 'gates' | 'in' | 'integrity' | 'layer' | 'llm' | 'max' | 'missing' | 'module' | 'must' | 'no' | 'not' | 'on' | 'only' | 'owner' | 'pass' | 'paths' | 'protect' | 'ratchet' | 'review' | 'rule' | 'skim' | 'split' | 'stack' | 'suites' | 'touched' | 'vs' | 'zone' | string;
 
 export function isLayerWord(item: unknown): item is LayerWord {
-    return item === 'zone' || item === 'budget' || item === 'gates' || item === 'paths' || item === 'rule' || item === 'module' || item === 'must' || item === 'not' || item === 'depend' || item === 'on' || item === 'from' || item === 'env' || item === 'vs' || item === 'baseline' || item === 'ratchet' || item === 'in' || item === 'layer' || item === 'max' || item === 'diff' || item === 'cumulative' || item === 'ci' || item === 'only' || item === 'caution' || item === 'fix' || item === 'fail' || item === 'flag' || item === 'forbid' || item === 'review' || item === 'owner' || item === 'skim' || item === 'auto' || item === 'llm' || item === 'protect' || item === 'suites' || item === 'integrity' || item === 'arch' || item === 'stack' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'split' || item === 'zone' || item === 'budget' || item === 'gates' || item === 'paths' || item === 'rule' || item === 'module' || item === 'must' || item === 'not' || item === 'depend' || item === 'on' || item === 'from' || item === 'env' || item === 'vs' || item === 'baseline' || item === 'ratchet' || item === 'in' || item === 'layer' || item === 'max' || item === 'diff' || item === 'cumulative' || item === 'ci' || item === 'only' || item === 'caution' || item === 'fix' || item === 'fail' || item === 'flag' || item === 'forbid' || item === 'review' || item === 'owner' || item === 'skim' || item === 'auto' || item === 'llm' || item === 'protect' || item === 'suites' || item === 'integrity' || item === 'arch' || item === 'stack' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface LlmReviewCheck extends langium.AstNode {
@@ -521,10 +522,10 @@ export function isMode(item: unknown): item is Mode {
     return reflection.isInstance(item, Mode.$type);
 }
 
-export type Name = 'added' | 'all' | 'baseline' | 'caution' | 'changed' | 'ci' | 'command' | 'cumulative' | 'env' | 'fail' | 'fix' | 'missing' | 'only' | 'pass' | 'touched' | 'until' | string;
+export type Name = 'added' | 'all' | 'baseline' | 'caution' | 'changed' | 'ci' | 'command' | 'cumulative' | 'env' | 'fail' | 'fix' | 'missing' | 'only' | 'pass' | 'split' | 'touched' | 'until' | string;
 
 export function isName(item: unknown): item is Name {
-    return item === 'baseline' || item === 'env' || item === 'command' || item === 'cumulative' || item === 'caution' || item === 'ci' || item === 'only' || item === 'fix' || item === 'fail' || item === 'until' || item === 'changed' || item === 'all' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'split' || item === 'baseline' || item === 'env' || item === 'command' || item === 'cumulative' || item === 'caution' || item === 'ci' || item === 'only' || item === 'fix' || item === 'fail' || item === 'until' || item === 'changed' || item === 'all' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface OnFail extends langium.AstNode {
@@ -736,6 +737,21 @@ export type ReviewVerb = 'auto' | 'owner' | 'raise' | 'require' | 'review' | 'sk
 
 export function isReviewVerb(item: unknown): item is ReviewVerb {
     return item === 'owner' || item === 'review' || item === 'skim' || item === 'auto' || item === 'require' || item === 'raise';
+}
+
+export interface Split extends langium.AstNode {
+    readonly $container: Policy;
+    readonly $type: 'Split';
+    condition: DiffCondition;
+}
+
+export const Split = {
+    $type: 'Split',
+    condition: 'condition'
+} as const;
+
+export function isSplit(item: unknown): item is Split {
+    return reflection.isInstance(item, Split.$type);
 }
 
 export interface Stack extends langium.AstNode {
@@ -1028,6 +1044,7 @@ export type GauntletAstType = {
     QuarantineEntry: QuarantineEntry
     Review: Review
     ReviewRule: ReviewRule
+    Split: Split
     Stack: Stack
     StackItem: StackItem
     StackLayer: StackLayer
@@ -1507,6 +1524,15 @@ export class GauntletAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: []
+        },
+        Split: {
+            name: Split.$type,
+            properties: {
+                condition: {
+                    name: Split.condition
+                }
+            },
+            superTypes: [Block.$type]
         },
         Stack: {
             name: Stack.$type,

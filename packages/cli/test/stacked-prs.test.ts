@@ -24,9 +24,11 @@ const lines = (n: number, word: string) => Array.from({ length: n }, (_, i) => `
 describe("a big change over several parts", () => {
   test("the report suggests stacked pull requests, lowest first", async () => {
     const { md, report } = await check({ "src/main/App.kt": lines(300, "app"), "tools/gen.kt": lines(200, "gen"), "docs/notes.md": "notes\n" })
-    expect(report.stack.steps.map((s: { title: string }) => s.title)).toEqual(["src", "tools", "documentation"])
+    // The one-line note is small, so it joins the tools part before it.
+    expect(report.stack.steps.map((s: { title: string }) => s.title)).toEqual(["src", "tools, documentation"])
+    expect(md).toContain("> It would be easier to review as 2 stacked pull requests: see **Review it as stacked pull requests** below.")
     expect(md).toContain("### Review it as stacked pull requests")
-    expect(md).toContain("It would be easier to review as 3 pull requests, each on top of the one before:")
+    expect(md).toContain("It would be easier to review as 2 pull requests, each on top of the one before:")
     expect(md).toContain("1. **src** (1 file, 302 lines): `src/main/App.kt`")
   })
 

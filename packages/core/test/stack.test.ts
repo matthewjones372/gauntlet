@@ -37,7 +37,8 @@ describe("stacked pull requests", () => {
       "scripts/build.ts": 20,
     }))!
     expect(s.lines).toBe(450)
-    expect(s.steps.map((p) => p.title)).toEqual(["Gauntlet's policy and settings", "packages/ir", "packages/core", "packages/cli", "scripts", "documentation"])
+    // The 20-line scripts part is small, so it joins the documentation after it.
+    expect(s.steps.map((p) => p.title)).toEqual(["Gauntlet's policy and settings", "packages/ir", "packages/core", "packages/cli", "scripts, documentation"])
     expect(s.steps.find((p) => p.title === "packages/core")).toEqual({ title: "packages/core", files: ["packages/core/src/check.ts", "packages/core/test/check.test.ts"], lines: 230, needsOwner: false })
     expect(s.steps[0]!.needsOwner).toBe(true)
   })
@@ -57,6 +58,22 @@ describe("stacked pull requests", () => {
     expect(s.steps.map((p) => p.title)).toEqual(["bank-checks", "lark-bank"])
   })
 
+  test("a small part joins the next pull request; the policy stays one of its own, however small", () => {
+    const s = suggestStack(ir(), facts({ ".gauntlet/policy.gx": 3, "packages/ir/src/a.ts": 5, "packages/core/src/b.ts": 300, "packages/cli/src/c.ts": 200 }))!
+    expect(s.steps.map((p) => [p.title, p.lines])).toEqual([["Gauntlet's policy and settings", 3], ["packages/ir, packages/core", 305], ["packages/cli", 200]])
+  })
+
+  test("the last part, if small, joins the one before", () => {
+    const s = suggestStack(ir(), facts({ "packages/core/src/b.ts": 300, "packages/cli/src/c.ts": 200, "docs/x.md": 4 }))!
+    expect(s.steps.map((p) => p.title)).toEqual(["packages/core", "packages/cli, documentation"])
+  })
+
+  test("the policy can set how big a change must be (split when diff > n lines)", () => {
+    const big = facts({ "packages/core/src/b.ts": 300, "packages/cli/src/c.ts": 200 })
+    expect(suggestStack(ir({ split: { lines: 601 } }), big)).toBeUndefined()
+    expect(suggestStack(ir({ split: { lines: 201 } }), facts({ "packages/core/src/b.ts": 150, "packages/cli/src/c.ts": 100 }))).toBeDefined()
+  })
+
   test("a small change, or a big one in one part, is fine as one pull request", () => {
     expect(suggestStack(ir(), facts({ "packages/core/src/a.ts": STACK_LINES - 10, "packages/cli/src/b.ts": 5 }))).toBeUndefined()
     expect(suggestStack(ir(), facts({ "packages/core/src/a.ts": 500, "packages/core/test/a.test.ts": 300 }))).toBeUndefined()
@@ -71,5 +88,6 @@ describe("stacked pull requests", () => {
     const text = renderAgentSummary(agentSummary(report, "out"))
     expect(text).toContain("Offer the person to split it into 2 stacked pull requests, each on top of the one before, and only do it if they agree:")
     expect(text).toContain("1. packages/core (300 lines): packages/core/src/a.ts")
+    expect(text).toContain("make one branch per part, in this order, each starting from the one before")
   })
 })

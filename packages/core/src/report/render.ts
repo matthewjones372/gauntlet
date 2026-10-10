@@ -116,6 +116,7 @@ export const plainSummary = (r: Report): string[] => {
     ...(things.length > 0
       ? [">", `> ${blocking.length > 0 ? `${plural(blocking.length, "thing")} to fix${things.length > blocking.length ? `, and ${plural(things.length - blocking.length, "more thing")} to look at` : ""}:` : `${plural(things.length, "thing")} to look at:`}`, ">", ...things.map((t, i) => `> ${i + 1}. ${t}`)]
       : []),
+    ...(r.stack ? [">", `> It would be easier to review as ${r.stack.steps.length} stacked pull requests: see **Review it as stacked pull requests** below.`] : []),
     "",
   ]
 }

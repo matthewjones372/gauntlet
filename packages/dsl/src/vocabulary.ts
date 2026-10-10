@@ -68,7 +68,7 @@ export const AGGREGATES = ["avg", "min", "max", "sum"] as const
 
 export const TOP_LEVEL_BLOCKS = [
   "use", "mode", "owners", "protect", "zone", "arch", "suites", "integrity", "import", "budget",
-  "gates", "on fail", "predicate", "review", "stack", "quarantine",
+  "gates", "on fail", "predicate", "review", "stack", "quarantine", "split",
 ] as const
 
 export const ADVISORY_TIER = "advisory"

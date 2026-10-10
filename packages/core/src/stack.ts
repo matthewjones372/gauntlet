@@ -7,8 +7,11 @@ import type { DiffFacts } from "./diff-facts.ts"
 // part, each reviewed on top of the one before, the lower layers first. It's a
 // suggestion in the report; it never changes the decision.
 
-/** Below this many changed lines a change is easy enough to review in one pull request. */
+/** Below this many changed lines a change is easy enough to review in one pull request, unless the policy says (\`split when diff > n lines\`). */
 export const STACK_LINES = 400
+
+/** A part smaller than this joins the pull request after it, so nobody reviews a few lines on their own. */
+export const SMALL_PART_LINES = 30
 
 export interface StackStep {
   /** What the pull request holds: a package, a build, or Gauntlet's policy and settings. */
@@ -65,9 +68,36 @@ const order = (ir: PolicyIR, parts: ReadonlyArray<string>): string[] => {
   return [...parts.filter((p) => p === POLICY), ...placed, ...rest, ...parts.filter((p) => p === DOCS_TITLE)]
 }
 
+/**
+ * Small parts join the pull request after them (the last one, the one before),
+ * so nobody reviews a few lines on their own. Gauntlet's policy and settings
+ * stay a pull request of their own, for an owner.
+ */
+const foldSmall = (steps: ReadonlyArray<StackStep>): StackStep[] => {
+  const out = [...steps]
+  const join = (a: StackStep, b: StackStep): StackStep => ({
+    title: `${a.title}, ${b.title}`,
+    files: [...a.files, ...b.files].sort(),
+    lines: a.lines + b.lines,
+    needsOwner: a.needsOwner || b.needsOwner,
+  })
+  for (let i = 0; i < out.length;) {
+    const s = out[i]!
+    const target = i + 1 < out.length && out[i + 1]!.title !== POLICY ? i + 1 : i - 1
+    if (s.title === POLICY || s.lines >= SMALL_PART_LINES || target < 0 || out[target]!.title === POLICY) {
+      i++
+      continue
+    }
+    const [a, b] = target > i ? [s, out[target]!] : [out[target]!, s]
+    out.splice(Math.min(i, target), 2, join(a, b))
+    i = Math.min(i, target)
+  }
+  return out
+}
+
 /** Stacked pull requests for a big change over several parts, or undefined when one is fine. */
 export const suggestStack = (ir: PolicyIR, facts: DiffFacts): StackSuggestion | undefined => {
-  if (facts.linesChanged < STACK_LINES) return undefined
+  if (facts.linesChanged < (ir.split?.lines ?? STACK_LINES)) return undefined
   const byPart = new Map<string, DiffFacts["files"][number][]>()
   for (const f of facts.files) byPart.set(partOf(ir, f.path), [...(byPart.get(partOf(ir, f.path)) ?? []), f])
   if (byPart.size < 2) return undefined
@@ -84,5 +114,6 @@ export const suggestStack = (ir: PolicyIR, facts: DiffFacts): StackSuggestion | 
       needsOwner: part === POLICY || files.some((f) => owned.has(f.path)),
     }
   })
-  return { lines: facts.linesChanged, steps }
+  const folded = foldSmall(steps)
+  return folded.length < 2 ? undefined : { lines: facts.linesChanged, steps: folded }
 }
