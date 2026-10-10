@@ -7,6 +7,7 @@ export const spec: PackSpec = {
   runsSuites: true,
   gates: [
     { name: "build", description: "compiles main and test code", produces: "outcome", units: [], higherIsBetter: true, scopable: false, zoneScopable: false },
+    { name: "warnings", description: "scalac warnings (`warnings ratchet`: new ones fail)", produces: "violations", units: [], higherIsBetter: false, scopable: true, zoneScopable: true },
     { name: "lint", description: "scalafix --check, plus the zones' Scala rules", produces: "violations", units: [], higherIsBetter: false, scopable: true, zoneScopable: true },
     { name: "arch", description: "package dependency rules, from imports", produces: "violations", units: [], higherIsBetter: false, scopable: false, zoneScopable: false },
     { name: "mutation", description: "Stryker4s mutation score", produces: "metric", units: ["%"], higherIsBetter: true, scopable: true, zoneScopable: true },

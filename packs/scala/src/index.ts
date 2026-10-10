@@ -3,7 +3,7 @@ import { spec } from "./catalog.ts"
 import { parseDependencies } from "./dependencies.ts"
 import { scalaDetector } from "./detectors.ts"
 import { doctor } from "./doctor.ts"
-import { arch, build, coverage, lint, mutation, runSuite } from "./gates.ts"
+import { arch, build, coverage, lint, mutation, runSuite, warnings } from "./gates.ts"
 import { onboard } from "./onboard.ts"
 import { enclosingSymbol, parseScala, stripLineComment } from "./syntax.ts"
 import { tamper } from "./tamper.ts"
@@ -25,7 +25,7 @@ export const scalaPack: Pack = {
   manifests: ["build.sbt", "*.sbt", "project/*.sbt"],
   dependencies: parseDependencies,
   detectors: [scalaDetector],
-  gates: { build, lint, arch, mutation, coverage },
+  gates: { build, warnings, lint, arch, mutation, coverage },
   runSuite,
   // The check's own sbt server ends with the check (ADR 0020).
   stop: stopServer,
