@@ -131,8 +131,11 @@ gates {
 
 The command runs in the judged checkout and writes its results to `{json}`:
 Gauntlet's own JSON (`{"p99": 48, "errors": 0.02, "throughput": 1200}`, times
-in milliseconds), `hyperfine --export-json {json}` or `k6 run --summary-export
-{json}`. Limits use the policy's units (`ms`, `s`, `%`, `rps`).
+in milliseconds), `hyperfine --export-json {json}`, `k6 run --summary-export
+{json}`, a Proofload run document (each step a series) or Gatling's
+`js/stats.json` (each request a series), copied to `{json}`. A load test whose
+generator fell behind its schedule (Proofload's `behind`) is not executed: its
+numbers describe the generator, not the service. Limits use the policy's units (`ms`, `s`, `%`, `rps`).
 `max(p99) < 100ms` takes the worst of the per-endpoint or per-command
 results. `vs baseline` compares with what `gauntlet baseline` measured:
 `p99 < 10% vs baseline` lets p99 grow by less than 10%, and `regression`

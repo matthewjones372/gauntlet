@@ -97,6 +97,12 @@ export type GauntletKeywordNames =
 
 export type GauntletTokenNames = GauntletTerminalNames | GauntletKeywordNames;
 
+export type AggregateName = 'max' | Name;
+
+export function isAggregateName(item: unknown): item is AggregateName {
+    return isName(item) || item === 'max';
+}
+
 export interface Arch extends langium.AstNode {
     readonly $container: Policy;
     readonly $type: 'Arch';
@@ -468,7 +474,7 @@ export function isLlmReviewCheck(item: unknown): item is LlmReviewCheck {
 export interface Metric extends langium.AstNode {
     readonly $container: Threshold;
     readonly $type: 'Metric';
-    aggregate?: Name;
+    aggregate?: AggregateName;
     field: QName;
 }
 
