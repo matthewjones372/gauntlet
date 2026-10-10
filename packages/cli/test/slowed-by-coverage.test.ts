@@ -60,6 +60,7 @@ describe("a timing test slowed by measuring coverage", () => {
   test("one that fails without coverage too still fails", async () => {
     const { unit } = await check(true)
     expect(unit.status).toBe("failed")
-    expect(unit.failures).toEqual(["svc.TimingTest.fast: p99 took 31ms, over 20ms"])
+    // This stand-in fails whatever the code, so it fails on the base too (ADR 0025); it still fails.
+    expect(unit.failures[0]).toStartWith("svc.TimingTest.fast: p99 took 31ms, over 20ms")
   })
 })
