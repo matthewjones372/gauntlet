@@ -7,7 +7,14 @@ plugins {
 
 repositories { mavenCentral() }
 
-kotlin { jvmToolchain(25) }
+kotlin {
+    jvmToolchain(25)
+    // A new project starts strict: a compiler warning fails the build.
+    compilerOptions { allWarningsAsErrors.set(true) }
+}
+
+// detekt's recommended rules, with this project's overrides in config/detekt.yml when there are any.
+detekt { buildUponDefaultConfig = true }
 
 dependencies {
     testImplementation(kotlin("test"))
