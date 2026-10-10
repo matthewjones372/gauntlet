@@ -33,9 +33,30 @@ suites {
   packs "packs/*/test/**"
 }
 
+// Gauntlet's own speed (scripts/bench.ts): what runs on every check, CI build and
+// agent command. About five times what a laptop measures, so a slower CI machine
+// passes and a change that makes Gauntlet many times slower doesn't.
+budget startup {
+  command "bun scripts/bench.ts startup {json}"
+  p95 < 1s
+}
+budget hook {
+  command "bun scripts/bench.ts hook {json}"
+  p95 < 1s
+}
+budget needsbuild {
+  command "bun scripts/bench.ts needs-build {json}"
+  p95 < 1500ms
+}
+budget overhead {
+  command "bun scripts/bench.ts check {json}"
+  p95 < 3s
+}
+
 gates {
   fast   { build, arch }
   verify { unit, packs, coverage >= 80% on changed }
+  perf   { budget startup, budget hook, budget needsbuild, budget overhead }
 }
 
 predicate small = diff < 150 lines and no zone touched
