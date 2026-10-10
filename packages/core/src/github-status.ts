@@ -15,9 +15,19 @@ export const Review = Schema.Struct({
 })
 export type Review = typeof Review.Type
 
-/** A pull request comment, for owner approvals by comment. */
-export const PrComment = Schema.Struct({ user: Schema.String, body: Schema.String })
+/**
+ * A pull request comment, for owner approvals by comment: who wrote it, who
+ * last edited it if anyone did, and its text now.
+ */
+export const PrComment = Schema.Struct({ user: Schema.String, editor: Schema.optionalKey(Schema.String), body: Schema.String })
 export type PrComment = typeof PrComment.Type
+
+/**
+ * Whose words a comment's text is: whoever last edited it, else its author.
+ * Anyone with write access can edit any comment, Gauntlet's and an owner's
+ * included, so a comment's author alone says nothing about its text.
+ */
+export const wordsOf = (c: PrComment): string => c.editor ?? c.user
 
 const APPROVE = /^\/gauntlet approve ([0-9a-f]{7,40})$/i
 /** The ticked box in Gauntlet's report, as the person who ticked it sends it. */
@@ -29,7 +39,9 @@ const WORKFLOW = "github-actions[bot]"
 /**
  * Owners' \`/gauntlet approve <commit>\` comments, and the box in Gauntlet's
  * report ticked by an owner (the workflow passes it as from whoever ticked
- * it), as approvals of that commit.
+ * it), as approvals of that commit. A comment's text counts as from whoever
+ * last edited it (`wordsOf`), so editing an owner's comment or Gauntlet's own
+ * record of an approval never forges one: the approval just goes.
  * GitHub never lets an author approve their own pull request, and an agent
  * opens them under its owner's account, so on a repository with one owner a
  * review could never be given. The comment names the commit, so it counts
@@ -37,16 +49,26 @@ const WORKFLOW = "github-actions[bot]"
  */
 export const commentApprovals = (comments: ReadonlyArray<PrComment>, head: string, owners: ReadonlyArray<string>, teams: Teams): Review[] =>
   comments.flatMap((c) => {
-    // A box ticked earlier, as Gauntlet's own comment records it: still the owners' approval of that commit.
-    const recorded = c.user === WORKFLOW ? RECORDED.exec(c.body) : null
+    // A box ticked earlier, as Gauntlet's own comment records it: still the owners' approval of that commit,
+    // as long as nobody but Gauntlet's workflow edited the comment since.
+    const who = wordsOf(c)
+    const recorded = who === WORKFLOW ? RECORDED.exec(c.body) : null
     if (recorded) {
       return head.toLowerCase().startsWith(recorded[2]!.toLowerCase())
         ? recorded[1]!.split(",").map((u) => u.trim()).filter((u) => isOwner(u, owners, teams)).map((user) => ({ user, state: "APPROVED", commitId: head }))
         : []
     }
     const sha = (APPROVE.exec(c.body.trim())?.[1] ?? TICKED.exec(c.body)?.[1])?.toLowerCase()
-    return sha !== undefined && head.toLowerCase().startsWith(sha) && isOwner(c.user, owners, teams) ? [{ user: c.user, state: "APPROVED", commitId: head }] : []
+    return sha !== undefined && head.toLowerCase().startsWith(sha) && isOwner(who, owners, teams) ? [{ user: who, state: "APPROVED", commitId: head }] : []
   })
+
+/** Who ticked the box or commented an approval of this commit without being an owner. */
+export const nonOwnerApprovals = (comments: ReadonlyArray<PrComment>, head: string, owners: ReadonlyArray<string>, teams: Teams): string[] =>
+  [...new Set(comments.flatMap((c) => {
+    const sha = (APPROVE.exec(c.body.trim())?.[1] ?? TICKED.exec(c.body)?.[1])?.toLowerCase()
+    const who = wordsOf(c)
+    return sha !== undefined && head.toLowerCase().startsWith(sha) && who !== WORKFLOW && !isOwner(who, owners, teams) ? [who] : []
+  }))].sort()
 
 /** Members of the teams that appear as owners, resolved by the workflow (`@org/team` -> logins). */
 export const Teams = Schema.Record(Schema.String, Schema.Array(Schema.String))
@@ -58,6 +80,8 @@ export interface GithubStatus {
   readonly summary: string
   readonly approvedBy: ReadonlyArray<string>
   readonly honouredOverrides: ReadonlyArray<OverrideRecord>
+  /** People who ticked the box or commented an approval of this commit but aren't owners: ignored, and said so. */
+  readonly notOwners?: ReadonlyArray<string>
 }
 
 /** Logins whose latest review approves exactly this commit. A later push needs a new approval. */
@@ -83,7 +107,12 @@ export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, tea
   const owners = [...new Set([...report.decision.owners, ...report.policy.owners])]
   const all = [...reviews, ...commentApprovals(comments, report.policy.headSha, owners, teams)]
   const s = report.decision.scope === "protect-only" ? protectOnlyStatus(report, all) : tierStatus(report, all, teams, overrides)
-  return { ...s, summary: [...verdictLines(report), "", s.summary].join("\n") }
+  // A tick from someone who isn't an owner is ignored, and the check says so: the owner ticks the box themselves.
+  const notOwners = s.conclusion === "success" ? [] : nonOwnerApprovals(comments, report.policy.headSha, owners, teams)
+  const ignored = notOwners.length > 0
+    ? [`${notOwners.map((u) => `@${u}`).join(", ")} ticked the box or approved, but only ${owners.length > 0 ? `an owner (${owners.join(", ")})` : "an owner"} can approve, so it doesn't count. The box is unticked again: an owner ticks it.`, ""]
+    : []
+  return { ...s, summary: [...verdictLines(report), "", ...ignored, s.summary].join("\n"), ...(notOwners.length > 0 ? { notOwners } : {}) }
 }
 
 /** Protect-only is pass or fail; approvals don't change it. */
