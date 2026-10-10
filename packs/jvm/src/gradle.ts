@@ -7,6 +7,8 @@ export interface GradleRun {
   readonly command: ReadonlyArray<string>
   readonly exitCode: number
   readonly stderr: string
+  /** Gradle's output, kept when it runs at warning level to read compiler warnings. */
+  readonly stdout?: string
   /** Set when Gradle couldn't be started at all. */
   readonly error?: string
 }
@@ -61,7 +63,7 @@ export const findWrapper = (dir: string) =>
     return Option.some(path.join(at, "gradlew"))
   })
 
-export const gradle = (ctx: GateContext, tasks: ReadonlyArray<string>, env: Readonly<Record<string, string>> = {}) =>
+export const gradle = (ctx: GateContext, tasks: ReadonlyArray<string>, env: Readonly<Record<string, string>> = {}, options: { readonly warnings?: boolean } = {}) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -79,11 +81,12 @@ export const gradle = (ctx: GateContext, tasks: ReadonlyArray<string>, env: Read
     const jvmargs = `${buildJvmArgs(properties._tag === "Some" ? properties.value : undefined)} ${daemonMarker(checkRoot(ctx, path.dirname))}`
     const args = [
       "--daemon", `-Dorg.gradle.jvmargs=${jvmargs}`, `-Dorg.gradle.daemon.idletimeout=${IDLE_MS}`,
-      "--no-build-cache", "--no-configuration-cache", "--no-watch-fs", "--console=plain", "-q", "--init-script", script, ...tasks,
+      // Quiet hides compiler warnings; a compile whose warnings are read runs at warning level.
+      "--no-build-cache", "--no-configuration-cache", "--no-watch-fs", "--console=plain", options.warnings ? "--warn" : "-q", "--init-script", script, ...tasks,
     ]
     const result = yield* Effect.exit(runner.run({ command: "sh", args: [own ? "./gradlew" : found.value, ...args], cwd: ctx.dir, env: { GAUNTLET_OUT: ctx.outputDir, ...env } }))
     if (result._tag === "Failure") return { command, exitCode: -1, stderr: "", error: "Gradle couldn't be started or timed out" } satisfies GradleRun
-    return { command, exitCode: result.value.exitCode, stderr: result.value.stderr } satisfies GradleRun
+    return { command, exitCode: result.value.exitCode, stderr: result.value.stderr, ...(options.warnings ? { stdout: result.value.stdout } : {}) } satisfies GradleRun
   })
 
 /** A daemon left behind (a crash before `stopDaemon`) exits on its own after this long idle. */
