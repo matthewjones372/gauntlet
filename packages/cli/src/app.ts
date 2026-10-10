@@ -1,6 +1,6 @@
 import {
   agentSummary, BASELINE_PATH, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
-  ProcessRunner, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, runnerConfigFor, Teams,
+  ProcessRunner, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
@@ -1396,6 +1396,7 @@ const connect = Command.make("connect").pipe(Command.withDescription("Connect Ga
 const decodeReport = Schema.decodeUnknownOption(Schema.fromJsonString(Report))
 const decodeReviews = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Review)))
 const decodeComments = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(PrComment)))
+const decodeStack = Schema.decodeUnknownOption(Schema.fromJsonString(StackInfo))
 const decodeTeams = Schema.decodeUnknownOption(Schema.fromJsonString(Teams))
 
 const githubStatusCommand = Command.make("github-status", {
@@ -1406,6 +1407,7 @@ const githubStatusCommand = Command.make("github-status", {
   reviews: Flag.String("reviews").pipe(Flag.withDescription("the PR's reviews as [{user, state, commitId}]")),
   teams: Flag.optional(Flag.String("teams").pipe(Flag.withDescription("owner team members as {\"@org/team\": [logins]}"))),
   comments: Flag.optional(Flag.String("comments").pipe(Flag.withDescription("the PR's comments as [{user, body}], for owners' `/gauntlet approve <commit>`"))),
+  stack: Flag.optional(Flag.String("stack").pipe(Flag.withDescription("where the PR sits in a stack: {below: [numbers], above: [{number, head, contains, comments}]}"))),
   out: Flag.String("out"),
   record: Flag.Boolean("record").pipe(Flag.withDefault(false), Flag.withDescription("append the shadow record (git note)")),
   protectOnly: Flag.Boolean("protect-only").pipe(Flag.withDefault(false), Flag.withDescription("judge as check --protect-only")),
@@ -1428,7 +1430,8 @@ const githubStatusCommand = Command.make("github-status", {
     const teams = Option.isSome(args.teams) ? Option.getOrElse(Option.flatMap(yield* read(args.teams.value), decodeTeams), () => ({})) : {}
     const overrides = yield* (yield* Overrides).forHead(root, head)
     const comments = Option.isSome(args.comments) ? Option.getOrElse(Option.flatMap(yield* read(args.comments.value), decodeComments), () => []) : []
-    const status = githubStatus(report, reviews, teams, overrides, comments)
+    const stack = Option.isSome(args.stack) ? Option.getOrUndefined(Option.flatMap(yield* read(args.stack.value), decodeStack)) : undefined
+    const status = githubStatus(report, reviews, teams, overrides, comments, stack)
     yield* fs.writeFileString(path.resolve(root, args.out, "status.json"), `${JSON.stringify(status, null, 2)}\n`)
     // The report posted on the pull request says who approved, under its first line, and shows its box ticked.
     if (status.conclusion === "success" && status.approvedBy.length > 0) {
@@ -1439,6 +1442,29 @@ const githubStatusCommand = Command.make("github-status", {
         const who = `approved by ${status.approvedBy.join(", ")}`
         const ticked = rest.map((l) => (l.startsWith(`- [ ] ${APPROVE_BOX}`) ? `- [x] ${APPROVE_BOX}: ${who} (commit \`${head.slice(0, 12)}\`)` : l))
         yield* fs.writeFileString(md, [first, "", `**${status.title}** for commit \`${head.slice(0, 12)}\`.`, ...ticked].join("\n"))
+      }
+    }
+    // A pull request with others under it in a stack: its box approves them all, so it says so above the box.
+    if (stack !== undefined && stack.below.length > 0 && status.conclusion !== "success") {
+      const md = path.resolve(root, args.out, "gauntlet-report.md")
+      const text = yield* fs.readFileString(md).pipe(Effect.option)
+      if (Option.isSome(text)) {
+        const lines = text.value.split("\n")
+        const at = lines.findIndex((l) => l.includes(": tick the box to approve this commit") || l.startsWith(`- [ ] ${APPROVE_BOX}`))
+        if (at >= 0) {
+          const under = stack.below.map((n) => `#${n}`)
+          lines.splice(at, 0, "> [!WARNING]", `> This pull request is the top of a stack: ${under.join(", ")} ${under.length === 1 ? "is" : "are"} under it. Ticking the box approves ${under.length === 1 ? "that one" : "all of them"} too, with all of their changes, so review ${under.length === 1 ? "it" : "them"} first. Merge the stack bottom first with merge commits (\`gh pr merge --merge\`): a squash or a rebase gives the pull requests above new commits, and they'd need approving again.`, "")
+          yield* fs.writeFileString(md, lines.join("\n"))
+        }
+      }
+    }
+    // A pull request approved through the top of its stack says so.
+    if (status.conclusion === "success" && status.approvedVia !== undefined) {
+      const md = path.resolve(root, args.out, "gauntlet-report.md")
+      const text = yield* fs.readFileString(md).pipe(Effect.option)
+      if (Option.isSome(text)) {
+        const [first, ...rest] = text.value.split("\n")
+        yield* fs.writeFileString(md, [first, "", `Approved with its stack: the box was ticked on ${status.approvedVia.map((n) => `#${n}`).join(", ")}, whose commit contains this one.`, ...rest].join("\n"))
       }
     }
     // A tick from someone who isn't an owner: the report posted again has the box unticked, and says why.

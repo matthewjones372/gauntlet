@@ -105,7 +105,10 @@ review it as stacked pull requests: one per part with its tests, each on top
 of the one before, lowest layer first by the policy's `arch` rules, with
 Gauntlet's own settings in a pull request of their own. Parts under 30 lines
 join the next one. The agent offers to split the change and only does it if
-you agree. Set the size with:
+you agree. Ticking the box on the top pull request of a stack approves every
+pull request under it whose commit it contains, and its report warns of that
+above the box; merge the stack bottom first with merge commits, as a squash
+gives the pull requests above new commits to approve again. Set the size with:
 
 ```
 split when diff > 600 lines
