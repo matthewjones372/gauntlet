@@ -28,15 +28,16 @@ private fun <A> Outcome<MoneyError, A>.arithmetic(): Outcome<TransferError, A> =
     mapError { TransferError.Arithmetic(it) }
 
 /** Moves money between two accounts, returning the new ledger or why it can't. */
-fun transfer(ledger: Ledger, from: String, to: String, amount: Money): Outcome<TransferError, Ledger> =
-    when {
-        !amount.isPositive() -> Outcome.Failure(TransferError.NotPositive)
-        from == to -> Outcome.Failure(TransferError.SameAccount)
-        else ->
-            debit(ledger, from, amount).flatMap { left ->
-                credit(ledger, to, amount).map { right -> ledger.with(from, left).with(to, right) }
-            }
-    }
+fun transfer(ledger: Ledger, from: String, to: String, amount: Money): Outcome<TransferError, Ledger> = when {
+    !amount.isPositive() -> Outcome.Failure(TransferError.NotPositive)
+
+    from == to -> Outcome.Failure(TransferError.SameAccount)
+
+    else ->
+        debit(ledger, from, amount).flatMap { left ->
+            credit(ledger, to, amount).map { right -> ledger.with(from, left).with(to, right) }
+        }
+}
 
 private fun debit(ledger: Ledger, account: String, amount: Money): Outcome<TransferError, Money> {
     val balance = ledger.balance(account, amount)

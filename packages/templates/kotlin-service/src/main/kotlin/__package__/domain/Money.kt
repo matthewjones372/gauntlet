@@ -19,12 +19,11 @@ sealed interface MoneyError {
 
 /** An amount in minor units (cents), so money never goes through floating point. */
 data class Money(val minor: Long, val currency: Currency) {
-    operator fun plus(other: Money): Outcome<MoneyError, Money> =
-        when {
-            currency != other.currency -> Outcome.Failure(MoneyError.CurrencyMismatch(currency, other.currency))
-            overflows(minor, other.minor) -> Outcome.Failure(MoneyError.Overflow)
-            else -> Outcome.Success(Money(minor + other.minor, currency))
-        }
+    operator fun plus(other: Money): Outcome<MoneyError, Money> = when {
+        currency != other.currency -> Outcome.Failure(MoneyError.CurrencyMismatch(currency, other.currency))
+        overflows(minor, other.minor) -> Outcome.Failure(MoneyError.Overflow)
+        else -> Outcome.Success(Money(minor + other.minor, currency))
+    }
 
     operator fun unaryMinus(): Outcome<MoneyError, Money> =
         if (minor == Long.MIN_VALUE) Outcome.Failure(MoneyError.Overflow) else Outcome.Success(Money(-minor, currency))
