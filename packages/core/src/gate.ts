@@ -56,6 +56,12 @@ export interface GateRun {
    * instead of reporting a made-up metric.
    */
   readonly nothingInScope?: string
+  /**
+   * Set with `error` when the tool isn't set up at all (a linter's plugin
+   * missing). With several builds, a build without it is left out as long as
+   * another build has it; with one build, or none that has it, it's an error.
+   */
+  readonly notSetUp?: true
 }
 
 type GateServices = ProcessRunner | FileSystem.FileSystem | Path.Path
