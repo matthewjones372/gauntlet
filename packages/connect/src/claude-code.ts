@@ -15,10 +15,19 @@ export interface HookSpec {
   readonly toolMatcher?: string
 }
 
+/** How a teammate who hasn't installed Gauntlet yet gets it. */
+export const INSTALL_COMMAND = "curl -fsSL https://raw.githubusercontent.com/matthewjones372/gauntlet/main/install.sh | sh"
+
+// The settings are committed, so a teammate's Claude Code runs these hooks before they may have installed
+// Gauntlet. Without it, the check says so (once, when Claude finishes) instead of failing unseen; the
+// pre-tool hook stays quiet rather than repeat it on every edit.
 export const HOOKS: ReadonlyArray<HookSpec> = [
-  { event: "stop", command: "gauntlet hook stop" },
+  {
+    event: "stop",
+    command: `if command -v gauntlet >/dev/null 2>&1; then exec gauntlet hook stop; fi; echo "Gauntlet isn't installed on this machine, so this work wasn't checked. Install it with: ${INSTALL_COMMAND}" >&2; exit 1`,
+  },
   // Bash too: a push to the default branch is refused, so changes go through a pull request.
-  { event: "before-write", command: "gauntlet hook pre-tool-use", toolMatcher: "Edit|Write|MultiEdit|NotebookEdit|Bash" },
+  { event: "before-write", command: "command -v gauntlet >/dev/null 2>&1 || exit 0; exec gauntlet hook pre-tool-use", toolMatcher: "Edit|Write|MultiEdit|NotebookEdit|Bash" },
 ]
 
 const WRITE_TOOLS = ["Edit", "Write", "MultiEdit", "NotebookEdit"] as const

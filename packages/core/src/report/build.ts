@@ -3,6 +3,7 @@ import type { MetricDelta, Proof, Result, TestCounts } from "@gauntlet/sarif"
 import type { DiffFacts } from "../diff-facts.ts"
 import type { IntegrityResult } from "../integrity.ts"
 import type { Drift } from "../policy-source.ts"
+import { suggestStack } from "../stack.ts"
 import type { CheckOutcome, Decision, NewViolation } from "../review.ts"
 import { REPORT_SCHEMA_VERSION, type Report, type ReportAgent } from "./schema.ts"
 
@@ -95,6 +96,7 @@ export const buildReport = (input: ReportInput): Report => {
 
   const failed = new Set(input.checks.filter((c) => c.status === "failed").map((c) => c.check))
   const remediation = ir.remediation.filter((r) => failed.has(r.gate)).map((r) => ({ check: r.gate, fix: r.fix })).sort(by((r) => r.check))
+  const stack = input.scope === "protect-only" ? undefined : suggestStack(ir, facts)
 
   return {
     schemaVersion: REPORT_SCHEMA_VERSION,
@@ -141,6 +143,7 @@ export const buildReport = (input: ReportInput): Report => {
     })),
     notExecuted,
     remediation,
+    ...(stack ? { stack: { lines: stack.lines, steps: stack.steps.map((st) => ({ title: st.title, files: [...st.files], lines: st.lines, needsOwner: st.needsOwner })) } } : {}),
     decision: {
       ...opt("scope", input.scope),
       tier: decision.tier,

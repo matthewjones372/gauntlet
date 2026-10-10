@@ -155,6 +155,11 @@ export const Report = Schema.Struct({
   imports: Schema.Array(ReportImport),
   notExecuted: Schema.Array(ReportNotExecuted),
   remediation: Schema.Array(Schema.Struct({ check: Schema.String, fix: Schema.String })),
+  /** For a big change over several parts: stacked pull requests to split it into, in review order. A suggestion only. */
+  stack: Schema.optionalKey(Schema.Struct({
+    lines: Schema.Number,
+    steps: Schema.Array(Schema.Struct({ title: Schema.String, files: Schema.Array(Schema.String), lines: Schema.Number, needsOwner: Schema.Boolean })),
+  })),
   decision: ReportDecision,
 })
 export type Report = typeof Report.Type

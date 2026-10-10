@@ -16,6 +16,8 @@ export interface AgentSummary {
   readonly head: string
   /** Suggestions that never affect the decision, such as a new area that may need a zone. */
   readonly suggestions: ReadonlyArray<string>
+  /** For a big change over several parts: the stacked pull requests to offer, in review order. */
+  readonly stack?: ReadonlyArray<{ readonly title: string; readonly files: ReadonlyArray<string>; readonly lines: number }>
   readonly report: string
 }
 
@@ -29,14 +31,24 @@ export const agentSummary = (report: Report, reportDir: string): AgentSummary =>
   zones: report.facts.zonesTouched,
   head: report.policy.headSha,
   suggestions: report.policy.notes.filter((n) => n.includes("/gauntlet-setup")),
+  ...(report.stack ? { stack: report.stack.steps.map((s) => ({ title: s.title, files: s.files, lines: s.lines })) } : {}),
   report: `${reportDir}/gauntlet-report.md`,
 })
 
 export const NOT_THE_CHECK = "Fix the cause, not the check. If it can't be done without changing protected tests or policy, call the report_blocked tool (or run `gauntlet report blocked --reason \"...\"`) and stop."
 
 /** Passed on to the person rather than acted on: the agent can't change the policy. */
-const suggestionLines = (s: AgentSummary) =>
-  s.suggestions.length > 0 ? ["Tell the person (don't change the policy yourself):", ...s.suggestions.map((x) => `- ${x}`)] : []
+const suggestionLines = (s: AgentSummary) => [
+  ...(s.suggestions.length > 0 ? ["Tell the person (don't change the policy yourself):", ...s.suggestions.map((x) => `- ${x}`)] : []),
+  // Offered, never done unasked: splitting rewrites the person's branch.
+  ...(s.stack && s.stack.length > 1
+    ? [
+      `This change is big. Offer the person to split it into ${s.stack.length} stacked pull requests, each on top of the one before, and only do it if they agree:`,
+      ...s.stack.map((p, i) => `${i + 1}. ${p.title} (${p.lines} lines): ${p.files.slice(0, 5).join(", ")}${p.files.length > 5 ? ` and ${p.files.length - 5} more` : ""}`),
+      "If they agree: make one branch per part, in this order, each starting from the one before (the first from the default branch), with only that part's files changed, so every branch builds and passes on its own. Push them and open one pull request per branch, each based on the branch before, and say in each which part of the stack it is. Keep the original branch until the stack is open, and tell the person when it is.",
+    ]
+    : []),
+]
 
 export const renderAgentSummary = (s: AgentSummary): string =>
   s.wouldBlock

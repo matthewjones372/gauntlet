@@ -1,5 +1,5 @@
 .gauntlet/policy.gx:6:1  error[unmatched-brace]  This '}' has no matching '{'.
   6 | }
     | ^
-  expected: a top-level block: use, mode, owners, protect, zone, arch, suites, integrity, import, budget, gates, on fail, predicate, review, stack, quarantine
+  expected: a top-level block: use, mode, owners, protect, zone, arch, suites, integrity, import, budget, gates, on fail, predicate, review, stack, quarantine, split
   fix: Remove this '}'.
