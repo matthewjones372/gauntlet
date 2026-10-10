@@ -217,6 +217,8 @@ every pull request gets a `gauntlet` check with a plain-English summary. A
 change that touches `payments` says so in colour, lists what needs a look,
 and waits for @maria to tick **Approve this change** in the report.
 
+<p align="center"><img src="assets/screenshots/pr-report.png" width="720" alt="Gauntlet's report on a pull request: a warning that the change needs careful review by @maria because it touches the payments zone, the file as a link, and the Approve this change box."></p>
+
 ### Joining a project that uses Gauntlet
 
 Setup commits everything (the policy, Claude Code's hooks and Gauntlet's MCP
