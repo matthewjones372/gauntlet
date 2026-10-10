@@ -8,7 +8,7 @@ owners {{owner}}
 protect {
   tests    "src/test/**"
   fixtures "src/test/resources/**"
-  config   "*.gradle.kts", "gradle/**", "gradle.properties", ".github/workflows/**"
+  config   "*.gradle.kts", "gradle/**", "gradle.properties", "config/**", ".github/workflows/**"
 }
 
 // A functional core: errors are values, nothing is mutable, money is never

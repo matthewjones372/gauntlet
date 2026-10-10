@@ -13,11 +13,10 @@ class TransfersTest {
     private val usd = Currency.of("USD")!!
     private val funded = InMemoryLedger().with("alice", Money(500, eur))
 
-    private fun balances(result: Outcome<TransferError, Ledger>, vararg accounts: String): List<Long> =
-        when (result) {
-            is Outcome.Success -> accounts.map { result.value.balance(it, Money.zero(eur)).minor }
-            is Outcome.Failure -> emptyList()
-        }
+    private fun balances(result: Outcome<TransferError, Ledger>, vararg accounts: String): List<Long> = when (result) {
+        is Outcome.Success -> accounts.map { result.value.balance(it, Money.zero(eur)).minor }
+        is Outcome.Failure -> emptyList()
+    }
 
     @Test
     fun movesMoneyBetweenAccounts() {

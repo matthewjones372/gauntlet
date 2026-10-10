@@ -1,0 +1,5 @@
+# This project's changes to detekt's recommended rules (buildUponDefaultConfig).
+naming:
+  PackageNaming:
+    # The default allows letters only in a package's first part; a project named `service2` or `3d-render` gets a digit there.
+    packagePattern: '[a-z][a-z0-9]*(\.[a-z][A-Za-z0-9]*)*'

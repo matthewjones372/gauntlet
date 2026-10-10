@@ -13,8 +13,11 @@ kotlin {
     compilerOptions { allWarningsAsErrors.set(true) }
 }
 
-// detekt's recommended rules, with this project's overrides in config/detekt.yml when there are any.
-detekt { buildUponDefaultConfig = true }
+// detekt's recommended rules, with this project's changes in config/detekt.yml.
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom("config/detekt.yml")
+}
 
 dependencies {
     testImplementation(kotlin("test"))
@@ -22,6 +25,8 @@ dependencies {
     testImplementation("io.kotest:kotest-property:6.2.5")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    // ktlint's formatting rules, as detekt findings: `./gradlew detekt --auto-correct` fixes them.
+    detektPlugins("dev.detekt:detekt-rules-ktlint-wrapper:2.0.0-alpha.6")
 }
 
 tasks.withType<Test> { useJUnitPlatform() }
