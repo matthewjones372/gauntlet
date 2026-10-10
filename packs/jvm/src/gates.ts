@@ -107,7 +107,9 @@ export const lint: GateImpl = (_check, ctx) =>
     if (r.error) return base(r)
     const sarif = yield* reports(ctx, (p) => p.startsWith("detekt/") && p.endsWith(".sarif"))
     if (sarif.length === 0) {
-      return { ...base(r), error: taskMissing(r.stderr, "detekt") ? "detekt isn't applied; add the dev.detekt Gradle plugin" : "detekt wrote no report" }
+      return taskMissing(r.stderr, "detekt")
+        ? { ...base(r), error: "detekt isn't applied; add the dev.detekt Gradle plugin", notSetUp: true }
+        : { ...base(r), error: "detekt wrote no report" }
     }
     const runs: Run[] = []
     for (const f of sarif) {

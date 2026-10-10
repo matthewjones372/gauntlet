@@ -100,7 +100,7 @@ export const lint: GateImpl = (_check, ctx) =>
     const path = yield* Path.Path
     const r = yield* sbt(ctx, ["scalafixAll --check"])
     if (r.error) return base(r)
-    if (notAvailable(r, "scalafixAll")) return { ...base(r), error: "scalafix isn't applied; add the ch.epfl.scala sbt-scalafix plugin and a .scalafix.conf" }
+    if (notAvailable(r, "scalafixAll")) return { ...base(r), error: "scalafix isn't applied; add the ch.epfl.scala sbt-scalafix plugin and a .scalafix.conf", notSetUp: true }
     const output = `${r.stdout}\n${r.stderr}`
     // A failed check is the linter's findings; any other failure means it couldn't check the code.
     if (r.exitCode !== 0 && !/LinterError|ScalafixFailed/.test(output)) return { ...base(r), error: `scalafix couldn't check the code: ${lastError(r)}` }
