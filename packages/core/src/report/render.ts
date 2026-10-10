@@ -1,4 +1,4 @@
-import { prettyCanonicalJson, type SourceRef } from "@gauntlet/ir"
+import { prettyCanonicalJson, sha256, type SourceRef } from "@gauntlet/ir"
 import { type Log, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Schema } from "effect"
 import { MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT } from "../mutation-explained.ts"
@@ -54,15 +54,27 @@ const COMMENT_ONLY = "the change only edits comments or documentation"
 export interface RenderOptions {
   /** The repository's web address, such as https://github.com/acme/shop. */
   readonly repoUrl?: string
+  /** The pull request being judged, so files link to their change in it. */
+  readonly pullRequest?: number
 }
 
 type Link = (path: string, line?: number) => string
 
 /** Files as links to the commit being judged (a deleted one, to the base), or as plain paths. */
+/**
+ * Files as links: on a pull request, to the file's change in its "Files
+ * changed" tab (GitHub anchors a file at #diff-<sha256 of its path>, a line at
+ * R<n>, or L<n> on a deleted file's side); otherwise to the file at the commit
+ * judged (a deleted one, at the base); without a repository, plain paths.
+ */
 const linker = (r: Report, opts: RenderOptions): Link => (path, line) => {
   const text = code(`${path}${line ? `:${line}` : ""}`)
   if (!opts.repoUrl) return text
   const deleted = r.facts.files.some((f) => f.path === path && f.status === "deleted")
+  if (opts.pullRequest !== undefined) {
+    const changed = r.facts.files.some((f) => f.path === path)
+    if (changed) return `[${text}](${opts.repoUrl}/pull/${opts.pullRequest}/files#diff-${sha256(path)}${line ? `${deleted ? "L" : "R"}${line}` : ""})`
+  }
   return `[${text}](${opts.repoUrl}/blob/${deleted ? r.policy.baseSha : r.policy.headSha}/${path}${line ? `#L${line}` : ""})`
 }
 
@@ -191,6 +203,10 @@ export const APPROVE_BOX = "**Approve this change**"
 export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
   const link = linker(r, opts)
   const d = r.decision
+  // A review or owner tier waits for an approval on GitHub: the owners tick the box.
+  const approvable = d.scope !== "protect-only" && d.mode === "enforce" && !d.blocking && (d.tier === "review" || d.tier === "owner")
+  const boxOwners = [...new Set([...d.owners, ...r.policy.owners])]
+  const approvers = boxOwners.length > 0 ? boxOwners.join(" or ") : "An owner"
   const verdict = d.blocking ? "blocks this change" : d.wouldBlock ? "would block this change in enforce mode" : "doesn't block"
   const lines: string[] = d.scope === "protect-only"
     ? [
@@ -205,6 +221,8 @@ export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
       `## Gauntlet: ${d.tier}`,
       "",
       ...plainSummary(r, opts),
+      // The box sits right under the summary, where the owner is already reading, not halfway down.
+      ...(approvable ? [`${approvers}: tick the box to approve this commit, and the \`gauntlet\` check turns green.`, "", `- [ ] ${APPROVE_BOX} (commit \`${r.policy.headSha.slice(0, 12)}\`)`, ""] : []),
       `**Tier ${d.tier}.** Gauntlet ${verdict}. Mode ${d.mode}${r.policy.firstAdoption ? " (first adoption)" : ""}.`,
       "",
     ]
@@ -231,23 +249,18 @@ export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
       "",
       `This change is big (${plural(r.stack.lines, "line")}) and spans ${r.stack.steps.length} parts of the repository. It would be easier to review as ${r.stack.steps.length} pull requests, each on top of the one before:`,
       "",
-      ...r.stack.steps.map((s, i) => `${i + 1}. **${s.title}** (${plural(s.files.length, "file")}, ${plural(s.lines, "line")})${s.needsOwner ? ", for an owner" : ""}: ${s.files.slice(0, 3).map(code).join(", ")}${s.files.length > 3 ? ` and ${s.files.length - 3} more` : ""}`),
+      ...r.stack.steps.map((s, i) => `${i + 1}. **${s.title}** (${plural(s.files.length, "file")}, ${plural(s.lines, "line")})${s.needsOwner ? ", for an owner" : ""}: ${s.files.slice(0, 3).map((f) => link(f)).join(", ")}${s.files.length > 3 ? ` and ${s.files.length - 3} more` : ""}`),
       "",
     )
   }
 
-  // A review or owner tier waits for an approval on GitHub; say exactly how to give it.
-  if (d.scope !== "protect-only" && d.mode === "enforce" && !d.blocking && (d.tier === "review" || d.tier === "owner")) {
-    const owners = [...new Set([...d.owners, ...r.policy.owners])]
-    const who = d.tier === "owner" ? (owners.length > 0 ? `An owner (${owners.join(", ")})` : "An owner") : "A reviewer"
+
+  // The other ways to approve, for whoever can't or won't tick the box above.
+  if (approvable) {
     lines.push(
       "### How to approve",
       "",
-      `${who === "A reviewer" ? "An owner" : who}${owners.length > 0 && who === "A reviewer" ? ` (${owners.join(", ")})` : ""} ticks this box, and the \`gauntlet\` check turns green:`,
-      "",
-      `- [ ] ${APPROVE_BOX} (commit \`${r.policy.headSha.slice(0, 12)}\`)`,
-      "",
-      `Or approve the pull request in Files changed, Review changes, Approve (GitHub doesn't allow that on a pull request you opened, including one an agent opened for you), or comment \`/gauntlet approve ${r.policy.headSha.slice(0, 12)}\`. An approval counts for this commit only: a new push needs a new one.`,
+      `Tick **Approve this change** above, or approve the pull request in Files changed, Review changes, Approve (GitHub doesn't allow that on a pull request you opened, including one an agent opened for you), or comment \`/gauntlet approve ${r.policy.headSha.slice(0, 12)}\`. An approval counts for this commit only: a new push needs a new one.`,
       "",
     )
   }

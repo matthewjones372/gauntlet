@@ -8,3 +8,4 @@ isolateRun(tmpdir(), afterAll)
 // when it sees these, so a test that wants links sets them itself.
 delete process.env.GITHUB_SERVER_URL
 delete process.env.GITHUB_REPOSITORY
+delete process.env.GITHUB_EVENT_PATH

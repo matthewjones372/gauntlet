@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer } from "effect"
-import { mkdtempSync, readFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { plainSummary, renderMarkdown, type Report, Reporter, ReporterLive } from "../src/index.ts"
@@ -21,6 +21,22 @@ describe("the report's files and wording", () => {
     expect(linked).toContain(`[\`src/main/money/Fx.kt\`](${REPO}/blob/${r.policy.headSha}/src/main/money/Fx.kt)`)
     expect(linked).toContain(`It changes [\`build.gradle.kts\`](${REPO}/blob/${r.policy.headSha}/build.gradle.kts), which is protected.`)
     expect(renderMarkdown(r)).not.toContain(REPO)
+  })
+
+  test("on a pull request, a changed file links to its change in Files changed; a line to that line", () => {
+    const r = golden("owner-policy-edit")
+    const changed: Report = {
+      ...r,
+      facts: { ...r.facts, files: [{ path: "src/main/money/Fx.kt", status: "modified", added: 2, removed: 1 }, { path: "src/test/OldTest.kt", status: "deleted", added: 0, removed: 9 }] },
+      decision: { ...r.decision, nominations: [...r.decision.nominations, nomination("integrity-flag", "A new @Disabled skips a test. (src/main/money/Fx.kt:7)"), nomination("protected-changed", "src/test/OldTest.kt is a protected test (tests) the change deletes; it runs as the change has it and needs review.")] },
+    } as Report
+    const text = plainSummary(changed, { repoUrl: REPO, pullRequest: 42 }).join("\n")
+    const anchor = (p: string) => new Bun.CryptoHasher("sha256").update(p).digest("hex")
+    expect(text).toContain(`[\`src/main/money/Fx.kt\`](${REPO}/pull/42/files#diff-${anchor("src/main/money/Fx.kt")})`)
+    expect(text).toContain(`[\`src/main/money/Fx.kt:7\`](${REPO}/pull/42/files#diff-${anchor("src/main/money/Fx.kt")}R7)`)
+    expect(text).toContain(`[\`src/test/OldTest.kt\`](${REPO}/pull/42/files#diff-${anchor("src/test/OldTest.kt")})`)
+    // A file the change doesn't touch has no diff to link to: it links to the file.
+    expect(text).toContain(`[\`build.gradle.kts\`](${REPO}/blob/${r.policy.headSha}/build.gradle.kts)`)
   })
 
   test("a finding links to its line; a deleted file links to the base", () => {
@@ -103,5 +119,31 @@ describe("the report's files and wording", () => {
       else process.env.GITHUB_REPOSITORY = saved.repo
     }
     expect(readFileSync(join(dir, "gauntlet-report.md"), "utf8")).toContain(`(${REPO}/blob/${r.policy.headSha}/src/main/money/Fx.kt)`)
+  })
+
+  test("on GitHub Actions the written report links its files to the pull request's diff", async () => {
+    const g = golden("owner-policy-edit")
+    const r: Report = { ...g, facts: { ...g.facts, files: [{ path: "src/main/money/Fx.kt", status: "modified", added: 2, removed: 1 }] } } as Report
+    const dir = mkdtempSync(join(tmpdir(), "report-"))
+    const saved = { server: process.env.GITHUB_SERVER_URL, repo: process.env.GITHUB_REPOSITORY, event: process.env.GITHUB_EVENT_PATH }
+    process.env.GITHUB_SERVER_URL = "https://github.com"
+    process.env.GITHUB_REPOSITORY = "acme/shop"
+    // A comment on a pull request: the event names it as an issue that is a pull request.
+    writeFileSync(join(dir, "event.json"), JSON.stringify({ issue: { number: 7, pull_request: { url: "x" } } }))
+    process.env.GITHUB_EVENT_PATH = join(dir, "event.json")
+    try {
+      await Effect.runPromise(Reporter.use((rep) => rep.write(dir, r, [], { startedAt: "", finishedAt: "", durationsMs: {} })).pipe(
+        Effect.provide(ReporterLive.pipe(Layer.provide(BunServices.layer))),
+      ))
+    } finally {
+      if (saved.server === undefined) delete process.env.GITHUB_SERVER_URL
+      else process.env.GITHUB_SERVER_URL = saved.server
+      if (saved.repo === undefined) delete process.env.GITHUB_REPOSITORY
+      else process.env.GITHUB_REPOSITORY = saved.repo
+      if (saved.event === undefined) delete process.env.GITHUB_EVENT_PATH
+      else process.env.GITHUB_EVENT_PATH = saved.event
+    }
+    const anchor = new Bun.CryptoHasher("sha256").update("src/main/money/Fx.kt").digest("hex")
+    expect(readFileSync(join(dir, "gauntlet-report.md"), "utf8")).toContain(`(${REPO}/pull/7/files#diff-${anchor})`)
   })
 })
