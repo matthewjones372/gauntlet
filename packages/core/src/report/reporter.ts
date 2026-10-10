@@ -24,12 +24,21 @@ export const ReporterLive = Layer.effect(
     const server = process.env.GITHUB_SERVER_URL
     const repo = process.env.GITHUB_REPOSITORY
     const repoUrl = server && repo ? `${server}/${repo}` : undefined
+    // The pull request, from the event that started the workflow (a pull request, or a comment on one).
+    const pullRequest = yield* fs.readFileString(process.env.GITHUB_EVENT_PATH ?? "").pipe(
+      Effect.flatMap((text) => Effect.try(() => JSON.parse(text) as { pull_request?: { number?: unknown }; issue?: { number?: unknown; pull_request?: unknown } })),
+      Effect.map((event) => {
+        const n = event.pull_request?.number ?? (event.issue?.pull_request !== undefined ? event.issue.number : undefined)
+        return typeof n === "number" ? n : undefined
+      }),
+      Effect.orElseSucceed(() => undefined),
+    )
     return {
       write: (dir, report, evidence, run) =>
         Effect.gen(function*() {
           yield* fs.makeDirectory(dir, { recursive: true })
           yield* fs.writeFileString(path.join(dir, REPORT_FILES.json), renderJson(report))
-          yield* fs.writeFileString(path.join(dir, REPORT_FILES.markdown), renderMarkdown(report, { ...(repoUrl ? { repoUrl } : {}) }))
+          yield* fs.writeFileString(path.join(dir, REPORT_FILES.markdown), renderMarkdown(report, { ...(repoUrl ? { repoUrl } : {}), ...(repoUrl && pullRequest !== undefined ? { pullRequest } : {}) }))
           yield* fs.writeFileString(path.join(dir, REPORT_FILES.evidence), renderEvidence(evidence))
           yield* fs.writeFileString(path.join(dir, REPORT_FILES.run), `${JSON.stringify(Schema.encodeSync(RunRecord)(run), null, 2)}\n`)
         }),

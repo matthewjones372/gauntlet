@@ -1,4 +1,4 @@
-import { prettyCanonicalJson, type SourceRef } from "@gauntlet/ir"
+import { prettyCanonicalJson, sha256, type SourceRef } from "@gauntlet/ir"
 import { type Log, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Schema } from "effect"
 import { MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT } from "../mutation-explained.ts"
@@ -54,15 +54,27 @@ const COMMENT_ONLY = "the change only edits comments or documentation"
 export interface RenderOptions {
   /** The repository's web address, such as https://github.com/acme/shop. */
   readonly repoUrl?: string
+  /** The pull request being judged, so files link to their change in it. */
+  readonly pullRequest?: number
 }
 
 type Link = (path: string, line?: number) => string
 
 /** Files as links to the commit being judged (a deleted one, to the base), or as plain paths. */
+/**
+ * Files as links: on a pull request, to the file's change in its "Files
+ * changed" tab (GitHub anchors a file at #diff-<sha256 of its path>, a line at
+ * R<n>, or L<n> on a deleted file's side); otherwise to the file at the commit
+ * judged (a deleted one, at the base); without a repository, plain paths.
+ */
 const linker = (r: Report, opts: RenderOptions): Link => (path, line) => {
   const text = code(`${path}${line ? `:${line}` : ""}`)
   if (!opts.repoUrl) return text
   const deleted = r.facts.files.some((f) => f.path === path && f.status === "deleted")
+  if (opts.pullRequest !== undefined) {
+    const changed = r.facts.files.some((f) => f.path === path)
+    if (changed) return `[${text}](${opts.repoUrl}/pull/${opts.pullRequest}/files#diff-${sha256(path)}${line ? `${deleted ? "L" : "R"}${line}` : ""})`
+  }
   return `[${text}](${opts.repoUrl}/blob/${deleted ? r.policy.baseSha : r.policy.headSha}/${path}${line ? `#L${line}` : ""})`
 }
 
