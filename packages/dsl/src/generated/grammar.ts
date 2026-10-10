@@ -44,7 +44,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@69"
+                "$ref": "#/rules@71"
               },
               "arguments": []
             }
@@ -146,21 +146,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@32"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "RuleCall",
-            "rule": {
-              "$ref": "#/rules@38"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "RuleCall",
-            "rule": {
-              "$ref": "#/rules@39"
+              "$ref": "#/rules@34"
             },
             "arguments": []
           },
@@ -174,14 +160,28 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@49"
+              "$ref": "#/rules@41"
             },
             "arguments": []
           },
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@50"
+              "$ref": "#/rules@42"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@51"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@52"
             },
             "arguments": []
           },
@@ -219,7 +219,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@44"
+                "$ref": "#/rules@46"
               },
               "arguments": []
             }
@@ -294,7 +294,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -313,7 +313,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@69"
+                    "$ref": "#/rules@71"
                   },
                   "arguments": []
                 }
@@ -333,7 +333,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                     "terminal": {
                       "$type": "RuleCall",
                       "rule": {
-                        "$ref": "#/rules@69"
+                        "$ref": "#/rules@71"
                       },
                       "arguments": []
                     }
@@ -367,7 +367,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -395,7 +395,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@67"
+                "$ref": "#/rules@69"
               },
               "arguments": []
             }
@@ -415,7 +415,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@67"
+                    "$ref": "#/rules@69"
                   },
                   "arguments": []
                 }
@@ -452,7 +452,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                     "terminal": {
                       "$type": "RuleCall",
                       "rule": {
-                        "$ref": "#/rules@69"
+                        "$ref": "#/rules@71"
                       },
                       "arguments": []
                     }
@@ -472,7 +472,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                         "terminal": {
                           "$type": "RuleCall",
                           "rule": {
-                            "$ref": "#/rules@69"
+                            "$ref": "#/rules@71"
                           },
                           "arguments": []
                         }
@@ -529,7 +529,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -541,7 +541,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@69"
+                "$ref": "#/rules@71"
               },
               "arguments": []
             }
@@ -561,7 +561,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@69"
+                    "$ref": "#/rules@71"
                   },
                   "arguments": []
                 }
@@ -592,7 +592,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -674,7 +674,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@69"
+                "$ref": "#/rules@71"
               },
               "arguments": []
             }
@@ -694,7 +694,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@69"
+                    "$ref": "#/rules@71"
                   },
                   "arguments": []
                 }
@@ -725,7 +725,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@67"
+                "$ref": "#/rules@69"
               },
               "arguments": []
             }
@@ -745,7 +745,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@67"
+                    "$ref": "#/rules@69"
                   },
                   "arguments": []
                 }
@@ -776,7 +776,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@61"
+                "$ref": "#/rules@63"
               },
               "arguments": []
             }
@@ -796,7 +796,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@61"
+                    "$ref": "#/rules@63"
                   },
                   "arguments": []
                 }
@@ -864,7 +864,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -892,7 +892,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -911,7 +911,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@62"
+                    "$ref": "#/rules@64"
                   },
                   "arguments": []
                 }
@@ -996,7 +996,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@69"
+                "$ref": "#/rules@71"
               },
               "arguments": []
             }
@@ -1015,7 +1015,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@69"
+                    "$ref": "#/rules@71"
                   },
                   "arguments": []
                 }
@@ -1035,7 +1035,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                     "terminal": {
                       "$type": "RuleCall",
                       "rule": {
-                        "$ref": "#/rules@69"
+                        "$ref": "#/rules@71"
                       },
                       "arguments": []
                     }
@@ -1089,7 +1089,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -1101,7 +1101,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@69"
+                "$ref": "#/rules@71"
               },
               "arguments": []
             }
@@ -1124,7 +1124,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@62"
+                    "$ref": "#/rules@64"
                   },
                   "arguments": []
                 }
@@ -1259,7 +1259,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
         "terminal": {
           "$type": "RuleCall",
           "rule": {
-            "$ref": "#/rules@63"
+            "$ref": "#/rules@65"
           },
           "arguments": []
         },
@@ -1286,7 +1286,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -1361,7 +1361,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@69"
+                "$ref": "#/rules@71"
               },
               "arguments": []
             }
@@ -1420,7 +1420,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -1461,6 +1461,13 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
+              "$ref": "#/rules@30"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
               "$ref": "#/rules@28"
             },
             "arguments": []
@@ -1471,6 +1478,109 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
               "$ref": "#/rules@29"
             },
             "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@31"
+            },
+            "arguments": []
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "BudgetWhen",
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "Keyword",
+            "value": "when"
+          },
+          {
+            "$type": "Alternatives",
+            "elements": [
+              {
+                "$type": "Group",
+                "elements": [
+                  {
+                    "$type": "Keyword",
+                    "value": "zone"
+                  },
+                  {
+                    "$type": "Assignment",
+                    "feature": "zone",
+                    "operator": "=",
+                    "terminal": {
+                      "$type": "RuleCall",
+                      "rule": {
+                        "$ref": "#/rules@64"
+                      },
+                      "arguments": []
+                    }
+                  }
+                ]
+              },
+              {
+                "$type": "Assignment",
+                "feature": "glob",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@71"
+                  },
+                  "arguments": []
+                }
+              }
+            ]
+          },
+          {
+            "$type": "Keyword",
+            "value": "touched"
+          },
+          {
+            "$type": "Keyword",
+            "value": ",",
+            "cardinality": "?"
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "BudgetReads",
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "Keyword",
+            "value": "reads"
+          },
+          {
+            "$type": "Assignment",
+            "feature": "path",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@71"
+              },
+              "arguments": []
+            }
+          },
+          {
+            "$type": "Keyword",
+            "value": ",",
+            "cardinality": "?"
           }
         ]
       },
@@ -1495,7 +1605,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@69"
+                "$ref": "#/rules@71"
               },
               "arguments": []
             }
@@ -1524,7 +1634,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@30"
+                "$ref": "#/rules@32"
               },
               "arguments": []
             }
@@ -1536,7 +1646,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@59"
+                "$ref": "#/rules@61"
               },
               "arguments": []
             }
@@ -1548,7 +1658,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@57"
+                "$ref": "#/rules@59"
               },
               "arguments": []
             }
@@ -1599,7 +1709,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@31"
+                    "$ref": "#/rules@33"
                   },
                   "arguments": []
                 }
@@ -1615,7 +1725,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@61"
+                    "$ref": "#/rules@63"
                   },
                   "arguments": []
                 }
@@ -1633,7 +1743,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@61"
+                "$ref": "#/rules@63"
               },
               "arguments": []
             }
@@ -1654,7 +1764,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@62"
+              "$ref": "#/rules@64"
             },
             "arguments": []
           },
@@ -1689,7 +1799,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@33"
+                "$ref": "#/rules@35"
               },
               "arguments": []
             },
@@ -1718,7 +1828,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -1737,7 +1847,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@34"
+                    "$ref": "#/rules@36"
                   },
                   "arguments": []
                 }
@@ -1757,7 +1867,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                     "terminal": {
                       "$type": "RuleCall",
                       "rule": {
-                        "$ref": "#/rules@34"
+                        "$ref": "#/rules@36"
                       },
                       "arguments": []
                     }
@@ -1787,21 +1897,21 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@35"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "RuleCall",
-            "rule": {
-              "$ref": "#/rules@36"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "RuleCall",
-            "rule": {
               "$ref": "#/rules@37"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@38"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@39"
             },
             "arguments": []
           }
@@ -1828,7 +1938,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -1860,7 +1970,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -1884,7 +1994,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@60"
+                "$ref": "#/rules@62"
               },
               "arguments": []
             }
@@ -1909,7 +2019,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@59"
+                    "$ref": "#/rules@61"
                   },
                   "arguments": []
                 }
@@ -1921,7 +2031,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@57"
+                    "$ref": "#/rules@59"
                   },
                   "arguments": []
                 }
@@ -1943,7 +2053,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@62"
+                    "$ref": "#/rules@64"
                   },
                   "arguments": []
                 }
@@ -1969,7 +2079,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@62"
+                    "$ref": "#/rules@64"
                   },
                   "arguments": []
                 }
@@ -2004,7 +2114,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@60"
+                "$ref": "#/rules@62"
               },
               "arguments": []
             }
@@ -2024,7 +2134,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@69"
+                "$ref": "#/rules@71"
               },
               "arguments": []
             }
@@ -2061,7 +2171,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -2077,7 +2187,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@43"
+                "$ref": "#/rules@45"
               },
               "arguments": []
             }
@@ -2096,7 +2206,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@43"
+                    "$ref": "#/rules@45"
                   },
                   "arguments": []
                 }
@@ -2131,7 +2241,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@41"
+                "$ref": "#/rules@43"
               },
               "arguments": []
             },
@@ -2160,7 +2270,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@42"
+                "$ref": "#/rules@44"
               },
               "arguments": []
             }
@@ -2176,7 +2286,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@43"
+                "$ref": "#/rules@45"
               },
               "arguments": []
             }
@@ -2195,7 +2305,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@43"
+                    "$ref": "#/rules@45"
                   },
                   "arguments": []
                 }
@@ -2260,21 +2370,21 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@44"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "RuleCall",
-            "rule": {
-              "$ref": "#/rules@45"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "RuleCall",
-            "rule": {
               "$ref": "#/rules@46"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@47"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@48"
             },
             "arguments": []
           }
@@ -2301,7 +2411,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@59"
+                "$ref": "#/rules@61"
               },
               "arguments": []
             }
@@ -2313,7 +2423,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@57"
+                "$ref": "#/rules@59"
               },
               "arguments": []
             }
@@ -2357,7 +2467,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@47"
+                "$ref": "#/rules@49"
               },
               "arguments": []
             }
@@ -2369,7 +2479,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@48"
+                "$ref": "#/rules@50"
               },
               "arguments": []
             }
@@ -2390,7 +2500,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
         "terminal": {
           "$type": "RuleCall",
           "rule": {
-            "$ref": "#/rules@62"
+            "$ref": "#/rules@64"
           },
           "arguments": []
         }
@@ -2409,7 +2519,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@68"
+              "$ref": "#/rules@70"
             },
             "arguments": []
           },
@@ -2485,7 +2595,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@52"
+                "$ref": "#/rules@54"
               },
               "arguments": []
             },
@@ -2522,7 +2632,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@51"
+                "$ref": "#/rules@53"
               },
               "arguments": []
             },
@@ -2551,7 +2661,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@69"
+                "$ref": "#/rules@71"
               },
               "arguments": []
             }
@@ -2567,7 +2677,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@65"
+                "$ref": "#/rules@67"
               },
               "arguments": []
             }
@@ -2583,7 +2693,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@67"
+                "$ref": "#/rules@69"
               },
               "arguments": []
             }
@@ -2603,7 +2713,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@67"
+                    "$ref": "#/rules@69"
                   },
                   "arguments": []
                 }
@@ -2631,13 +2741,6 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@53"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "RuleCall",
-            "rule": {
               "$ref": "#/rules@55"
             },
             "arguments": []
@@ -2645,7 +2748,14 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@56"
+              "$ref": "#/rules@57"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@58"
             },
             "arguments": []
           }
@@ -2672,7 +2782,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@62"
+                "$ref": "#/rules@64"
               },
               "arguments": []
             }
@@ -2691,7 +2801,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@54"
+                    "$ref": "#/rules@56"
                   },
                   "arguments": []
                 }
@@ -2711,7 +2821,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                     "terminal": {
                       "$type": "RuleCall",
                       "rule": {
-                        "$ref": "#/rules@54"
+                        "$ref": "#/rules@56"
                       },
                       "arguments": []
                     }
@@ -2745,7 +2855,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@64"
+                "$ref": "#/rules@66"
               },
               "arguments": []
             },
@@ -2765,7 +2875,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@64"
+                    "$ref": "#/rules@66"
                   },
                   "arguments": []
                 },
@@ -2805,7 +2915,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@57"
+                "$ref": "#/rules@59"
               },
               "arguments": []
             }
@@ -2850,7 +2960,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@59"
+                "$ref": "#/rules@61"
               },
               "arguments": []
             }
@@ -2862,7 +2972,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@64"
+                "$ref": "#/rules@66"
               },
               "arguments": []
             }
@@ -2891,7 +3001,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@66"
+                "$ref": "#/rules@68"
               },
               "arguments": []
             }
@@ -2903,7 +3013,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@58"
+                "$ref": "#/rules@60"
               },
               "arguments": []
             },
@@ -2925,7 +3035,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@68"
+              "$ref": "#/rules@70"
             },
             "arguments": []
           },
@@ -2986,7 +3096,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@61"
+              "$ref": "#/rules@63"
             },
             "arguments": []
           },
@@ -3026,7 +3136,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@62"
+              "$ref": "#/rules@64"
             },
             "arguments": []
           },
@@ -3040,7 +3150,7 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
               {
                 "$type": "RuleCall",
                 "rule": {
-                  "$ref": "#/rules@62"
+                  "$ref": "#/rules@64"
                 },
                 "arguments": []
               }
@@ -3063,13 +3173,17 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@68"
+              "$ref": "#/rules@70"
             },
             "arguments": []
           },
           {
             "$type": "Keyword",
             "value": "split"
+          },
+          {
+            "$type": "Keyword",
+            "value": "reads"
           },
           {
             "$type": "Keyword",
@@ -3151,13 +3265,17 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@68"
+              "$ref": "#/rules@70"
             },
             "arguments": []
           },
           {
             "$type": "Keyword",
             "value": "split"
+          },
+          {
+            "$type": "Keyword",
+            "value": "reads"
           },
           {
             "$type": "Keyword",
@@ -3247,13 +3365,17 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@68"
+              "$ref": "#/rules@70"
             },
             "arguments": []
           },
           {
             "$type": "Keyword",
             "value": "split"
+          },
+          {
+            "$type": "Keyword",
+            "value": "reads"
           },
           {
             "$type": "Keyword",

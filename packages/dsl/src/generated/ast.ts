@@ -79,6 +79,7 @@ export type GauntletKeywordNames =
     | "quarantine"
     | "raise"
     | "ratchet"
+    | "reads"
     | "require"
     | "review"
     | "rule"
@@ -192,7 +193,7 @@ export function isBudgetCommand(item: unknown): item is BudgetCommand {
     return reflection.isInstance(item, BudgetCommand.$type);
 }
 
-export type BudgetItem = BudgetCommand | Threshold;
+export type BudgetItem = BudgetCommand | BudgetReads | BudgetWhen | Threshold;
 
 export const BudgetItem = {
     $type: 'BudgetItem'
@@ -200,6 +201,38 @@ export const BudgetItem = {
 
 export function isBudgetItem(item: unknown): item is BudgetItem {
     return reflection.isInstance(item, BudgetItem.$type);
+}
+
+export interface BudgetReads extends langium.AstNode {
+    readonly $container: Budget;
+    readonly $type: 'BudgetReads';
+    path: string;
+}
+
+export const BudgetReads = {
+    $type: 'BudgetReads',
+    path: 'path'
+} as const;
+
+export function isBudgetReads(item: unknown): item is BudgetReads {
+    return reflection.isInstance(item, BudgetReads.$type);
+}
+
+export interface BudgetWhen extends langium.AstNode {
+    readonly $container: Budget;
+    readonly $type: 'BudgetWhen';
+    glob?: string;
+    zone?: Name;
+}
+
+export const BudgetWhen = {
+    $type: 'BudgetWhen',
+    glob: 'glob',
+    zone: 'zone'
+} as const;
+
+export function isBudgetWhen(item: unknown): item is BudgetWhen {
+    return reflection.isInstance(item, BudgetWhen.$type);
 }
 
 export type Check = BudgetCheck | LlmReviewCheck | MetricCheck;
@@ -427,10 +460,10 @@ export function isIntegrityPhrase(item: unknown): item is IntegrityPhrase {
     return reflection.isInstance(item, IntegrityPhrase.$type);
 }
 
-export type IntegrityWord = 'added' | 'all' | 'baseline' | 'changed' | 'diff' | 'env' | 'fail' | 'fix' | 'from' | 'in' | 'missing' | 'module' | 'no' | 'not' | 'on' | 'only' | 'pass' | 'split' | 'touched' | string;
+export type IntegrityWord = 'added' | 'all' | 'baseline' | 'changed' | 'diff' | 'env' | 'fail' | 'fix' | 'from' | 'in' | 'missing' | 'module' | 'no' | 'not' | 'on' | 'only' | 'pass' | 'reads' | 'split' | 'touched' | string;
 
 export function isIntegrityWord(item: unknown): item is IntegrityWord {
-    return item === 'split' || item === 'in' || item === 'on' || item === 'not' || item === 'env' || item === 'from' || item === 'only' || item === 'module' || item === 'baseline' || item === 'diff' || item === 'fail' || item === 'fix' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'split' || item === 'reads' || item === 'in' || item === 'on' || item === 'not' || item === 'env' || item === 'from' || item === 'only' || item === 'module' || item === 'baseline' || item === 'diff' || item === 'fail' || item === 'fix' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface LayerProp extends langium.AstNode {
@@ -450,10 +483,10 @@ export function isLayerProp(item: unknown): item is LayerProp {
     return reflection.isInstance(item, LayerProp.$type);
 }
 
-export type LayerWord = 'added' | 'all' | 'arch' | 'auto' | 'baseline' | 'budget' | 'caution' | 'changed' | 'ci' | 'cumulative' | 'depend' | 'diff' | 'env' | 'fail' | 'fix' | 'flag' | 'forbid' | 'from' | 'gates' | 'in' | 'integrity' | 'layer' | 'llm' | 'max' | 'missing' | 'module' | 'must' | 'no' | 'not' | 'on' | 'only' | 'owner' | 'pass' | 'paths' | 'protect' | 'ratchet' | 'review' | 'rule' | 'skim' | 'split' | 'stack' | 'suites' | 'touched' | 'vs' | 'zone' | string;
+export type LayerWord = 'added' | 'all' | 'arch' | 'auto' | 'baseline' | 'budget' | 'caution' | 'changed' | 'ci' | 'cumulative' | 'depend' | 'diff' | 'env' | 'fail' | 'fix' | 'flag' | 'forbid' | 'from' | 'gates' | 'in' | 'integrity' | 'layer' | 'llm' | 'max' | 'missing' | 'module' | 'must' | 'no' | 'not' | 'on' | 'only' | 'owner' | 'pass' | 'paths' | 'protect' | 'ratchet' | 'reads' | 'review' | 'rule' | 'skim' | 'split' | 'stack' | 'suites' | 'touched' | 'vs' | 'zone' | string;
 
 export function isLayerWord(item: unknown): item is LayerWord {
-    return item === 'split' || item === 'zone' || item === 'budget' || item === 'gates' || item === 'paths' || item === 'rule' || item === 'module' || item === 'must' || item === 'not' || item === 'depend' || item === 'on' || item === 'from' || item === 'env' || item === 'vs' || item === 'baseline' || item === 'ratchet' || item === 'in' || item === 'layer' || item === 'max' || item === 'diff' || item === 'cumulative' || item === 'ci' || item === 'only' || item === 'caution' || item === 'fix' || item === 'fail' || item === 'flag' || item === 'forbid' || item === 'review' || item === 'owner' || item === 'skim' || item === 'auto' || item === 'llm' || item === 'protect' || item === 'suites' || item === 'integrity' || item === 'arch' || item === 'stack' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'split' || item === 'reads' || item === 'zone' || item === 'budget' || item === 'gates' || item === 'paths' || item === 'rule' || item === 'module' || item === 'must' || item === 'not' || item === 'depend' || item === 'on' || item === 'from' || item === 'env' || item === 'vs' || item === 'baseline' || item === 'ratchet' || item === 'in' || item === 'layer' || item === 'max' || item === 'diff' || item === 'cumulative' || item === 'ci' || item === 'only' || item === 'caution' || item === 'fix' || item === 'fail' || item === 'flag' || item === 'forbid' || item === 'review' || item === 'owner' || item === 'skim' || item === 'auto' || item === 'llm' || item === 'protect' || item === 'suites' || item === 'integrity' || item === 'arch' || item === 'stack' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface LlmReviewCheck extends langium.AstNode {
@@ -528,10 +561,10 @@ export function isMode(item: unknown): item is Mode {
     return reflection.isInstance(item, Mode.$type);
 }
 
-export type Name = 'added' | 'all' | 'baseline' | 'caution' | 'changed' | 'ci' | 'command' | 'cumulative' | 'env' | 'fail' | 'fix' | 'missing' | 'only' | 'pass' | 'split' | 'touched' | 'until' | string;
+export type Name = 'added' | 'all' | 'baseline' | 'caution' | 'changed' | 'ci' | 'command' | 'cumulative' | 'env' | 'fail' | 'fix' | 'missing' | 'only' | 'pass' | 'reads' | 'split' | 'touched' | 'until' | string;
 
 export function isName(item: unknown): item is Name {
-    return item === 'split' || item === 'baseline' || item === 'env' || item === 'command' || item === 'cumulative' || item === 'caution' || item === 'ci' || item === 'only' || item === 'fix' || item === 'fail' || item === 'until' || item === 'changed' || item === 'all' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'split' || item === 'reads' || item === 'baseline' || item === 'env' || item === 'command' || item === 'cumulative' || item === 'caution' || item === 'ci' || item === 'only' || item === 'fix' || item === 'fail' || item === 'until' || item === 'changed' || item === 'all' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface OnFail extends langium.AstNode {
@@ -1019,6 +1052,8 @@ export type GauntletAstType = {
     BudgetCheck: BudgetCheck
     BudgetCommand: BudgetCommand
     BudgetItem: BudgetItem
+    BudgetReads: BudgetReads
+    BudgetWhen: BudgetWhen
     Check: Check
     Condition: Condition
     DiffCondition: DiffCondition
@@ -1137,6 +1172,29 @@ export class GauntletAstReflection extends langium.AbstractAstReflection {
             properties: {
             },
             superTypes: []
+        },
+        BudgetReads: {
+            name: BudgetReads.$type,
+            properties: {
+                path: {
+                    name: BudgetReads.path
+                }
+            },
+            superTypes: [BudgetItem.$type]
+        },
+        BudgetWhen: {
+            name: BudgetWhen.$type,
+            properties: {
+                glob: {
+                    name: BudgetWhen.glob,
+                    optional: true
+                },
+                zone: {
+                    name: BudgetWhen.zone,
+                    optional: true
+                }
+            },
+            superTypes: [BudgetItem.$type]
         },
         Check: {
             name: Check.$type,
