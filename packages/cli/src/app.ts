@@ -1,5 +1,5 @@
 import {
-  agentSummary, BASELINE_PATH, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
+  agentSummary, BASELINE_PATH, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
   ProcessRunner, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
@@ -1232,6 +1232,14 @@ const setup = Command.make("setup", {
     if (!finished) yield* output.out(`${style.step(2, 3, "Set up your project")}\n`)
     if (existed) {
       yield* output.out(style.ok(`${DEFAULT_POLICY_FILE} already exists; keeping it.`))
+      // A project set up before its tools were: offer them now, and say how their checks join the policy.
+      const later = yield* templateDraft(root, path.basename(root), ownerList(args.owner))
+      if (later._tag === "Draft" && later.install.length > 0) {
+        yield* output.out(style.warn("Gauntlet could check more here with tools the project doesn't have yet."))
+        if (yield* offerInstall(root, later.install, args.yes)) {
+          yield* output.out(style.ok(`Installed. To add their checks to the policy, run ${style.command("/gauntlet-setup")} in Claude Code.`))
+        }
+      }
     } else {
       let draft = yield* templateDraft(root, path.basename(root), ownerList(args.owner))
       if (draft._tag === "Refused") return yield* fail(draft.reason)
@@ -1253,6 +1261,9 @@ const setup = Command.make("setup", {
       yield* fs.makeDirectory(path.dirname(target), { recursive: true })
       yield* fs.writeFileString(target, draft.text)
       yield* output.out(style.ok(`Drafted ${DEFAULT_POLICY_FILE} for ${draft.packs.join(", ")} ${style.dim("(shadow mode: it reports, it never blocks)")}.`))
+      // Parts in a language or build tool Gauntlet has no pack for aren't checked: say so, and how to get support.
+      const unsupported = unsupportedBuilds(yield* (yield* Git).listWorkingFiles(root).pipe(Effect.orElseSucceed(() => [])))
+      if (unsupported.length > 0) yield* output.out(style.warn(unsupportedNote(unsupported)))
       if (draft.setup.length > 0 && !listed) yield* output.out([style.warn("Checks still left out until their tools are set up:"), ...draft.setup.map(style.item)].join("\n"))
     }
     // Gauntlet's hooks switch on at the end of `gauntlet apply`, once the policy is settled.
