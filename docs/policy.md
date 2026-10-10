@@ -141,7 +141,23 @@ in milliseconds), `hyperfine --export-json {json}`, `k6 run --summary-export
 `--benchmark-json`, Locust's `--csv` stats, vegeta's JSON report or `oha
 --json`, copied to `{json}`. A load test whose
 generator fell behind its schedule (Proofload's `behind`) is not executed: its
-numbers describe the generator, not the service. Limits use the policy's units (`ms`, `s`, `%`, `rps`).
+numbers describe the generator, not the service.
+
+A load test takes minutes, so it can run only for a change that touches its
+code, and read its tool's own report when the tool can't write to `{json}`:
+
+```
+budget transfers {
+  command "./gradlew :load:gatlingRun"
+  reads "load/build/reports/gatling/*/js/stats.json"
+  when zone payments touched
+  max(p99) < 200ms
+}
+```
+
+`when "load/**" touched` names paths instead of a zone. A budget that fails
+runs once more before it counts, since a busy machine can miss a limit by
+chance. Limits use the policy's units (`ms`, `s`, `%`, `rps`).
 `max(p99) < 100ms` takes the worst of the per-endpoint or per-command
 results. `vs baseline` compares with what `gauntlet baseline` measured:
 `p99 < 10% vs baseline` lets p99 grow by less than 10%, and `regression`
