@@ -1,4 +1,6 @@
-import type { Run } from "@gauntlet/sarif"
+import { type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
+import { Effect, FileSystem, Path } from "effect"
+import type { GateContext, GateImpl } from "./gate.ts"
 
 // Compiler warnings as findings (spec 0010), so a policy can ratchet them:
 // `warnings ratchet` grandfathers today's and fails a change for a new one,
@@ -83,3 +85,20 @@ export const compilerWarningsRun = (tool: Compiler, output: string, dir: string)
     locations: [{ physicalLocation: { artifactLocation: { uri: w.path }, region: { startLine: w.line, ...(w.column ? { startColumn: w.column } : {}) } } }],
   })),
 }) as unknown as Run
+
+/**
+ * A pack's `warnings` check: the warnings the build check printed earlier in
+ * this check, or, when no build ran here, the warnings of a compile of its
+ * own. Written to warnings.sarif, as a findings check's report.
+ */
+export const warningsGate = (compile: (ctx: GateContext) => ReturnType<GateImpl>): GateImpl => (_check, ctx) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const compiled = ctx.buildWarnings === undefined ? yield* compile(ctx) : undefined
+    if (compiled?.error !== undefined) return compiled
+    if (compiled !== undefined && compiled.exitCode !== 0) return { ...compiled, error: "the code doesn't compile, so its warnings can't be read" }
+    const runs = ctx.buildWarnings ?? compiled!.runs.filter(isCompilerWarnings)
+    yield* fs.writeFileString(path.join(ctx.outputDir, "warnings.sarif"), JSON.stringify({ version: SARIF_VERSION, $schema: SARIF_SCHEMA, runs })).pipe(Effect.orDie)
+    return { command: compiled?.command ?? ["(the build check's compiler output)"], exitCode: compiled?.exitCode ?? 0, runs }
+  })
