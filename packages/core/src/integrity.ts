@@ -211,7 +211,8 @@ const coreDetector = (input: IntegrityInput): { findings: IntegrityFinding[]; me
           message: `Retry configuration added (${retry.what}): retries hide flaky tests. Fix the flakiness, or quarantine the test in the policy with an owner and a date.`,
         })
       }
-      const risk = test ? FLAKY_PATTERNS.find((r) => r.pattern.test(text)) : undefined
+      // A URL or a sleep in a snapshot or fixture file is data, not something a test does.
+      const risk = test && !TEST_DATA.test(path) ? FLAKY_PATTERNS.find((r) => r.pattern.test(text)) : undefined
       if (risk) findings.push({ check: "flaky-patterns", kind: "flag", path, line, detector: "core", message: `Possible source of flakiness in a test: ${risk.what}.` })
     }
   }
@@ -219,7 +220,9 @@ const coreDetector = (input: IntegrityInput): { findings: IntegrityFinding[]; me
   return { findings, metrics, covered, removedWithCode }
 }
 
-const TEST_CODE = /\.(kt|kts|java|scala|groovy|[cm]?[jt]sx?|py|go|rs|rb|php|cs|clj)$/
+const TEST_CODE = /\.(kt|kts|java|scala|groovy|[cm]?[jt]sx?|py|go|rs|rb|php|cs|clj[sc]?)$/
+/** Snapshots, fixtures and other data under a test folder: never run, so never a source of flakiness. */
+const TEST_DATA = /(^|\/)(golden|__snapshots__|snapshots|testdata)\/|\.(md|markdown|json|ya?ml|snap|golden|xml|html?|csv|svg|png|jpe?g|gif|sarif)$/
 
 /** A line with the contents of its string literals blanked out, for the common quote styles. */
 export const withoutStrings = (text: string): string => {
