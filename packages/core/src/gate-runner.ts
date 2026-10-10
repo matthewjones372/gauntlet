@@ -455,6 +455,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         let spec: GateSpec | undefined
         let scope: ReadonlyArray<string> | undefined
         let multiRerun: ((ctx: GateContext, subset: TestSubset, label: string) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) | undefined
+        // The suite's run measures coverage too (onceForCoverage); its reruns don't.
+        let measuredCoverage = false
         if (check.kind === "suite" && multi) {
           const suite = ir.suites.find((s) => s.name === check.name)
           const targets = targetsFor((p) => p.runSuite !== undefined)
@@ -462,6 +464,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           // A suite's location is from the repository's root; a build sees its own part of it.
           const located = (d: string) => ({ name: suite.name, location: suite.location.startsWith(`${d}/`) ? toBuild(d, suite.location) : suite.location })
           suiteRun = { suite: { name: suite.name, location: suite.location }, runner: targets[0]!.pack.runSuite!, reruns: targets.every((t) => t.pack.reruns === true) }
+          measuredCoverage = hasCoverageGate && targets.some((t) => t.pack.suiteWithCoverage === true)
           start = (ctx) => acrossBuilds(check, targets, dir, ctx, (bctx, t) => t.pack.runSuite!(located(t.build.dir), bctx))
           multiRerun = (ctx, subset, label) =>
             acrossBuilds(check, targets.filter((t) => ownedBy(buildDirs, t.build.dir, subset.files).length > 0), `${dir}-${label}`, ctx, (bctx, t) =>
@@ -472,6 +475,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const runner = suitePack?.runSuite
           if (!runner || !suite || suite.kind !== "suite") return { status: "not-executed", reason: "no used pack runs test suites" }
           suiteRun = { suite: { name: suite.name, location: suite.location }, runner, reruns: suitePack.reruns === true }
+          measuredCoverage = hasCoverageGate && suitePack.suiteWithCoverage === true
           start = (ctx) => runner({ name: suite.name, location: suite.location }, ctx)
         } else if (check.kind === "gate") {
           const found = specOf(check.name)
@@ -537,7 +541,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           // A baseline records what trunk does; flakiness is judged on changes.
           // The CI's own run can't be run again here, so its failures are failures.
           const st = input.recording || !suiteRun || run.command[0] === "ci"
-            ? { rerunFlaky: [], newFlaky: [], quarantined: [], failures: failuresOf(run), expired: [], notes: [], failingOnBase: [] }
+            ? { rerunFlaky: [], slowedByCoverage: [], newFlaky: [], quarantined: [], failures: failuresOf(run), expired: [], notes: [], failingOnBase: [] }
             : yield* assessStability({
               suite: suiteRun.suite,
               main: run,
@@ -545,6 +549,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
               quarantine: ir.quarantine ?? [],
               today: input.today ?? "0000-00-00",
               files: input.files,
+              ...(measuredCoverage ? { measuredCoverage: true } : {}),
               ...(suiteRun.reruns
                 ? { rerun: (subset: TestSubset, label: string) => (multiRerun ? multiRerun(ctx, subset, label) : rerun(suiteRun!, ctx, dir, subset, label)) }
                 : {}),
@@ -587,6 +592,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           }
           const notes = [
             ...(st.rerunFlaky.length > 0 ? [`${plural(st.rerunFlaky.length, "failure", "failures")} passed when run again alone (flaky)`] : []),
+            ...(st.slowedByCoverage.length > 0 ? [`${plural(st.slowedByCoverage.length, "failure", "failures")} passed when run again alone without measuring coverage (slowed by coverage, as timing tests are): ${st.slowedByCoverage.slice(0, 5).join(", ")}${st.slowedByCoverage.length > 5 ? ", ..." : ""}`] : []),
             ...(st.quarantined.length > 0 ? [`${plural(st.quarantined.length, "quarantined failure", "quarantined failures")} excused by the policy`] : []),
             ...st.notes,
           ]

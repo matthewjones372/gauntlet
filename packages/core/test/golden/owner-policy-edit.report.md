@@ -6,8 +6,8 @@
 > 3 things to look at:
 >
 > 1. It changes code in the **money** zone (owner @payments): `src/main/money/Fx.kt`.
-> 2. .gauntlet/policy.gx is under .gauntlet/; policy, baseline and self-test changes need an owner.
-> 3. build.gradle.kts is protected (config); the change is undone for the run and needs review.
+> 2. It changes Gauntlet's own settings (`.gauntlet/policy.gx`), so an owner needs to approve.
+> 3. It changes `build.gradle.kts`, which is protected. Gauntlet checked the change without that edit, so a person needs to look at it.
 
 **Tier owner.** Gauntlet doesn't block. Mode enforce.
 

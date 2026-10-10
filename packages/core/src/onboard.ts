@@ -5,6 +5,7 @@ import { inferArch, inferZones } from "./infer.ts"
 import type { Build } from "@gauntlet/ir"
 import { ownedBy } from "./builds.ts"
 import { type Pack, PackRegistry } from "./pack-registry.ts"
+import { unsupportedBuilds, unsupportedNote } from "./unsupported.ts"
 
 // `gauntlet init --template`: a first policy from the packs' defaults, with no
 // model involved. Each pack looks at the repository and proposes what it can
@@ -224,7 +225,13 @@ export const templateDraft = (root: string, name: string, owners: ReadonlyArray<
     if (detected.length === 0) {
       const builds = findBuilds(files.value, packs)
       if (builds.length > 0) return yield* buildsDraft(root, name, owners, strict, files.value, builds)
-      return { _tag: "Refused", reason: `No supported project found here. Installed packs: ${packs.map((p) => `${p.spec.name} (${p.spec.description})`).join("; ")}.` } as const
+      const unsupported = unsupportedBuilds(files.value)
+      return {
+        _tag: "Refused",
+        reason: unsupported.length > 0
+          ? unsupportedNote(unsupported)
+          : `No supported project found here. Installed packs: ${packs.map((p) => `${p.spec.name} (${p.spec.description})`).join("; ")}.`,
+      } as const
     }
     // The packs read their own manifests and build files to see which tools are set up.
     const wanted = files.value.filter((f) => detected.some((p) => p.manifests.some((g) => globMatches(g, f))))

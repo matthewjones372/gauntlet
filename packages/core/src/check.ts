@@ -115,8 +115,12 @@ const prepare = (request: { readonly repo: string; readonly policyRef?: string; 
       return yield* new CheckFailed({ message: "No base commit to compare with. Pass --base <ref> (locally) or --policy-ref <sha> (in CI)." })
     }
     const ir = request.protectOnly ? protectOnlyIr(loaded.compiled.ir) : loaded.compiled.ir
-    const base = loaded.baseSha.value
     const head = yield* git.revParse(request.repo, request.head ?? "HEAD")
+    // The policy is the base's (main's, in CI: the rules as they are now). The change is what the head adds
+    // since it left that base, as GitHub's "Files changed" shows it: what reached the base after the branch
+    // started isn't the branch deleting it. Without a common ancestor, compare with the base itself.
+    const policyBase = loaded.baseSha.value
+    const base = yield* git.mergeBase(request.repo, policyBase, head).pipe(Effect.orElseSucceed(() => policyBase))
     const runnerConfig = runnerConfigFor(registry.packs, ir.packs, ir.builds)
     // Protect-only judges with the base's tests, pass or fail; otherwise an edited test runs as edited and needs review.
     const facts = yield* diffFacts(request.repo, base, head, ir, registry.packs, runnerConfig, !request.protectOnly)
