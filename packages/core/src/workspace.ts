@@ -40,6 +40,13 @@ export interface PreparedWorkspace {
    * checkout, then takes them out again (ADR 0019). Gets the paths put in.
    */
   readonly withHoldout?: <A, E, R>(globs: ReadonlyArray<string>, use: (paths: ReadonlyArray<string>) => Effect.Effect<A, E, R>) => Effect.Effect<A, E | GitFailure, R>
+  /**
+   * Runs `use` with `paths` as the base commit has them (absent where it has
+   * none), then puts back exactly what the checkout had, so protected files
+   * already put back to the base stay that way. For running failing tests
+   * against the base, to tell failures the change caused from ones already there.
+   */
+  readonly withBase?: <A, E, R>(paths: ReadonlyArray<string>, use: Effect.Effect<A, E, R>) => Effect.Effect<A, E | GitFailure | PlatformError.PlatformError, R>
 }
 
 /** A holdout's files (ADR 0019): left out of every checkout, run only with `check --holdouts`. */
@@ -219,7 +226,31 @@ export const WorkspaceLive = Layer.effect(
               (paths) => git.remove(dir, paths).pipe(Effect.ignore),
             )
 
-          return { dir, base: request.base, head: request.head, materialised, outputDir, collect, withHoldout }
+          const withBase = <A, E, R>(paths: ReadonlyArray<string>, use: Effect.Effect<A, E, R>) =>
+            Effect.acquireUseRelease(
+              Effect.gen(function*() {
+                const had = new Map<string, Uint8Array>()
+                for (const p of paths) {
+                  const full = path.join(dir, p)
+                  if (yield* fs.exists(full)) had.set(p, yield* fs.readFile(full))
+                }
+                const inBase = new Set(yield* git.listTree(dir, request.base))
+                yield* git.restore(dir, request.base, paths.filter((p) => inBase.has(p)))
+                for (const p of paths) if (!inBase.has(p)) yield* fs.remove(path.join(dir, p), { force: true })
+                return had
+              }),
+              () => use,
+              (had) =>
+                Effect.gen(function*() {
+                  for (const [p, bytes] of had) {
+                    yield* fs.makeDirectory(path.dirname(path.join(dir, p)), { recursive: true })
+                    yield* fs.writeFile(path.join(dir, p), bytes)
+                  }
+                  yield* git.remove(dir, paths.filter((p) => !had.has(p)))
+                }).pipe(Effect.ignore),
+            )
+
+          return { dir, base: request.base, head: request.head, materialised, outputDir, collect, withHoldout, withBase }
         }),
     }
   }),
