@@ -159,6 +159,18 @@ export const renderMarkdown = (r: Report): string => {
     lines.push("")
   }
 
+  // A big change over several parts: suggest reviewing it as stacked pull requests, lowest layer first.
+  if (r.stack) {
+    lines.push(
+      "### Review it as stacked pull requests",
+      "",
+      `This change is big (${plural(r.stack.lines, "line")}) and spans ${r.stack.steps.length} parts of the repository. It would be easier to review as ${r.stack.steps.length} pull requests, each on top of the one before:`,
+      "",
+      ...r.stack.steps.map((s, i) => `${i + 1}. **${s.title}** (${plural(s.files.length, "file")}, ${plural(s.lines, "line")})${s.needsOwner ? ", for an owner" : ""}: ${s.files.slice(0, 3).map(code).join(", ")}${s.files.length > 3 ? ` and ${s.files.length - 3} more` : ""}`),
+      "",
+    )
+  }
+
   // A review or owner tier waits for an approval on GitHub; say exactly how to give it.
   if (d.scope !== "protect-only" && d.mode === "enforce" && !d.blocking && (d.tier === "review" || d.tier === "owner")) {
     const owners = [...new Set([...d.owners, ...r.policy.owners])]
