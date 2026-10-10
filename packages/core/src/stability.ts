@@ -46,6 +46,8 @@ export interface Stability {
   readonly expired: ReadonlyArray<Quarantine>
   /** Notes for the report, such as reruns not being possible. */
   readonly notes: ReadonlyArray<string>
+  /** Failures that count but also fail with the change's files as the base has them: already failing before it. */
+  readonly failingOnBase: ReadonlyArray<string>
 }
 
 export interface StabilityInput<R> {
@@ -59,11 +61,24 @@ export interface StabilityInput<R> {
   readonly rerun?: (subset: TestSubset, label: string) => Effect.Effect<GateRun, never, R>
   /** Every file in the judged checkout, to find a failing test's file when the report doesn't say (vitest names tests after their file). */
   readonly files?: ReadonlyArray<string>
+  /** Runs part of the suite again with the change's files as the base has them, or undefined when that can't be done. */
+  readonly onBase?: (subset: TestSubset, label: string) => Effect.Effect<GateRun, never, R>
+}
+
+/**
+ * The ids of the tests a run reports, matched with or without a build's
+ * prefix: with several builds a run names its tests `<folder>:<id>` (ADR
+ * 0022), while a failure names the test alone.
+ */
+const testsIn = (ids: Iterable<string>) => {
+  const all = new Set(ids)
+  const bare = new Set([...all].map((id) => id.slice(id.indexOf(":") + 1)))
+  return { has: (id: string) => all.has(id) || bare.has(id) }
 }
 
 const passedIn = (run: GateRun) => {
   const failed = new Set(failuresOf(run).map((f) => f.id))
-  return new Set((run.tests?.ids ?? []).filter((id) => !failed.has(id)))
+  return testsIn((run.tests?.ids ?? []).filter((id) => !failed.has(id) && !failed.has(id.slice(id.indexOf(":") + 1))))
 }
 
 export const assessStability = <R>(input: StabilityInput<R>) =>
@@ -71,10 +86,14 @@ export const assessStability = <R>(input: StabilityInput<R>) =>
     const notes: string[] = []
     const failures = failuresOf(input.main)
     const rerunFlaky = new Set<string>()
+    const fileOf = (f: TestFailure) => f.file ?? (input.files ?? []).filter((p) => f.id.startsWith(`${p}.`) || f.id.startsWith(`${p} `)).sort((a, b) => b.length - a.length)[0]
+    const subsetOf = (fs: ReadonlyArray<TestFailure>): TestSubset => ({
+      files: [...new Set(fs.flatMap((f) => { const file = fileOf(f); return file ? [file] : [] }))].sort(),
+      ids: fs.map((f) => f.id).sort(),
+      seed: seedFor(input.facts.head, 0),
+    })
     if (failures.length > 0 && input.rerun) {
-      const fileOf = (f: TestFailure) => f.file ?? (input.files ?? []).filter((p) => f.id.startsWith(`${p}.`) || f.id.startsWith(`${p} `)).sort((a, b) => b.length - a.length)[0]
-      const files = [...new Set(failures.flatMap((f) => { const file = fileOf(f); return file ? [file] : [] }))].sort()
-      const again = yield* input.rerun({ files, ids: failures.map((f) => f.id).sort(), seed: seedFor(input.facts.head, 0) }, "rerun")
+      const again = yield* input.rerun(subsetOf(failures), "rerun")
       const passed = passedIn(again)
       for (const f of failures) if (passed.has(f.id)) rerunFlaky.add(f.id)
     } else if (failures.length > 0) {
@@ -110,12 +129,27 @@ export const assessStability = <R>(input: StabilityInput<R>) =>
     const remaining = failures.filter((f) => !rerunFlaky.has(f.id))
     const quarantined = remaining.filter((f) => input.quarantine.some((q) => q.test === f.id && active(q))).map((f) => f.id)
     const expired = input.quarantine.filter((q) => !active(q) && remaining.some((f) => f.id === q.test))
+    const counting = remaining.filter((f) => !quarantined.includes(f.id)).sort((a, b) => (a.id < b.id ? -1 : 1))
+
+    // Failures that count, run again with the change's files as the base has them. A test
+    // that ran there and failed was failing before the change; one that didn't run (new, or
+    // gone from the base) or passed is the change's.
+    const failingOnBase = new Set<string>()
+    if (counting.length > 0 && input.onBase) {
+      const onBase = yield* input.onBase(subsetOf(counting), "base")
+      if (onBase.error === undefined) {
+        const failed = new Set(failuresOf(onBase).map((f) => f.id))
+        const ran = testsIn(onBase.tests?.ids ?? [])
+        for (const f of counting) if (ran.has(f.id) && failed.has(f.id)) failingOnBase.add(f.id)
+      }
+    }
     return {
       rerunFlaky: [...rerunFlaky].sort(),
       newFlaky: [...newFlaky].sort(),
       quarantined: quarantined.sort(),
-      failures: remaining.filter((f) => !quarantined.includes(f.id)).sort((a, b) => (a.id < b.id ? -1 : 1)),
+      failures: counting,
       expired,
       notes,
+      failingOnBase: [...failingOnBase].sort(),
     } satisfies Stability
   })

@@ -1,6 +1,7 @@
 import { prettyCanonicalJson, type SourceRef } from "@gauntlet/ir"
 import { type Log, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Schema } from "effect"
+import { MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT } from "../mutation-explained.ts"
 import { Report, type ReportCheck } from "./schema.ts"
 
 /** The report as canonical JSON: sorted keys, two-space indent, trailing newline. */
@@ -76,6 +77,7 @@ const because = (n: Report["decision"]["nominations"][number]): string | undefin
     case "gauntlet-changed": return "it changes Gauntlet's policy or baseline"
     case "no-rule-matched": return "no rule in the policy marks it as safe"
     case "flaky-test": return "a test is flaky"
+    case "failing-on-base": return "tests fail that were already failing before it"
     case "reported-blocked": return "the agent reported it was blocked"
     default: return /dependency/i.test(n.reason) ? "it adds a dependency" : undefined
   }
@@ -195,6 +197,10 @@ export const renderMarkdown = (r: Report): string => {
     lines.push("### Checks", "")
     lines.push(...table(["Tier", "Check", "Status", "Evidence"], capped(r.checks, (c) =>
       `| ${c.tier}${c.advisory ? " (advisory)" : ""} | ${c.check} | ${STATUS[c.status]} | ${cell(proofText(c))} |`)))
+    // People meeting mutation testing for the first time should know what it is and why it's slow.
+    if (r.checks.some((c) => c.check === "mutation")) {
+      lines.push("<details><summary>What's mutation testing, and why does it take longer?</summary>", "", MUTATION_WHAT, "", MUTATION_COST, "", MUTATION_FASTER, "", "</details>", "")
+    }
     const failing = r.checks.filter((c) => c.failures && c.failures.length > 0)
     if (failing.length > 0) {
       lines.push("### Failing tests", "")

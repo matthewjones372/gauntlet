@@ -534,7 +534,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           // A baseline records what trunk does; flakiness is judged on changes.
           // The CI's own run can't be run again here, so its failures are failures.
           const st = input.recording || !suiteRun || run.command[0] === "ci"
-            ? { rerunFlaky: [], newFlaky: [], quarantined: [], failures: failuresOf(run), expired: [], notes: [] }
+            ? { rerunFlaky: [], newFlaky: [], quarantined: [], failures: failuresOf(run), expired: [], notes: [], failingOnBase: [] }
             : yield* assessStability({
               suite: suiteRun.suite,
               main: run,
@@ -545,10 +545,22 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
               ...(suiteRun.reruns
                 ? { rerun: (subset: TestSubset, label: string) => (multiRerun ? multiRerun(ctx, subset, label) : rerun(suiteRun!, ctx, dir, subset, label)) }
                 : {}),
+              ...(suiteRun.reruns && workspace.withBase
+                ? {
+                  onBase: (subset: TestSubset, label: string) =>
+                    workspace.withBase!(facts.files.map((f) => f.path), multiRerun ? multiRerun(ctx, subset, label) : rerun(suiteRun!, ctx, dir, subset, label)).pipe(
+                      Effect.orElseSucceed((): GateRun => ({ command: [], exitCode: -1, runs: [], error: "couldn't put the base's files in place" })),
+                    ),
+                }
+                : {}),
             })
           // Name the failures, so whoever fixes the change knows where to look.
           // Each line starts with the test's id, as quarantines and the flaky history name it.
-          const named = st.failures.map((f) => (f.text.startsWith(f.id) ? f.text : `${f.id}: ${f.text.includes(": ") ? f.text.slice(f.text.indexOf(": ") + 2) : f.text}`)).slice(0, MAX_FAILURES)
+          const onBase = new Set(st.failingOnBase)
+          const named = st.failures
+            .map((f) => (f.text.startsWith(f.id) ? f.text : `${f.id}: ${f.text.includes(": ") ? f.text.slice(f.text.indexOf(": ") + 2) : f.text}`))
+            .map((line, i) => (onBase.has(st.failures[i]!.id) ? `${line} (fails on the base too)` : line))
+            .slice(0, MAX_FAILURES)
           const flaky = [...st.rerunFlaky, ...st.newFlaky]
           const details = {
             proof,
@@ -556,13 +568,20 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
             ...(named.length > 0 ? { failures: named } : {}),
             ...(flaky.length > 0 ? { flaky } : {}),
             ...(st.quarantined.length > 0 ? { quarantined: [...st.quarantined] } : {}),
+            ...(st.failingOnBase.length > 0 ? { failingOnBase: [...st.failingOnBase] } : {}),
           }
           const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
           if (st.newFlaky.length > 0) {
             return { status: "failed", reason: `${plural(st.newFlaky.length, "new or changed test is", "new or changed tests are")} flaky: passed and failed across ${REPEATS + 1} runs`, ...details }
           }
           const expired = st.expired.map((q) => `the quarantine of ${q.test} expired after ${q.until}`)
-          if (st.failures.length > 0) return { status: "failed", reason: [`${c.failed + c.errored} of ${c.executed} tests failed`, ...expired].join("; "), ...details }
+          if (st.failures.length > 0) {
+            const before = st.failingOnBase.length === st.failures.length
+              ? [`${st.failures.length === 1 ? "it fails" : "all of them fail"} on the base too, so this change didn't cause ${st.failures.length === 1 ? "it" : "them"}`]
+              : st.failingOnBase.length > 0 ? [`${plural(st.failingOnBase.length, "fails", "fail")} on the base too`] : []
+            const failedBefore = st.failingOnBase.length === st.failures.length && expired.length === 0
+            return { status: "failed", reason: [`${c.failed + c.errored} of ${c.executed} tests failed`, ...before, ...expired].join("; "), ...details, ...(failedBefore ? { failedBefore: true as const } : {}) }
+          }
           const notes = [
             ...(st.rerunFlaky.length > 0 ? [`${plural(st.rerunFlaky.length, "failure", "failures")} passed when run again alone (flaky)`] : []),
             ...(st.quarantined.length > 0 ? [`${plural(st.quarantined.length, "quarantined failure", "quarantined failures")} excused by the policy`] : []),
