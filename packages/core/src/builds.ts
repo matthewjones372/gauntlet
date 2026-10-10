@@ -82,12 +82,16 @@ export const runFromBuild = (run: GateRun, dir: string): GateRun => {
  * per-file values are kept for each file.
  */
 export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; readonly run: GateRun }>): GateRun => {
-  const ran = parts.filter((p) => p.run.nothingInScope === undefined)
+  const measured = parts.filter((p) => p.run.nothingInScope === undefined)
+  // A build without the tool set up is left out when another build has it.
+  const setUp = measured.filter((p) => p.run.notSetUp === undefined)
+  const left = setUp.length > 0 ? measured.filter((p) => p.run.notSetUp !== undefined) : []
+  const ran = setUp.length > 0 ? setUp : measured
   if (ran.length === 0) {
     return { command: [], exitCode: 0, runs: [], nothingInScope: parts.length === 0 ? "the change touches none of the builds" : [...new Set(parts.map((p) => p.run.nothingInScope!))].join("; ") }
   }
   const errored = ran.find((p) => p.run.error !== undefined)
-  const command = ran.flatMap((p) => [`[${p.dir}]`, ...p.run.command])
+  const command = [...ran.flatMap((p) => [`[${p.dir}]`, ...p.run.command]), ...left.map((p) => `[${p.dir}] left out: ${p.run.error}`)]
   const exitCode = ran.find((p) => p.run.exitCode !== 0)?.run.exitCode ?? 0
   const tested = ran.flatMap((p) => (p.run.tests ? [p.run.tests] : []))
   const tests = tested.length === 0 ? undefined : {
