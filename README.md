@@ -152,6 +152,15 @@ run the `gauntlet apply` it gives you. Claude Code now runs Gauntlet before it
 says a task is done. It starts in shadow mode, which reports and blocks
 nothing until you switch it on.
 
+### Joining a project that uses Gauntlet
+
+Setup commits everything (the policy, Claude Code's hooks and Gauntlet's MCP
+server), so a teammate installs the `gauntlet` command once with the line
+above, pulls, opens Claude Code in the repository and says yes when it asks to
+trust the project's MCP server and hooks. Until they install it, Claude Code
+says Gauntlet isn't installed when it finishes, and the pull request check
+still runs.
+
 Just want the GitHub check, no agent setup?
 
 ```bash

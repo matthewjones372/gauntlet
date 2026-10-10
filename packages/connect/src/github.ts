@@ -427,7 +427,17 @@ ${o.mode === "repo"
 
 ## Make it required
 
-In the repository's branch ruleset for the default branch, require the status check **gauntlet**, require pull requests with code owner review, dismiss stale approvals on push, and require approval of the most recent push.`
+In the repository's branch ruleset for the default branch, require the status check **gauntlet**, require pull requests with code owner review, dismiss stale approvals on push, and require approval of the most recent push.
+
+## For the rest of the team
+
+Everything Gauntlet needs is committed, so each person only installs the \`gauntlet\` command once:
+
+\`\`\`bash
+curl -fsSL https://raw.githubusercontent.com/matthewjones372/gauntlet/main/install.sh | sh
+\`\`\`
+
+Then they pull and open Claude Code in the repository, and say yes when it asks to trust the project's MCP server and hooks. Claude Code checks its work with Gauntlet before it says a task is done, and their pull requests get the \`gauntlet\` check. Until they install it, Claude Code says Gauntlet isn't installed when it finishes, and the pull request check still runs. Only the policy's owners can approve a change that needs one.`
   : `## What was set up
 
 - \`policy-repo/.github/workflows/gauntlet.yml\`: commit this to a dedicated policy repository that only policy owners can change.
