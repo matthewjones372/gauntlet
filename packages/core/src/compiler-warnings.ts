@@ -36,26 +36,27 @@ const SCALAC3_BODY = /^\[warn\]\s+(?:\d+\s+)?\|\s?(.*)$/
 
 const withoutColour = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "")
 
-/** Every warning in a compiler's (or build tool's) output, paths relative to the checkout. */
-export const parseCompilerWarnings = (output: string, dir: string): Warning[] => {
+/** Every warning in a compiler's (or build tool's) output, paths relative to the checkout; only `tool`'s when it's named. */
+export const parseCompilerWarnings = (output: string, dir: string, tool?: Compiler): Warning[] => {
+  const reads = (t: Compiler) => tool === undefined || tool === t
   const lines = output.split(/\r?\n/).map(withoutColour)
   const warnings: Warning[] = []
   const relative = (p: string) => (p.startsWith(`${dir}/`) ? p.slice(dir.length + 1) : undefined)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
-    const k = KOTLINC.exec(line) ?? SCALAC2.exec(line)
+    const k = (reads("kotlinc") ? KOTLINC.exec(line) : null) ?? (reads("scalac") ? SCALAC2.exec(line) : null)
     if (k) {
       const path = relative(k[1]!)
       if (path) warnings.push({ path, line: Number(k[2]), column: Number(k[3]), message: k[4]!.trim() })
       continue
     }
-    const j = JAVAC.exec(line)
+    const j = reads("javac") ? JAVAC.exec(line) : null
     if (j) {
       const path = relative(j[1]!)
       if (path) warnings.push({ path, line: Number(j[2]), message: j[4]!.trim(), ...(j[3] ? { category: j[3] } : {}) })
       continue
     }
-    const s = SCALAC3.exec(line)
+    const s = reads("scalac") ? SCALAC3.exec(line) : null
     if (s) {
       // The message is the text on the `|` lines that isn't the code quoted or its caret.
       const body: string[] = []
@@ -78,7 +79,7 @@ export const parseCompilerWarnings = (output: string, dir: string): Warning[] =>
 /** A compiler's warnings as a SARIF run, for the `warnings` check. */
 export const compilerWarningsRun = (tool: Compiler, output: string, dir: string): Run => ({
   tool: { driver: { name: tool } },
-  results: parseCompilerWarnings(output, dir).map((w) => ({
+  results: parseCompilerWarnings(output, dir, tool).map((w) => ({
     ruleId: w.category ? `${COMPILER_WARNING}/${w.category}` : COMPILER_WARNING,
     level: "warning" as const,
     message: { text: w.message },

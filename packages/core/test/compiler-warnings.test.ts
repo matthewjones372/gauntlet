@@ -54,4 +54,11 @@ describe("compiler warnings", () => {
       locations: [{ physicalLocation: { artifactLocation: { uri: "src/Fx.java" }, region: { startLine: 3 } } }],
     }] as never)
   })
+
+  test("one build's output read for each compiler finds each warning once, under its own compiler", () => {
+    const out = `w: file://${DIR}/src/A.kt:1:1 Unchecked cast\n${DIR}/src/B.java:2: warning: [unchecked] unchecked call\n`
+    expect(parseCompilerWarnings(out, DIR, "kotlinc").map((w) => w.path)).toEqual(["src/A.kt"])
+    expect(parseCompilerWarnings(out, DIR, "javac").map((w) => w.path)).toEqual(["src/B.java"])
+    expect(parseCompilerWarnings(out, DIR, "scalac")).toEqual([])
+  })
 })
