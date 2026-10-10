@@ -1,4 +1,5 @@
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
+import { compilerWarningsRun, warningsGate } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, type Log, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
@@ -50,7 +51,12 @@ const lastError = (r: ToolRun) => `${r.stdout}\n${r.stderr}`.split("\n").filter(
 
 // ---------- build ----------
 
-export const build: GateImpl = (_check, ctx) => sbt(ctx, ["Test/compile"]).pipe(Effect.map(base))
+/** Compiles main and test code, keeping scalac's warnings for the warnings check (spec 0010). */
+export const build: GateImpl = (_check, ctx) =>
+  sbt(ctx, ["Test/compile"]).pipe(Effect.map((r) => ({ ...base(r), runs: [compilerWarningsRun("scalac", `${r.stdout}\n${r.stderr}`, ctx.dir)] })))
+
+/** Compiler warnings, ratcheted with `warnings ratchet`: the build's, or a compile of its own when no build ran. */
+export const warnings: GateImpl = warningsGate((ctx) => build({ kind: "gate", name: "build" } as never, ctx))
 
 // ---------- suites: sbt test, JUnit XML into the output directory ----------
 
