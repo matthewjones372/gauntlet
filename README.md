@@ -167,7 +167,10 @@ Starting a new project? `gauntlet new kotlin-service my-service --owner @you`
 creates a Kotlin service with a strict policy already in enforce mode
 ([next steps](docs/getting-started.md#a-new-project)). For any
 other language, create the project with your usual tool, commit it, then run
-`gauntlet setup`; it offers to install the tools it needs.
+`gauntlet setup`. In a new or an existing project, setup offers to install the
+tools its checks need (a linter, coverage, mutation testing), and if part of
+the project uses a language or build tool Gauntlet doesn't support yet, it says
+so and how to ask for it or add it.
 
 Kotlin and Java (Gradle), TypeScript and JavaScript, Python, Go, Rust, Scala
 and Clojure are supported. On Windows, use WSL 2. Step by step:
