@@ -1,6 +1,7 @@
 import { prettyCanonicalJson, type SourceRef } from "@gauntlet/ir"
 import { type Log, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Schema } from "effect"
+import { MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT } from "../mutation-explained.ts"
 import { Report, type ReportCheck } from "./schema.ts"
 
 /** The report as canonical JSON: sorted keys, two-space indent, trailing newline. */
@@ -195,6 +196,10 @@ export const renderMarkdown = (r: Report): string => {
     lines.push("### Checks", "")
     lines.push(...table(["Tier", "Check", "Status", "Evidence"], capped(r.checks, (c) =>
       `| ${c.tier}${c.advisory ? " (advisory)" : ""} | ${c.check} | ${STATUS[c.status]} | ${cell(proofText(c))} |`)))
+    // People meeting mutation testing for the first time should know what it is and why it's slow.
+    if (r.checks.some((c) => c.check === "mutation")) {
+      lines.push("<details><summary>What's mutation testing, and why does it take longer?</summary>", "", MUTATION_WHAT, "", MUTATION_COST, "", MUTATION_FASTER, "", "</details>", "")
+    }
     const failing = r.checks.filter((c) => c.failures && c.failures.length > 0)
     if (failing.length > 0) {
       lines.push("### Failing tests", "")

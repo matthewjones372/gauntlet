@@ -1,5 +1,5 @@
 import {
-  agentSummary, BASELINE_PATH, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
+  agentSummary, BASELINE_PATH, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
   ProcessRunner, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
@@ -344,12 +344,13 @@ const switchOnHooks = (root: string) =>
   })
 
 /** What a first baseline means, and the order to go in when the project already fails. */
-export const firstRunExplained = (mode: "shadow" | "enforce", failing: boolean): string =>
+export const firstRunExplained = (mode: "shadow" | "enforce", failing: boolean, mutation = false): string =>
   [
     "",
     style.ok(style.bold("Done. The baseline is today's state of your project.")),
     style.item("Existing lint findings, coverage and mutation scores are recorded, so they don't block a change."),
     style.item("From now on, a change can't make them worse, and new code has to meet the policy's floors."),
+    ...(mutation ? [style.item(`The policy runs mutation testing. ${MUTATION_WHAT} ${MUTATION_COST} ${MUTATION_FASTER}`)] : []),
     mode === "shadow"
       ? style.item(`Gauntlet is in shadow mode: it reports and blocks nothing. Switch to ${style.command("mode enforce")} in .gauntlet/policy.gx when ${style.command("gauntlet report shadow")} looks right.`)
       : style.item("The policy is in enforce mode: a change that fails is blocked."),
@@ -1370,7 +1371,7 @@ const apply = Command.make("apply", {
         yield* output.out("Committed the baseline, and switched on Gauntlet's Claude Code hooks.")
       }
       const failing = persistentFailures(recorded.checks, recorded.ir)
-      yield* output.out(`${firstRunExplained(recorded.ir.mode, failing.length > 0)}${yield* pullRequestHint(root)}`)
+      yield* output.out(`${firstRunExplained(recorded.ir.mode, failing.length > 0, runsMutation(recorded.ir))}${yield* pullRequestHint(root)}`)
       if (failing.length > 0) yield* offerFix(root, failing)
       return
     }

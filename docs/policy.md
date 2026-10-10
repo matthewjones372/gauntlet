@@ -77,6 +77,26 @@ its own `settings.gradle.kts`).
 - Each build's runner configuration (Gradle's `gradle/**`, sbt's `project/**`)
   is protected in its own folder.
 
+## Mutation testing
+
+Mutation testing makes small deliberate bugs in your code (turning a `>` into
+`>=`, say) and runs your tests against each one. A bug that no test catches
+shows a test that runs the code but doesn't really check it, which coverage
+alone can't tell you.
+
+It runs your tests once for every bug it makes, so it's by far the slowest
+check: minutes where your tests take seconds, and far longer across a whole
+project. Keep it quick by running it only on the lines a change touches, and
+only in the zones that matter:
+
+```
+verify { unit, mutation >= 60% on changed in zone money }
+```
+
+`gauntlet setup` explains this before it adds mutation testing, setup skips
+the whole-project run, and a check whose mutation step takes over three
+minutes says so and how to speed it up.
+
 ## Performance budgets
 
 A budget runs a benchmark and holds its results to limits ([spec 0006](specs/0006-perf-budgets.md)):
