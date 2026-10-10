@@ -100,7 +100,15 @@ Budget:
     'budget' name=Name '{' items+=BudgetItem* '}';
 
 BudgetItem:
-    BudgetCommand | Threshold;
+    BudgetCommand | BudgetWhen | BudgetReads | Threshold;
+
+// \`when zone payments touched\` or \`when "load/**" touched\`: the budget runs only for a change that touches that code.
+BudgetWhen:
+    'when' (('zone' zone=Name) | glob=STRING) 'touched' ','?;
+
+// \`reads "load/build/reports/gatling/*/js/stats.json"\`: the tool's own output, when it can't write to {json}.
+BudgetReads:
+    'reads' path=STRING ','?;
 
 BudgetCommand:
     'command' command=STRING ','?;
@@ -215,18 +223,18 @@ QName returns string:
 
 // User-chosen names. A few keywords that read naturally as names are allowed.
 Name returns string:
-    ID | 'split' | 'baseline' | 'env' | 'command' | 'cumulative' | 'caution' | 'ci' | 'only' | 'fix' | 'fail' | 'until'
+    ID | 'split' | 'reads' | 'baseline' | 'env' | 'command' | 'cumulative' | 'caution' | 'ci' | 'only' | 'fix' | 'fail' | 'until'
     | 'changed' | 'all' | 'touched' | 'added' | 'missing' | 'pass';
 
 // Words inside an integrity list. The three list keywords are left out so a
 // new `ratchet`, `forbid` or `flag` line starts a new list.
 IntegrityWord returns string:
-    ID | 'split' | 'in' | 'on' | 'not' | 'env' | 'from' | 'only' | 'module' | 'baseline' | 'diff' | 'fail' | 'fix'
+    ID | 'split' | 'reads' | 'in' | 'on' | 'not' | 'env' | 'from' | 'only' | 'module' | 'baseline' | 'diff' | 'fail' | 'fix'
     | 'changed' | 'all' | 'no' | 'touched' | 'added' | 'missing' | 'pass';
 
 // Words inside a stack layer body, which is closed by '}'.
 LayerWord returns string:
-    ID | 'split' | 'zone' | 'budget' | 'gates' | 'paths' | 'rule' | 'module' | 'must' | 'not' | 'depend'
+    ID | 'split' | 'reads' | 'zone' | 'budget' | 'gates' | 'paths' | 'rule' | 'module' | 'must' | 'not' | 'depend'
     | 'on' | 'from' | 'env' | 'vs' | 'baseline' | 'ratchet' | 'in' | 'layer' | 'max' | 'diff'
     | 'cumulative' | 'ci' | 'only' | 'caution' | 'fix' | 'fail' | 'flag' | 'forbid' | 'review'
     | 'owner' | 'skim' | 'auto' | 'llm' | 'protect' | 'suites' | 'integrity' | 'arch' | 'stack'

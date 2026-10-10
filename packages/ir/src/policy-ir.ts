@@ -115,6 +115,10 @@ export const Budget = Schema.Struct({
   name: Schema.String,
   command: Schema.String,
   thresholds: Schema.Array(BudgetThreshold),
+  /** Runs only for a change that touches this zone or these paths (spec 0007). Omitted: every change. */
+  when: Schema.optionalKey(Schema.Struct({ zone: Schema.optionalKey(Schema.String), glob: Schema.optionalKey(Schema.String) })),
+  /** The tool's own output file in the checkout, read instead of {json}; a \`*\` matches one folder or file name. */
+  reads: Schema.optionalKey(Schema.String),
 })
 export type Budget = typeof Budget.Type
 

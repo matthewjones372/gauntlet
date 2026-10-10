@@ -454,8 +454,28 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       return
     }
     let command: string | undefined
+    let when: { zone?: string; glob?: string } | undefined
+    let reads: string | undefined
     const thresholds: Mutable<PolicyIR["budgets"][number]>["thresholds"] = []
     for (const item of b.items) {
+      if (item.$type === "BudgetWhen") {
+        if (when !== undefined) error("duplicate-when", nodeSpan(item), `Budget '${b.name}' says when it runs more than once.`, "a single `when … touched`", "Keep one `when` line.")
+        if (item.zone !== undefined) {
+          refs.push({ kind: "zone-ref", name: item.zone, span: propertySpan(item, "zone") })
+          when = { zone: item.zone }
+        } else if (item.glob !== undefined) {
+          const problem = checkGlob(item.glob)
+          if (problem) error("invalid-glob", propertySpan(item, "glob"), `Invalid path pattern "${item.glob}": ${problem.message}`, "a relative glob such as \"load/**\"", problem.fix)
+          else when = { glob: item.glob }
+        }
+        continue
+      }
+      if (item.$type === "BudgetReads") {
+        if (item.path.startsWith("/") || item.path.split("/").includes("..")) {
+          error("invalid-reads", propertySpan(item, "path"), `Budget '${b.name}' reads "${item.path}", outside the repository.`, "a path inside the repository", "Use a path from the repository's root.")
+        } else reads = item.path
+        continue
+      }
       if (item.$type === "BudgetCommand") {
         if (command !== undefined) {
           error("duplicate-command", nodeSpan(item), `Budget '${b.name}' has more than one command.`, "a single `command`", "Keep one `command` line.")
@@ -470,7 +490,7 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       error("budget-without-command", span, `Budget '${b.name}' has no command, so nothing can be measured.`,
         "a `command` line inside the budget", "Add a line such as: command \"./perf/run.sh\"")
     }
-    ir.budgets.push(at({ name: b.name, command: command ?? "", thresholds }, span))
+    ir.budgets.push(at({ name: b.name, command: command ?? "", thresholds, ...(when ? { when } : {}), ...(reads !== undefined ? { reads } : {}) }, span))
   }
 
   function threshold(budgetName: string, t: Ast.Threshold): PolicyIR["budgets"][number]["thresholds"][number] | undefined {
