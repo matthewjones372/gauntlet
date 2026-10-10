@@ -152,6 +152,71 @@ run the `gauntlet apply` it gives you. Claude Code now runs Gauntlet before it
 says a task is done. It starts in shadow mode, which reports and blocks
 nothing until you switch it on.
 
+### What setup looks like
+
+An example session in a Kotlin payments service (`/gauntlet-setup` in Claude
+Code, shortened):
+
+```text
+> /gauntlet-setup
+
+● Here's what you already have: you build with Gradle and test with JUnit 5.
+  Kover already requires 80% line coverage, detekt runs with your config, and
+  CI runs the tests on every pull request. There's no mutation testing.
+
+  Decision 1 of 6 · Owner
+  Who approves sensitive changes and edits to the policy?
+  > @maria
+
+  ✅ Owner: @maria.
+
+  Decision 2 of 6 · Zones
+  A zone is code where a change needs @maria's review. I found:
+    • src/main/kotlin/payments/   money: Transfer, Ledger, FxRate
+    • src/main/kotlin/auth/       tokens and permissions
+  For payments I recommend also banning floating-point money (Double, Float).
+  > Yes, both zones, and the money rule
+
+  ✅ Zones: payments (no floating-point money) and auth.
+
+  Decision 3 of 6 · Layers
+  domain/ never imports web/ today. Keep it that way?
+  > Yes
+
+  Decision 4 of 6 · Tests and coverage
+  Kover already requires 80%, so I recommend 80% for new and changed code.
+  > 80%
+
+  Decision 5 of 6 · Mutation testing
+  Mutation testing makes small deliberate bugs in your code and runs your
+  tests against each one; a bug no test catches is a test that doesn't really
+  check anything. It runs your tests once per bug, so it's the slowest check.
+  I recommend it only on changed lines in payments, or leaving it out.
+  > Changed lines in payments
+
+  Decision 6 of 6 · When to block
+  Start in shadow mode (reports, blocks nothing), or block failing changes now?
+  > Shadow mode
+
+  This will be applied:
+    • owner @maria
+    • zones payments (no floating-point money) and auth, both need @maria
+    • domain must not depend on web
+    • 80% coverage on changed code; mutation 60% on changed code in payments
+    • shadow mode
+  Apply it now?
+  > Apply it now
+
+● Applied on the branch gauntlet/setup: the policy, a baseline of today's
+  coverage and findings, and Claude Code's hooks. Everything passes. Open a
+  pull request for it: gh pr create --fill
+```
+
+From then on Claude Code runs Gauntlet before it says a task is done, and
+every pull request gets a `gauntlet` check with a plain-English summary. A
+change that touches `payments` says so in colour, lists what needs a look,
+and waits for @maria to tick **Approve this change** in the report.
+
 ### Joining a project that uses Gauntlet
 
 Setup commits everything (the policy, Claude Code's hooks and Gauntlet's MCP
