@@ -36,6 +36,11 @@ export const seedFor = (head: string, run: number) => ((Number.parseInt(head.sli
 export interface Stability {
   /** Failing tests that passed when run again alone. */
   readonly rerunFlaky: ReadonlyArray<string>
+  /**
+   * Failing tests from a run that measured coverage that passed when run again
+   * alone without it: slowed by the instrumentation (a timing test), not flaky.
+   */
+  readonly slowedByCoverage: ReadonlyArray<string>
   /** Tests in new or changed test files that both passed and failed across the repeated runs. */
   readonly newFlaky: ReadonlyArray<string>
   /** Failures excused by a quarantine that still holds. */
@@ -55,8 +60,10 @@ export interface StabilityInput<R> {
   readonly quarantine: ReadonlyArray<Quarantine>
   /** The judged commit's date, YYYY-MM-DD. */
   readonly today: string
-  /** Runs part of the suite again, or undefined when the pack can't. */
+  /** Runs part of the suite again, or undefined when the pack can't. Reruns never measure coverage. */
   readonly rerun?: (subset: TestSubset, label: string) => Effect.Effect<GateRun, never, R>
+  /** The main run measured coverage in the same run as the tests. */
+  readonly measuredCoverage?: boolean
   /** Every file in the judged checkout, to find a failing test's file when the report doesn't say (vitest names tests after their file). */
   readonly files?: ReadonlyArray<string>
 }
@@ -71,12 +78,13 @@ export const assessStability = <R>(input: StabilityInput<R>) =>
     const notes: string[] = []
     const failures = failuresOf(input.main)
     const rerunFlaky = new Set<string>()
+    const slowedByCoverage = new Set<string>()
     if (failures.length > 0 && input.rerun) {
       const fileOf = (f: TestFailure) => f.file ?? (input.files ?? []).filter((p) => f.id.startsWith(`${p}.`) || f.id.startsWith(`${p} `)).sort((a, b) => b.length - a.length)[0]
       const files = [...new Set(failures.flatMap((f) => { const file = fileOf(f); return file ? [file] : [] }))].sort()
       const again = yield* input.rerun({ files, ids: failures.map((f) => f.id).sort(), seed: seedFor(input.facts.head, 0) }, "rerun")
       const passed = passedIn(again)
-      for (const f of failures) if (passed.has(f.id)) rerunFlaky.add(f.id)
+      for (const f of failures) if (passed.has(f.id)) (input.measuredCoverage ? slowedByCoverage : rerunFlaky).add(f.id)
     } else if (failures.length > 0) {
       notes.push("failed tests weren't run again: the pack can't run single tests")
     }
@@ -99,7 +107,8 @@ export const assessStability = <R>(input: StabilityInput<R>) =>
       const repeats: GateRun[] = []
       for (let i = 1; i <= REPEATS; i++) repeats.push(yield* input.rerun({ files: changed, ids: [], seed: seedFor(input.facts.head, i) }, `repeat-${i}`))
       const repeated = new Set(repeats.flatMap((r) => r.tests?.ids ?? []))
-      note(input.main)
+      // A run that measured coverage isn't compared with repeats that don't: a timing test would look flaky.
+      if (!input.measuredCoverage) note(input.main)
       repeats.forEach(note)
       for (const [id, outcomes] of seen) if (repeated.has(id) && outcomes.size > 1) newFlaky.add(id)
     } else if (changed.length > 0) {
@@ -107,11 +116,12 @@ export const assessStability = <R>(input: StabilityInput<R>) =>
     }
 
     const active = (q: Quarantine) => q.until >= input.today
-    const remaining = failures.filter((f) => !rerunFlaky.has(f.id))
+    const remaining = failures.filter((f) => !rerunFlaky.has(f.id) && !slowedByCoverage.has(f.id))
     const quarantined = remaining.filter((f) => input.quarantine.some((q) => q.test === f.id && active(q))).map((f) => f.id)
     const expired = input.quarantine.filter((q) => !active(q) && remaining.some((f) => f.id === q.test))
     return {
       rerunFlaky: [...rerunFlaky].sort(),
+      slowedByCoverage: [...slowedByCoverage].sort(),
       newFlaky: [...newFlaky].sort(),
       quarantined: quarantined.sort(),
       failures: remaining.filter((f) => !quarantined.includes(f.id)).sort((a, b) => (a.id < b.id ? -1 : 1)),
