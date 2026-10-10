@@ -1,11 +1,12 @@
 import type { Budget, BudgetThreshold } from "@gauntlet/ir"
 import type { Metric } from "@gauntlet/sarif"
 
-// Performance budgets (spec 0006): the policy's `budget` runs a command that
-// writes its measurements to {json}, and Gauntlet holds them to the budget's
-// limits. Three formats are read: Gauntlet's own (metric names as in the
-// policy, times in milliseconds), hyperfine's --export-json and k6's
-// --summary-export, so an existing benchmark needs no adapter.
+// Performance budgets (specs 0006, 0007): the policy's `budget` runs a command
+// that writes its measurements to {json}, and Gauntlet holds them to the
+// budget's limits. It reads Gauntlet's own format (metric names as in the
+// policy, times in milliseconds), hyperfine's --export-json, k6's
+// --summary-export, a Proofload run document and Gatling's stats.json, so an
+// existing benchmark or load test needs no adapter.
 
 /** Measurements, times in milliseconds, errors in percent, throughput in requests a second. */
 export type Measures = Readonly<Record<string, number>>
@@ -15,6 +16,59 @@ export interface BudgetResults {
   readonly overall: Measures
   /** Per endpoint or command, for an aggregate such as `max(p99)`. */
   readonly series: Readonly<Record<string, Measures>>
+  /**
+   * Why the numbers can't be trusted, when the tool says so: a load generator
+   * that fell behind its schedule measured a queue it built itself, not the
+   * service. Such a run is not executed, never passed or failed.
+   */
+  readonly untrusted?: string
+}
+
+const NS_PER_MS = 1_000_000
+
+/** A Proofload run document (proofload/run/1): per step p50 and p99 in nanoseconds, and failures. */
+const proofload = (o: Record<string, unknown>): BudgetResults => {
+  const errors = (count: unknown, failed: unknown) => (typeof count === "number" && count > 0 && typeof failed === "number" ? (failed / count) * 100 : undefined)
+  const measures = (s: Record<string, unknown>): Measures => Object.fromEntries(Object.entries({
+    p50: typeof s.p50 === "number" ? s.p50 / NS_PER_MS : undefined,
+    p99: typeof s.p99 === "number" ? s.p99 / NS_PER_MS : undefined,
+    errors: errors(s.count, s.failed),
+  }).filter(([, v]) => v !== undefined)) as Measures
+  const steps = Array.isArray(o.steps) ? (o.steps as Array<Record<string, unknown>>) : []
+  const series = Object.fromEntries(steps.map((s, i) => [String(s.name ?? `#${i + 1}`), measures(s)]))
+  const whole = errors(o.count, o.failed)
+  const overall = { ...(steps.length === 1 ? measures(steps[0]!) : {}), ...(whole !== undefined ? { errors: whole } : {}) }
+  const schedule = o.schedule as { kept?: unknown } | undefined
+  const behind = o.verdict === "behind" || schedule?.kept === false
+  return { overall, series, ...(behind ? { untrusted: "the load generator fell behind its schedule, so the numbers describe the generator, not the service" } : {}) }
+}
+
+/** Gatling's js/stats.json: per request, percentiles1..4 (by default p50, p75, p95, p99) in milliseconds, ko of total, and requests a second. */
+const gatling = (o: Record<string, unknown>): BudgetResults => {
+  type Stats = Record<string, { total?: number } | undefined>
+  const measures = (s: Stats): Measures => {
+    const total = s.numberOfRequests?.total
+    const ko = s.numberOfRequests && (s.numberOfRequests as { ko?: number }).ko
+    return Object.fromEntries(Object.entries({
+      p50: s.percentiles1?.total,
+      p95: s.percentiles3?.total,
+      p99: s.percentiles4?.total,
+      mean: s.meanResponseTime?.total,
+      min: s.minResponseTime?.total,
+      max: s.maxResponseTime?.total,
+      errors: typeof total === "number" && total > 0 && typeof ko === "number" ? (ko / total) * 100 : undefined,
+      throughput: s.meanNumberOfRequestsPerSecond?.total,
+    }).filter(([, v]) => typeof v === "number" && Number.isFinite(v))) as Measures
+  }
+  const series: Record<string, Measures> = {}
+  const walk = (node: Record<string, unknown>) => {
+    for (const child of Object.values((node.contents ?? {}) as Record<string, Record<string, unknown>>)) {
+      if (child.type === "REQUEST") series[String((child.stats as { name?: string } | undefined)?.name ?? child.name)] = measures((child.stats ?? {}) as Stats)
+      else walk(child)
+    }
+  }
+  walk(o)
+  return { overall: measures((o.stats ?? {}) as Stats), series }
 }
 
 const TIME = new Set(["p50", "p90", "p95", "p99", "p999", "mean", "max", "min"])
@@ -31,6 +85,8 @@ export const parseBudgetResults = (text: string): BudgetResults | undefined => {
   }
   if (typeof json !== "object" || json === null) return undefined
   const o = json as Record<string, unknown>
+  if (o.schema === "proofload/run/1") return proofload(o)
+  if (o.type === "GROUP" && typeof o.stats === "object" && o.stats !== null && "numberOfRequests" in (o.stats as object)) return gatling(o)
   // hyperfine --export-json: seconds per command.
   if (Array.isArray(o.results)) {
     const series: Record<string, Measures> = {}
@@ -115,6 +171,7 @@ export interface BudgetOutcome {
  * evidence, never a pass.
  */
 export const judgeBudget = (budget: Budget, r: BudgetResults, recorded: Readonly<Record<string, Metric>>): BudgetOutcome => {
+  if (r.untrusted !== undefined) return { status: "not-executed", reason: r.untrusted, metrics: {} }
   const metrics: Record<string, Metric> = {}
   for (const [field, value] of Object.entries(r.overall)) {
     metrics[budgetMetricKey(budget.name, field)] = { value, unit: unitOf(field), higherIsBetter: !higherIsWorse(field) }
