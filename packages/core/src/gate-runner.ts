@@ -367,7 +367,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         if (parsed?.untrusted !== undefined) return { status: "not-executed", reason: parsed.untrusted, proof }
         if (exitCode !== 0) return { status: "failed", reason: `the budget's command exited with ${exitCode}`, proof }
         if (!report) return { status: "not-executed", reason: "the budget's command wrote nothing to {json}", proof }
-        if (!parsed) return { status: "errored", reason: "{json} isn't JSON Gauntlet can read (its own format, hyperfine, k6, Proofload or Gatling)", proof }
+        if (!parsed) return { status: "errored", reason: "{json} isn't in a format Gauntlet reads: its own, or hyperfine, k6, Proofload, Gatling, JMH, go test -bench, criterion, pytest-benchmark, Locust, vegeta or oha", proof }
         const outcome = judgeBudget(budget, parsed, Option.match(baseline, { onNone: () => ({}), onSome: (b) => b.metrics }))
         Object.assign(metrics, outcome.metrics)
         return { status: outcome.status, ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}), proof }
