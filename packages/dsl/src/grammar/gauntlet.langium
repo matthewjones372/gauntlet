@@ -15,7 +15,12 @@ entry Policy:
 
 Block:
     Use | Mode | Owners | Protect | Zone | Arch | Suites | Integrity | Import
-    | Budget | Gates | OnFail | Predicate | Review | Stack | Quarantine;
+    | Budget | Gates | OnFail | Predicate | Review | Stack | Quarantine | Split;
+
+// \`split when diff > 600 lines\`: how big a change spread over several parts
+// must be before the report suggests stacked pull requests (400 lines unless set).
+Split:
+    'split' 'when' condition=DiffCondition;
 
 // \`use jvm in "lark-bank", "bank-access", scala in "bank-checks"\`: a pack names the
 // folders of the builds it runs, when they aren't at the repository's root.
@@ -210,18 +215,18 @@ QName returns string:
 
 // User-chosen names. A few keywords that read naturally as names are allowed.
 Name returns string:
-    ID | 'baseline' | 'env' | 'command' | 'cumulative' | 'caution' | 'ci' | 'only' | 'fix' | 'fail' | 'until'
+    ID | 'split' | 'baseline' | 'env' | 'command' | 'cumulative' | 'caution' | 'ci' | 'only' | 'fix' | 'fail' | 'until'
     | 'changed' | 'all' | 'touched' | 'added' | 'missing' | 'pass';
 
 // Words inside an integrity list. The three list keywords are left out so a
 // new `ratchet`, `forbid` or `flag` line starts a new list.
 IntegrityWord returns string:
-    ID | 'in' | 'on' | 'not' | 'env' | 'from' | 'only' | 'module' | 'baseline' | 'diff' | 'fail' | 'fix'
+    ID | 'split' | 'in' | 'on' | 'not' | 'env' | 'from' | 'only' | 'module' | 'baseline' | 'diff' | 'fail' | 'fix'
     | 'changed' | 'all' | 'no' | 'touched' | 'added' | 'missing' | 'pass';
 
 // Words inside a stack layer body, which is closed by '}'.
 LayerWord returns string:
-    ID | 'zone' | 'budget' | 'gates' | 'paths' | 'rule' | 'module' | 'must' | 'not' | 'depend'
+    ID | 'split' | 'zone' | 'budget' | 'gates' | 'paths' | 'rule' | 'module' | 'must' | 'not' | 'depend'
     | 'on' | 'from' | 'env' | 'vs' | 'baseline' | 'ratchet' | 'in' | 'layer' | 'max' | 'diff'
     | 'cumulative' | 'ci' | 'only' | 'caution' | 'fix' | 'fail' | 'flag' | 'forbid' | 'review'
     | 'owner' | 'skim' | 'auto' | 'llm' | 'protect' | 'suites' | 'integrity' | 'arch' | 'stack'

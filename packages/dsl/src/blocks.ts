@@ -24,7 +24,7 @@ export interface PolicyBlock extends BlockId {
 const KINDS: Readonly<Record<string, BlockKind>> = {
   Use: "use", Mode: "mode", Owners: "owners", Protect: "protect", Zone: "zone", Arch: "arch", Suites: "suites",
   Integrity: "integrity", Import: "import", Budget: "budget", Gates: "gates", OnFail: "on fail", Predicate: "predicate",
-  Review: "review", Stack: "stack", Quarantine: "quarantine",
+  Review: "review", Stack: "stack", Quarantine: "quarantine", Split: "split",
 }
 
 /** Kinds that can appear more than once, told apart by name. */

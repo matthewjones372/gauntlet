@@ -179,6 +179,7 @@ export const plainSummary = (r: Report, opts: RenderOptions = {}): string[] => {
     ...(things.length > 0
       ? [">", `> ${blocking.length > 0 ? `${plural(blocking.length, "thing")} to fix${things.length > blocking.length ? `, and ${plural(things.length - blocking.length, "more thing")} to look at` : ""}:` : `${plural(things.length, "thing")} to look at:`}`, ">", ...things.map((t, i) => `> ${i + 1}. ${t}`)]
       : []),
+    ...(r.stack ? [">", `> It would be easier to review as ${r.stack.steps.length} stacked pull requests: see **Review it as stacked pull requests** below.`] : []),
     "",
   ]
 }
@@ -221,6 +222,18 @@ export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
       lines.push(`- Zone **${z.zone}**${z.owners.length > 0 ? ` (owner ${z.owners.join(", ")})` : ""}: ${files}${z.files.length > 5 ? ` and ${z.files.length - 5} more` : ""}`)
     }
     lines.push("")
+  }
+
+  // A big change over several parts: suggest reviewing it as stacked pull requests, lowest layer first.
+  if (r.stack) {
+    lines.push(
+      "### Review it as stacked pull requests",
+      "",
+      `This change is big (${plural(r.stack.lines, "line")}) and spans ${r.stack.steps.length} parts of the repository. It would be easier to review as ${r.stack.steps.length} pull requests, each on top of the one before:`,
+      "",
+      ...r.stack.steps.map((s, i) => `${i + 1}. **${s.title}** (${plural(s.files.length, "file")}, ${plural(s.lines, "line")})${s.needsOwner ? ", for an owner" : ""}: ${s.files.slice(0, 3).map(code).join(", ")}${s.files.length > 3 ? ` and ${s.files.length - 3} more` : ""}`),
+      "",
+    )
   }
 
   // A review or owner tier waits for an approval on GitHub; say exactly how to give it.
