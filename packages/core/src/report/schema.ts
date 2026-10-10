@@ -71,6 +71,10 @@ export const ReportCheck = Schema.Struct({
   quarantined: Schema.optionalKey(Schema.Array(Schema.String)),
   /** A holdout failed while the visible suites passed (ADR 0019). */
   holdoutGap: Schema.optionalKey(Schema.Literal(true)),
+  /** Failing tests that fail on the base too: already failing before the change. */
+  failingOnBase: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** Every failure that counts fails on the base too, so the change isn't blocked for it. */
+  failedBefore: Schema.optionalKey(Schema.Literal(true)),
   source: Schema.optionalKey(SourceRef),
 })
 export type ReportCheck = typeof ReportCheck.Type

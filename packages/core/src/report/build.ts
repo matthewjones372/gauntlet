@@ -82,6 +82,8 @@ export const buildReport = (input: ReportInput): Report => {
       ...(c.flaky && c.flaky.length > 0 ? { flaky: [...c.flaky] } : {}),
       ...(c.quarantined && c.quarantined.length > 0 ? { quarantined: [...c.quarantined] } : {}),
       ...(c.holdoutGap ? { holdoutGap: true as const } : {}),
+      ...(c.failingOnBase && c.failingOnBase.length > 0 ? { failingOnBase: [...c.failingOnBase] } : {}),
+      ...(c.failedBefore ? { failedBefore: true as const } : {}),
       ...opt("source", sourceRef(sourceMap, c.pointer)),
     }))
 
