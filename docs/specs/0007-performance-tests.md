@@ -28,14 +28,14 @@ A run whose load generator fell behind (Proofload's exit 2; any tool that report
 ```
 budget transfers {
   command "./gradlew :load:gatlingRun --simulation TransfersSimulation"
-  reads gatling "load/build/reports/gatling"
+  reads "load/build/reports/gatling/*/js/stats.json"
   p99 < 200ms
   errors < 0.1%
   when zone payments touched
 }
 ```
 - `when zone <name> touched` (or `when "<glob>" touched`) runs the budget only for a change that touches that code, locally and in CI. A change elsewhere passes it with "the change doesn't touch payments".
-- `reads <tool> "<path>"` names a tool's own output when it can't write to `{json}`.
+- `reads "<path>"` names a tool's own output when it can't write to `{json}`; a `*` matches one folder or file name, and of several matches the last by name is read (timestamped report folders sort by time). The format is recognised from the file.
 - A failing budget runs once more before it counts: a laptop under load misses a limit by chance, and an agent would chase a slowdown that isn't there. Both runs are in the proof.
 
 ### 3. The agent is told enough to fix a slowdown

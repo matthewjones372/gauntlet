@@ -342,20 +342,47 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     }
 
     /**
-     * A performance budget (spec 0006): its command runs in the judged
+     * A performance budget (specs 0006, 0007): its command runs in the judged
      * checkout and writes its measurements to {json}, a fresh file in the
-     * check's output directory, which is the only thing read.
+     * check's output directory, or to the file its `reads` names, which is
+     * copied there. It runs only for a change that touches its `when`, and a
+     * failing run runs once more before it counts: a busy machine misses a
+     * limit by chance.
      */
     function runBudget(name: string, dir: string): Effect.Effect<Omit<CheckRecord, "tier" | "check" | "pointer" | "advisory">, never, ProcessRunner | FileSystem.FileSystem | Path.Path> {
       return Effect.gen(function*() {
         const budget = ir.budgets.find((b) => b.name === name)
         if (!budget) return { status: "not-executed", reason: `the policy has no budget '${name}'` }
+        if (budget.when && !input.recording) {
+          const touched = budget.when.zone !== undefined
+            ? facts.zonesTouched.some((z) => z.zone === budget.when!.zone)
+            : facts.files.some((f) => globMatches(budget.when!.glob!, f.path))
+          if (!touched) return { status: "passed", reason: `the change doesn't touch ${budget.when.zone !== undefined ? `zone ${budget.when.zone}` : budget.when.glob}, so this budget didn't run` }
+        }
+        const first = yield* measureBudget(budget, dir)
+        if (first.status !== "failed" || input.recording) return first
+        const again = yield* measureBudget(budget, `${dir}-again`)
+        // Failing twice is a failure, as the second run says it; a second run that passes says the first didn't.
+        return again.status === "failed"
+          ? again
+          : { ...again, reason: [`the first run failed (${first.reason ?? "failed"}), a second run didn't`, ...(again.reason ? [again.reason] : [])].join("; ") }
+      })
+    }
+
+    /** One run of a budget's command, judged. */
+    function measureBudget(budget: PolicyIR["budgets"][number], dir: string): Effect.Effect<Omit<CheckRecord, "tier" | "check" | "pointer" | "advisory">, never, ProcessRunner | FileSystem.FileSystem | Path.Path> {
+      return Effect.gen(function*() {
         const made = yield* Effect.exit(workspace.outputDir(dir))
         if (made._tag === "Failure") return { status: "errored", reason: "couldn't create an output directory" }
         const target = `${made.value}/budget.json`
         const command = budget.command.replaceAll("{json}", `'${target.replaceAll("'", "'\\''")}'`)
         const runner = yield* ProcessRunner
         const result = yield* Effect.exit(runner.run({ command: "sh", args: ["-c", command], cwd: workspace.dir, env: { GAUNTLET_OUT: made.value } }))
+        // The tool's own file, copied next to {json}, so the proof hashes what was read.
+        if (budget.reads !== undefined) {
+          const found = yield* resolveReads(budget.reads)
+          if (found !== undefined) yield* fsys.copyFile(found, target).pipe(Effect.ignore)
+        }
         const files = yield* workspace.collect(dir).pipe(Effect.orElseSucceed(() => []))
         const exitCode = result._tag === "Success" ? result.value.exitCode : -1
         const proof: Proof = { command: ["sh", "-c", budget.command], exitCode, reports: Object.fromEntries(files.map((f) => [f.path, sha256(f.content)])) }
@@ -366,11 +393,38 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         // non-zero too: that run is not executed, rather than a failure of the change.
         if (parsed?.untrusted !== undefined) return { status: "not-executed", reason: parsed.untrusted, proof }
         if (exitCode !== 0) return { status: "failed", reason: `the budget's command exited with ${exitCode}`, proof }
-        if (!report) return { status: "not-executed", reason: "the budget's command wrote nothing to {json}", proof }
-        if (!parsed) return { status: "errored", reason: "{json} isn't in a format Gauntlet reads: its own, or hyperfine, k6, Proofload, Gatling, JMH, go test -bench, criterion, pytest-benchmark, Locust, vegeta or oha", proof }
+        if (!report) return { status: "not-executed", reason: budget.reads !== undefined ? `nothing was found at ${budget.reads}` : "the budget's command wrote nothing to {json}", proof }
+        if (!parsed) return { status: "errored", reason: `${budget.reads ?? "{json}"} isn't in a format Gauntlet reads: its own, or hyperfine, k6, Proofload, Gatling, JMH, go test -bench, criterion, pytest-benchmark, Locust, vegeta or oha`, proof }
         const outcome = judgeBudget(budget, parsed, Option.match(baseline, { onNone: () => ({}), onSome: (b) => b.metrics }))
         Object.assign(metrics, outcome.metrics)
         return { status: outcome.status, ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}), proof }
+      })
+    }
+
+    /**
+     * A budget's `reads` path in the checkout, where a `*` matches one folder
+     * or file name; of several matches the last by name, as timestamped report
+     * folders (Gatling's) sort by time.
+     */
+    function resolveReads(pattern: string): Effect.Effect<string | undefined, never, FileSystem.FileSystem> {
+      return Effect.gen(function*() {
+        let paths = [workspace.dir]
+        for (const segment of pattern.split("/").filter((x) => x !== "" && x !== ".")) {
+          if (!segment.includes("*")) {
+            paths = paths.map((p) => `${p}/${segment}`)
+            continue
+          }
+          const matcher = new RegExp(`^${segment.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")}$`)
+          const next: string[] = []
+          for (const p of paths) {
+            const names = yield* fsys.readDirectory(p).pipe(Effect.orElseSucceed(() => [] as string[]))
+            for (const n of [...names].sort()) if (matcher.test(n)) next.push(`${p}/${n}`)
+          }
+          paths = next
+        }
+        const existing: string[] = []
+        for (const p of paths) if (yield* fsys.exists(p).pipe(Effect.orElseSucceed(() => false))) existing.push(p)
+        return existing.sort().at(-1)
       })
     }
 
