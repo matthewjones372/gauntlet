@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Option, Ref } from "effect"
 import { createInterface } from "node:readline/promises"
-import { GateProgress, type GateProgressShape } from "@gauntlet/core"
+import { GateProgress, type GateProgressShape, MUTATION_COST, MUTATION_FASTER, SLOW_MUTATION_MS } from "@gauntlet/core"
 
 /** Where commands print. Tests capture it; the binary writes to stdout and stderr. */
 export class Output extends Context.Service<Output, {
@@ -58,6 +58,10 @@ export const answers = (...replies: ReadonlyArray<string>) => {
 const took = (ms: number) =>
   ms < 1000 ? `${ms}ms` : ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60_000)}m ${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}s`
 
+/** Why a slow mutation run was slow, and how to speed it up; nothing for a quick one. */
+export const slowMutationNote = (check: string, ms: number): string =>
+  check === "mutation" && ms >= SLOW_MUTATION_MS ? `    Mutation testing took ${took(ms)}. ${MUTATION_COST} ${MUTATION_FASTER}\n` : ""
+
 /**
  * Gate progress for a terminal: "  mutation... 42s" ticking while a gate runs,
  * then "  mutation: passed (1m 05s)". Nothing when stderr isn't a terminal.
@@ -76,7 +80,7 @@ export const terminalGateProgress = (stream: NodeJS.WriteStream = process.stderr
       Effect.sync(() => {
         if (timer !== undefined) clearInterval(timer)
         timer = undefined
-        stream.write(`\r\x1b[K  ${check}: ${status} (${took(ms)})\n`)
+        stream.write(`\r\x1b[K  ${check}: ${status} (${took(ms)})\n${slowMutationNote(check, ms)}`)
       }),
   }
 }

@@ -1,5 +1,5 @@
 import {
-  agentSummary, BASELINE_PATH, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
+  agentSummary, BASELINE_PATH, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
   ProcessRunner, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
@@ -344,12 +344,13 @@ const switchOnHooks = (root: string) =>
   })
 
 /** What a first baseline means, and the order to go in when the project already fails. */
-export const firstRunExplained = (mode: "shadow" | "enforce", failing: boolean): string =>
+export const firstRunExplained = (mode: "shadow" | "enforce", failing: boolean, mutation = false): string =>
   [
     "",
     style.ok(style.bold("Done. The baseline is today's state of your project.")),
     style.item("Existing lint findings, coverage and mutation scores are recorded, so they don't block a change."),
     style.item("From now on, a change can't make them worse, and new code has to meet the policy's floors."),
+    ...(mutation ? [style.item(`The policy runs mutation testing. ${MUTATION_WHAT} ${MUTATION_COST} ${MUTATION_FASTER}`)] : []),
     mode === "shadow"
       ? style.item(`Gauntlet is in shadow mode: it reports and blocks nothing. Switch to ${style.command("mode enforce")} in .gauntlet/policy.gx when ${style.command("gauntlet report shadow")} looks right.`)
       : style.item("The policy is in enforce mode: a change that fails is blocked."),
@@ -1370,7 +1371,7 @@ const apply = Command.make("apply", {
         yield* output.out("Committed the baseline, and switched on Gauntlet's Claude Code hooks.")
       }
       const failing = persistentFailures(recorded.checks, recorded.ir)
-      yield* output.out(`${firstRunExplained(recorded.ir.mode, failing.length > 0)}${yield* pullRequestHint(root)}`)
+      yield* output.out(`${firstRunExplained(recorded.ir.mode, failing.length > 0, runsMutation(recorded.ir))}${yield* pullRequestHint(root)}`)
       if (failing.length > 0) yield* offerFix(root, failing)
       return
     }
@@ -1427,6 +1428,16 @@ const githubStatusCommand = Command.make("github-status", {
         const who = `approved by ${status.approvedBy.join(", ")}`
         const ticked = rest.map((l) => (l.startsWith(`- [ ] ${APPROVE_BOX}`) ? `- [x] ${APPROVE_BOX}: ${who} (commit \`${head.slice(0, 12)}\`)` : l))
         yield* fs.writeFileString(md, [first, "", `**${status.title}** for commit \`${head.slice(0, 12)}\`.`, ...ticked].join("\n"))
+      }
+    }
+    // A tick from someone who isn't an owner: the report posted again has the box unticked, and says why.
+    if (status.conclusion !== "success" && status.notOwners !== undefined) {
+      const md = path.resolve(root, args.out, "gauntlet-report.md")
+      const text = yield* fs.readFileString(md).pipe(Effect.option)
+      if (Option.isSome(text)) {
+        const [first, ...rest] = text.value.split("\n")
+        const note = `> [!NOTE]\n> ${status.notOwners.map((u) => `@${u}`).join(", ")} ticked the box or approved, but isn't an owner, so it doesn't count. An owner ticks the box below.`
+        yield* fs.writeFileString(md, [first, "", note, ...rest].join("\n"))
       }
     }
     yield* output.out(`${status.conclusion}: ${status.title}. ${status.summary}`)
