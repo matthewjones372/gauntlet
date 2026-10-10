@@ -42,6 +42,16 @@ Policy `e2dfb6cfa346` from the base; base `111111111111`, head `222222222222`.
 | verify | mutation | **failed** | exit 0; 1 report (aaaaaaaaaaaa…); mutation score 71% is below the baseline 80% |
 | verify | unit | **failed** | 42 run, 1 failed, 0 skipped; exit 0; 1 report (aaaaaaaaaaaa…); 1 test failed |
 
+<details><summary>What's mutation testing, and why does it take longer?</summary>
+
+Mutation testing makes small deliberate bugs in your code (turning a `>` into `>=`, say) and runs your tests against each one. A bug that no test catches shows a test that runs the code but doesn't really check it.
+
+It runs your tests once for every bug it makes, so it's by far the slowest check: minutes where your tests take seconds, and far longer across a whole project.
+
+To keep it quick, run it only on the lines a change touches (`mutation >= 60% on changed`), only in the zones that matter (`... on changed in zone money`), or leave it out of the policy.
+
+</details>
+
 ### Integrity
 
 | Kind | Check | Where | Finding |

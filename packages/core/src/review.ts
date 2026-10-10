@@ -19,6 +19,10 @@ export interface CheckOutcome {
   readonly reason?: string
   /** Tests that passed and failed (M15). Flaky tests that let a suite pass still need a person to look. */
   readonly flaky?: ReadonlyArray<string>
+  /** Failing tests that also fail with the change's files as the base has them: they were failing before the change. */
+  readonly failingOnBase?: ReadonlyArray<string>
+  /** Every failure that counts fails on the base too: the change didn't cause the check to fail. */
+  readonly failedBefore?: true
 }
 
 export interface NewViolation {
@@ -67,6 +71,7 @@ export type ImplicitRule =
   | "gauntlet-changed"
   | "reported-blocked"
   | "flaky-test"
+  | "failing-on-base"
   | "caution"
 
 export type NominationSource =
@@ -176,7 +181,9 @@ export const decide = (input: ReviewInput): Decision => {
   // Evidence.
   for (const c of evidence.checks) {
     if (c.advisory) continue
-    if (c.status === "failed") nominate("review", `${c.check} failed${c.reason ? `: ${c.reason}` : "."}`, implicit("gate-failed", c.pointer), true)
+    // Tests that fail on the base too were broken before the change: a person looks, but the change isn't blocked for them.
+    if (c.status === "failed" && c.failedBefore) nominate("review", `${c.check} failed${c.reason ? `: ${c.reason}` : "."}`, implicit("failing-on-base", c.pointer))
+    else if (c.status === "failed") nominate("review", `${c.check} failed${c.reason ? `: ${c.reason}` : "."}`, implicit("gate-failed", c.pointer), true)
     if (c.status === "not-executed" || c.status === "errored") {
       nominate("review", `${c.check} ${c.status === "errored" ? "errored" : "was not executed"}${c.reason ? `: ${c.reason}` : "."}`, implicit("missing-evidence", c.pointer))
     }
