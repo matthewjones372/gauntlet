@@ -1429,6 +1429,16 @@ const githubStatusCommand = Command.make("github-status", {
         yield* fs.writeFileString(md, [first, "", `**${status.title}** for commit \`${head.slice(0, 12)}\`.`, ...ticked].join("\n"))
       }
     }
+    // A tick from someone who isn't an owner: the report posted again has the box unticked, and says why.
+    if (status.conclusion !== "success" && status.notOwners !== undefined) {
+      const md = path.resolve(root, args.out, "gauntlet-report.md")
+      const text = yield* fs.readFileString(md).pipe(Effect.option)
+      if (Option.isSome(text)) {
+        const [first, ...rest] = text.value.split("\n")
+        const note = `> [!NOTE]\n> ${status.notOwners.map((u) => `@${u}`).join(", ")} ticked the box or approved, but isn't an owner, so it doesn't count. An owner ticks the box below.`
+        yield* fs.writeFileString(md, [first, "", note, ...rest].join("\n"))
+      }
+    }
     yield* output.out(`${status.conclusion}: ${status.title}. ${status.summary}`)
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("CI's trusted job: recompute what needs no execution, then decide the gauntlet check."))
 
