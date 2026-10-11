@@ -15,6 +15,7 @@ import type { Pack } from "./pack-registry.ts"
 import type { CheckRecord } from "./report/build.ts"
 import type { NewViolation, Regression } from "./review.ts"
 import { assessStability, failuresOf, REPEATS } from "./stability.ts"
+import { isCompilerWarnings } from "./compiler-warnings.ts"
 import type { PreparedWorkspace } from "./workspace.ts"
 
 // Runs the policy's gate tiers in order (PLAN section 7). A tier with a
@@ -102,6 +103,8 @@ const parentOf = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/")))
 const compareThreshold = (value: number, op: string, limit: number) =>
   op === "<" ? value < limit : op === "<=" ? value <= limit : op === ">" ? value > limit : op === ">=" ? value >= limit : op === "==" ? value === limit : value !== limit
 
+const isWarningsCheck = (check: Check) => check.kind === "gate" && check.name === "warnings"
+
 export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput, never, ProcessRunner | FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function*() {
     const { ir, facts, workspace, packs, baseline, renames } = input
@@ -136,6 +139,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     const processRunner = yield* ProcessRunner
     // What a suite's run wrote, by build, for the coverage gate to read (tests run once per check).
     const suiteReports = new Map<string, ReadonlyArray<{ readonly path: string; readonly content: string }>>()
+    // The compiler warnings each build's compile printed in this check (by build folder, "." for one at the root),
+    // for its warnings check: an incremental compile warns only about what it recompiles, so they're read once, here.
+    const compiledWarnings = new Map<string, ReadonlyArray<Run>>()
     const hasCoverageGate = ir.gates.some((t) => t.checks.some((c) => c.kind === "gate" && c.name === "coverage"))
     const changedPaths = [...new Set(facts.files.flatMap((f) => [f.path, ...(f.oldPath !== undefined ? [f.oldPath] : [])]))]
     // The builds whose tests ran, when the policy names build folders.
@@ -292,8 +298,12 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
             facts: factsForBuild(ctx.facts, buildDirs, build.dir),
             files: ownedBy(buildDirs, build.dir, ctx.files),
             ...(scope !== undefined ? { scope } : {}),
+            ...(isWarningsCheck(check) && compiledWarnings.has(build.dir) ? { buildWarnings: compiledWarnings.get(build.dir)! } : {}),
           }
-          const raw = runFromBuild(yield* withCi(check, pack, build.dir, bctx, (c) => asInCi(run(c, target), input.ci, build.dir, processRunner, ProcessRunner)), build.dir)
+          const out = yield* withCi(check, pack, build.dir, bctx, (c) => asInCi(run(c, target), input.ci, build.dir, processRunner, ProcessRunner))
+          // What the build's compile warned about, as the build sees its paths, for this build's warnings check.
+          if (check.kind === "gate" && check.name === "build") compiledWarnings.set(build.dir, out.runs.filter(isCompilerWarnings))
+          const raw = runFromBuild(out, build.dir)
           // A build's tests are named with its folder, so the base's tests of a build that didn't run aren't missed.
           const r = raw.tests && build.dir !== "." ? { ...raw, tests: { ...raw.tests, ids: raw.tests.ids.map((id) => `${build.dir}:${id}`) } } : raw
           if (raw.tests) testedBuilds.add(build.dir)
@@ -560,9 +570,11 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           ...(scope ? { scope } : {}),
           files: input.files,
           legacy: Option.match(baseline, { onNone: () => [], onSome: (b) => b.legacy }),
+          ...(!multi && isWarningsCheck(check) && compiledWarnings.has(".") ? { buildWarnings: compiledWarnings.get(".")! } : {}),
         }
         // Builds run as CI does inside acrossBuilds; a single build at the root, here.
         const run = yield* (multi ? start(ctx) : withCi(check, check.kind === "suite" ? packs.find((p) => p.runSuite) : owner, ".", ctx, (c) => asInCi(start(c), input.ci, ".", processRunner, ProcessRunner)))
+        if (!multi && check.kind === "gate" && check.name === "build") compiledWarnings.set(".", run.runs.filter(isCompilerWarnings))
         const files = yield* ctx.collect
         // Temporary paths would make identical runs differ (invariant 4). Builds write under the outputs root.
         const placeholder = (arg: string) =>
