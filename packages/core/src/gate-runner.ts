@@ -1,6 +1,6 @@
 import { type GateSpec, globMatches } from "@gauntlet/dsl"
 import { type Check, type PolicyIR, sha256 } from "@gauntlet/ir"
-import { type Baseline, compareMetrics, compareWithBaseline, type Metric, type MetricDelta, type Proof, resultPath, resultRegion, type Run } from "@gauntlet/sarif"
+import { type Baseline, compareMetrics, compareWithBaseline, type Metric, type MetricDelta, type Proof, resultPath, resultRegion, type Run, type TestMap } from "@gauntlet/sarif"
 import { Clock, Effect, FileSystem, Option, type Path } from "effect"
 import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy, runFromBuild, toBuild } from "./builds.ts"
 import { judgeBudget, parseBudgetResults } from "./budget.ts"
@@ -69,6 +69,8 @@ export interface GateRunnerOutput {
   /** Every metric the gates reported, including `integrity/*` values. */
   readonly metrics: Readonly<Record<string, Metric>>
   readonly durationsMs: Readonly<Record<string, number>>
+  /** Recording: what each test class of the \`affected\` suites executed (spec 0013), when the packs could measure it. */
+  readonly testMap?: TestMap
 }
 
 const NOT_IN_V1: Partial<Record<Check["kind"], string>> = {
@@ -116,6 +118,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     const metrics: Record<string, Metric> = {}
     const durationsMs: Record<string, number> = {}
     const suiteTests: TestRecord[] = []
+    const testMaps: TestMap[] = []
     const changed = facts.files.filter((f) => f.status !== "deleted").map((f) => f.path)
     const specOf = (name: string): { pack: Pack; spec: GateSpec } | undefined => {
       for (const pack of packs) {
@@ -258,7 +261,12 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       }), { executed: 0, passed: 0, failed: 0, errored: 0, skipped: 0 }),
       ids: [...new Set(suiteTests.flatMap((t) => t.ids))].sort(),
     }
-    return { checks, runs, newViolations, regressions, ratchets, ...(tests ? { tests } : {}), metrics, durationsMs, ...(multi ? { testedBuilds: [...testedBuilds].sort() } : {}) }
+    const testMap: TestMap | undefined = testMaps.length === 0 ? undefined : Object.assign({}, ...testMaps)
+    return {
+      checks, runs, newViolations, regressions, ratchets, ...(tests ? { tests } : {}), metrics, durationsMs,
+      ...(multi ? { testedBuilds: [...testedBuilds].sort() } : {}),
+      ...(testMap ? { testMap } : {}),
+    }
 
     /**
      * Runs a check in each of the builds given, each in its folder with its own
@@ -305,7 +313,12 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           if (check.kind === "gate" && check.name === "build") compiledWarnings.set(build.dir, out.runs.filter(isCompilerWarnings))
           const raw = runFromBuild(out, build.dir)
           // A build's tests are named with its folder, so the base's tests of a build that didn't run aren't missed.
-          const r = raw.tests && build.dir !== "." ? { ...raw, tests: { ...raw.tests, ids: raw.tests.ids.map((id) => `${build.dir}:${id}`) } } : raw
+          const named = (name: string) => `${build.dir}:${name}`
+          const r = build.dir === "." ? raw : {
+            ...raw,
+            ...(raw.tests ? { tests: { ...raw.tests, ids: raw.tests.ids.map(named) } } : {}),
+            ...(raw.testMap ? { testMap: Object.fromEntries(Object.entries(raw.testMap).map(([name, files]) => [named(name), files])) } : {}),
+          }
           if (raw.tests) testedBuilds.add(build.dir)
           const fingerprinted = yield* fingerprintRuns(r.runs, workspace.dir, {
             ...(pack.locate ? { locate: pack.locate } : {}),
@@ -511,6 +524,10 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       })
     }
 
+    /**
+     * What an affected suite ran, for the report: how many tests of how many
+     * (the base's tests of the classes left out make up the rest), and why.
+     */
     function runOne(check: Check, dir: string): Effect.Effect<Omit<CheckRecord, "tier" | "check" | "pointer" | "advisory">, never, ProcessRunner | FileSystem.FileSystem | Path.Path> {
       return Effect.gen(function*() {
         let start: (ctx: GateContext) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>
@@ -522,6 +539,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         let multiRerun: ((ctx: GateContext, subset: TestSubset, label: string) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) | undefined
         // The suite's run measures coverage too (onceForCoverage); its reruns don't.
         let measuredCoverage = false
+        // A baseline asks an affected suite for its map of what each test class executes (spec 0013).
+        const affected = check.kind === "suite" && ir.suites.some((s) => s.kind === "suite" && s.name === check.name && s.affected === true)
+        const mapping = (ctx: GateContext): GateContext => (input.recording && affected ? { ...ctx, recordTestMap: true } : ctx)
         if (check.kind === "suite" && multi) {
           const suite = ir.suites.find((s) => s.name === check.name)
           const targets = targetsFor((p) => p.runSuite !== undefined)
@@ -530,7 +550,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const located = (d: string) => ({ name: suite.name, location: suite.location.startsWith(`${d}/`) ? toBuild(d, suite.location) : suite.location })
           suiteRun = { suite: { name: suite.name, location: suite.location }, runner: targets[0]!.pack.runSuite!, reruns: targets.every((t) => t.pack.reruns === true) }
           measuredCoverage = hasCoverageGate && targets.some((t) => t.pack.suiteWithCoverage === true)
-          start = (ctx) => acrossBuilds(check, targets, dir, ctx, (bctx, t) => t.pack.runSuite!(located(t.build.dir), bctx))
+          start = (ctx) =>
+            acrossBuilds(check, targets, dir, ctx, (bctx, t) => t.pack.runSuite!(located(t.build.dir), mapping(bctx)))
           multiRerun = (ctx, subset, label) =>
             acrossBuilds(check, targets.filter((t) => ownedBy(buildDirs, t.build.dir, subset.files).length > 0), `${dir}-${label}`, ctx, (bctx, t) =>
               t.pack.runSuite!(located(t.build.dir), bctx, { ...subset, files: ownedBy(buildDirs, t.build.dir, subset.files) }))
@@ -541,7 +562,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           if (!runner || !suite || suite.kind !== "suite") return { status: "not-executed", reason: "no used pack runs test suites" }
           suiteRun = { suite: { name: suite.name, location: suite.location }, runner, reruns: suitePack.reruns === true }
           measuredCoverage = hasCoverageGate && suitePack.suiteWithCoverage === true
-          start = (ctx) => runner({ name: suite.name, location: suite.location }, ctx)
+          start = (ctx) => runner({ name: suite.name, location: suite.location }, mapping(ctx))
         } else if (check.kind === "gate") {
           const found = specOf(check.name)
           const impl = found?.pack.gates[check.name]
@@ -605,6 +626,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         if (check.kind === "suite") {
           if (!run.tests || files.length === 0) return { status: "failed", reason: "no test report was produced (a silent green fails)", proof }
           suiteTests.push(run.tests)
+          if (run.testMap) testMaps.push(run.testMap)
           const c = run.tests.counts
           if (c.executed === 0) return { status: "failed", reason: "no tests ran (a silent green fails)", proof, tests: c }
           // A baseline records what trunk does; flakiness is judged on changes.

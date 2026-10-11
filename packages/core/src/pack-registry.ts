@@ -55,6 +55,8 @@ export interface Pack {
   readonly stop?: (check: { readonly dir: string; readonly root: string }) => Effect.Effect<void, never, ProcessRunner | FileSystem.FileSystem | Path.Path>
   /** Whether `runSuite` honours a subset and seed, so flaky tests can be found by running them again (M15). */
   readonly reruns?: boolean
+  /** Whether \`runSuite\` records which files each test class executes (\`recordTestMap\`, spec 0013). */
+  readonly testMaps?: boolean
   /** Finds the enclosing symbol of a line, for fingerprints (ADR 0004). */
   readonly locate?: SymbolLocator
   /** Normalises a line before fingerprinting, for example stripping comments. */
