@@ -3,6 +3,7 @@ import type { PolicyIR } from "@gauntlet/ir"
 import type { Metric, MetricDelta, Run } from "@gauntlet/sarif"
 import { Clock, Data, Effect, Option } from "effect"
 import { BaselineStore, renamesOf } from "./baseline-store.ts"
+import { hasBuilds, touchedBuilds } from "./builds.ts"
 import { CI_CONFIG_PATH, type CiConfig, parseCiConfig } from "./ci-config.ts"
 import { diffFacts } from "./diff-facts.ts"
 import { type GateRunnerOutput, runGates } from "./gate-runner.ts"
@@ -164,7 +165,8 @@ const judge = (
       readHead: read(p.head),
       isTestPath: testPathMatcher(p.ir),
       baselineMetrics: Option.match(p.baseline, { onNone: () => ({}), onSome: (b) => byBuild(b.metrics, b.testIds, executed.testedBuilds) }),
-      ...(executed.tests ? { headTests: executed.testedBuilds ? { ...executed.tests, counts: { ...executed.tests.counts, executed: executed.tests.ids.length } } : executed.tests } : {}),
+      // Counted by name when the names are known; the trusted job has only the evidence's counts.
+      ...(executed.tests ? { headTests: executed.testedBuilds && executed.tests.ids.length > 0 ? { ...executed.tests, counts: { ...executed.tests.counts, executed: executed.tests.ids.length } } : executed.tests } : {}),
       // A runner that reports no test ids can't be compared. One that ran no tests at all, where the base
       // ran some, can: every base test no longer runs (a TestMain or setup that skips the suite, say).
       ...(executed.tests && (executed.tests.ids.length > 0 || executed.tests.counts.executed + executed.tests.counts.skipped === 0) && Option.isSome(p.baseline) && p.baseline.value.testIds.length > 0
@@ -349,6 +351,9 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
       caution: ev.imports.filter((i) => i.trust === "caution").flatMap((i) => i.new.map((r) => ({ source: i.source, message: r.message.text, raise: true }))),
       imports: ev.imports.map((i) => ({ source: i.source, trust: i.trust, results: i.new })),
       durationsMs: {},
+      // The builds whose tests ran are the ones the change touches, worked out here from the diff: never the
+      // evidence's word, which could name fewer builds and lower the executed-tests bar.
+      ...(hasBuilds(p.ir) ? { testedBuilds: touchedBuilds(p.ir, p.facts.files.flatMap((f) => [f.path, ...(f.oldPath !== undefined ? [f.oldPath] : [])])) } : {}),
     }
     // A checkout of the head to read files from; nothing in it is executed.
     const report = yield* Effect.scoped(Effect.gen(function*() {
