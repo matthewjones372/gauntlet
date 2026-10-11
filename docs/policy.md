@@ -219,6 +219,51 @@ findings by rule and file, and warnings where it falls short of the policy, such
 as project coverage below the floor changed code must meet, or a build with no
 coverage recorded at all. `--json` gives the same as data.
 
+## Running the tests a change affects
+
+A suite marked `affected` runs only the tests a change can affect
+([spec 0013](specs/0013-tests-a-change-affects.md)):
+
+```
+suites { unit "**/src/test/**" affected }
+```
+
+`gauntlet baseline` records, for each test class, the source files it executed,
+in the baseline next to the test ids. A check then runs the test classes that
+executed a file the change touches, and any test files it adds; the report says
+how many tests ran of how many and why the rest didn't. The change is
+everything that differs from the commit the map was recorded at, so what reached
+trunk since counts too, and an old baseline selects more. Every test runs, as
+without `affected`, when:
+
+- the baseline has no map for the build, or its commit can't be compared;
+- the change touches build configuration, runner configuration, a dependency
+  manifest, or protected fixtures or setup (any protected path that isn't a
+  test or `.gauntlet/`), or adds a dependency;
+- it touches a file no test executed when the map was recorded, such as a new
+  source file, a resource, or code that no test reaches;
+- the policy measures coverage of the whole project (coverage `on changed`
+  only needs the tests that run the changed lines);
+- the check runs on trunk, or the project's CI already ran the tests.
+
+Documentation (`.md`, `.adoc`, `.rst`) and `.gauntlet/` don't count as touched.
+Integrity knows what selection left out: the deleted-tests check and the
+executed-tests ratchet compare only the tests of the classes that ran, so a
+test left out isn't missing, while a test removed from a class that ran, or a
+deleted test file, is still caught. The trusted half of the GitHub check works
+the selection out again from the baseline and git rather than take the
+evidence job's word for it.
+
+The JVM pack records the map with an extra run of the suite while recording a
+baseline: JaCoCo's agent and a JUnit Platform listener write what ran between
+one test class finishing and the next, so code a class starts that finishes
+later counts for the next class too, which only ever selects more. Files whose
+code the compiler copies into callers (Kotlin `inline` functions, `const val`,
+Java constants) are left out of the map, so changing one runs every test. When
+test classes run at the same time, or a class that ran has no data, no map is
+recorded. Other packs record no map yet, so their `affected` suites run every
+test.
+
 ## Removing a feature
 
 Deleting a test is forbidden: it's the oldest way to make a check pass. But removing a feature removes its tests too. When a change deletes a test file together with the source file it's named after (`FxTest.kt` with `Fx.kt`, `fx.test.ts` with `fx.ts`, `fx_test.go` with `fx.go`, `test_fx.py` with `fx.py`), it's flagged instead: the change needs a person's review, not a fix. Those tests don't count against the executed-tests ratchet either. A test deleted while its code stays is still forbidden.

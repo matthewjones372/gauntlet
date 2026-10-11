@@ -1,5 +1,5 @@
 import { type Build, type PolicyIR, sha256 } from "@gauntlet/ir"
-import type { Metric, Run } from "@gauntlet/sarif"
+import type { Metric, Run, TestMap } from "@gauntlet/sarif"
 import type { DiffFacts } from "./diff-facts.ts"
 import type { GateRun } from "./gate.ts"
 
@@ -73,7 +73,8 @@ export const runFromBuild = (run: GateRun, dir: string): GateRun => {
     name,
     m.perFile ? { ...m, perFile: Object.fromEntries(Object.entries(m.perFile).map(([p, v]) => [fromBuild(dir, p), v])) } : m,
   ]))
-  return { ...run, runs, ...(metrics ? { metrics } : {}) }
+  const testMap = run.testMap === undefined ? undefined : Object.fromEntries(Object.entries(run.testMap).map(([name, files]) => [name, files.map((f) => fromBuild(dir, f))]))
+  return { ...run, runs, ...(metrics ? { metrics } : {}), ...(testMap ? { testMap } : {}) }
 }
 
 /**
@@ -117,11 +118,14 @@ export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; read
       metrics[name] = { ...seen, value: worse, ...(perFile ? { perFile } : {}) }
     }
   }
+  const maps = ran.flatMap((p) => (p.run.testMap ? [p.run.testMap] : []))
+  const testMap: TestMap | undefined = maps.length === 0 ? undefined : Object.assign({}, ...maps)
   return {
     command,
     exitCode,
     runs: ran.flatMap((p) => p.run.runs),
     ...(tests ? { tests } : {}),
+    ...(testMap ? { testMap } : {}),
     ...(Object.keys(metrics).length > 0 ? { metrics } : {}),
     ...(errored ? { error: `${errored.dir}: ${errored.run.error}` } : {}),
   }

@@ -1,5 +1,5 @@
 import type { Check, PolicyIR } from "@gauntlet/ir"
-import type { LegacyEntry, Metric, Run } from "@gauntlet/sarif"
+import type { LegacyEntry, Metric, Run, TestMap } from "@gauntlet/sarif"
 import type { Effect, FileSystem, Path } from "effect"
 import type { DiffFacts } from "./diff-facts.ts"
 import type { TestRecord } from "./integrity.ts"
@@ -43,6 +43,11 @@ export interface GateContext {
    * warnings check compiles itself.
    */
   readonly buildWarnings?: ReadonlyArray<Run>
+  /**
+   * A suite, while a baseline is recorded for an \`affected\` suite (spec 0013):
+   * also record which files each test class executes, as \`testMap\`.
+   */
+  readonly recordTestMap?: boolean
 }
 
 export interface GateRun {
@@ -69,6 +74,12 @@ export interface GateRun {
    * another build has it; with one build, or none that has it, it's an error.
    */
   readonly notSetUp?: true
+  /**
+   * The files each test class executed, with paths and class names as the
+   * build sees them, when \`recordTestMap\` asked for it and the pack could
+   * measure it. Absent when it couldn't: then every test runs on a change.
+   */
+  readonly testMap?: TestMap
 }
 
 type GateServices = ProcessRunner | FileSystem.FileSystem | Path.Path
@@ -80,6 +91,10 @@ export interface TestSubset {
   readonly files: ReadonlyArray<string>
   readonly ids: ReadonlyArray<string>
   readonly seed: number
+  /** Test classes to run too, by name (spec 0013). */
+  readonly classes?: ReadonlyArray<string>
+  /** The suite's own run, narrowed to the tests a change affects (spec 0013): in the usual order, measuring coverage when asked. */
+  readonly affected?: true
 }
 
 /** Runs a suite; with `subset`, only those tests, shuffled by its seed where the runner can (M15). */

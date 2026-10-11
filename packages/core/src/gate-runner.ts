@@ -1,6 +1,6 @@
 import { type GateSpec, globMatches } from "@gauntlet/dsl"
 import { type Check, type PolicyIR, sha256 } from "@gauntlet/ir"
-import { type Baseline, compareMetrics, compareWithBaseline, type Metric, type MetricDelta, type Proof, resultPath, resultRegion, type Run } from "@gauntlet/sarif"
+import { type Baseline, compareMetrics, compareWithBaseline, type Metric, type MetricDelta, type Proof, resultPath, resultRegion, type Run, type TestMap } from "@gauntlet/sarif"
 import { Clock, Effect, FileSystem, Option, type Path } from "effect"
 import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy, runFromBuild, toBuild } from "./builds.ts"
 import { judgeBudget, parseBudgetResults } from "./budget.ts"
@@ -14,7 +14,8 @@ import type { TestRecord } from "./integrity.ts"
 import type { Pack } from "./pack-registry.ts"
 import type { CheckRecord } from "./report/build.ts"
 import type { NewViolation, Regression } from "./review.ts"
-import { assessStability, failuresOf, REPEATS } from "./stability.ts"
+import { excusedBySelection, type Selection, type SuiteSelections } from "./selection.ts"
+import { assessStability, failuresOf, REPEATS, seedFor } from "./stability.ts"
 import { isCompilerWarnings } from "./compiler-warnings.ts"
 import type { PreparedWorkspace } from "./workspace.ts"
 
@@ -54,6 +55,8 @@ export interface GateRunnerInput {
    * coverage and compile are read from them instead of run again.
    */
   readonly fromCi?: { readonly files: ReadonlyArray<{ readonly path: string; readonly content: string }>; readonly source: string }
+  /** What each \`affected\` suite runs in each build (spec 0013); ignored while recording. */
+  readonly selections?: SuiteSelections
 }
 
 export interface GateRunnerOutput {
@@ -69,6 +72,10 @@ export interface GateRunnerOutput {
   /** Every metric the gates reported, including `integrity/*` values. */
   readonly metrics: Readonly<Record<string, Metric>>
   readonly durationsMs: Readonly<Record<string, number>>
+  /** Recording: what each test class of the \`affected\` suites executed (spec 0013), when the packs could measure it. */
+  readonly testMap?: TestMap
+  /** The map's test classes that selection left out of the suites that ran (spec 0013). */
+  readonly deselected?: ReadonlyArray<string>
 }
 
 const NOT_IN_V1: Partial<Record<Check["kind"], string>> = {
@@ -116,6 +123,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     const metrics: Record<string, Metric> = {}
     const durationsMs: Record<string, number> = {}
     const suiteTests: TestRecord[] = []
+    const testMaps: TestMap[] = []
+    const deselected = new Set<string>()
     const changed = facts.files.filter((f) => f.status !== "deleted").map((f) => f.path)
     const specOf = (name: string): { pack: Pack; spec: GateSpec } | undefined => {
       for (const pack of packs) {
@@ -258,7 +267,13 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       }), { executed: 0, passed: 0, failed: 0, errored: 0, skipped: 0 }),
       ids: [...new Set(suiteTests.flatMap((t) => t.ids))].sort(),
     }
-    return { checks, runs, newViolations, regressions, ratchets, ...(tests ? { tests } : {}), metrics, durationsMs, ...(multi ? { testedBuilds: [...testedBuilds].sort() } : {}) }
+    const testMap: TestMap | undefined = testMaps.length === 0 ? undefined : Object.assign({}, ...testMaps)
+    return {
+      checks, runs, newViolations, regressions, ratchets, ...(tests ? { tests } : {}), metrics, durationsMs,
+      ...(multi ? { testedBuilds: [...testedBuilds].sort() } : {}),
+      ...(testMap ? { testMap } : {}),
+      ...(deselected.size > 0 ? { deselected: [...deselected].sort() } : {}),
+    }
 
     /**
      * Runs a check in each of the builds given, each in its folder with its own
@@ -305,7 +320,12 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           if (check.kind === "gate" && check.name === "build") compiledWarnings.set(build.dir, out.runs.filter(isCompilerWarnings))
           const raw = runFromBuild(out, build.dir)
           // A build's tests are named with its folder, so the base's tests of a build that didn't run aren't missed.
-          const r = raw.tests && build.dir !== "." ? { ...raw, tests: { ...raw.tests, ids: raw.tests.ids.map((id) => `${build.dir}:${id}`) } } : raw
+          const named = (name: string) => `${build.dir}:${name}`
+          const r = build.dir === "." ? raw : {
+            ...raw,
+            ...(raw.tests ? { tests: { ...raw.tests, ids: raw.tests.ids.map(named) } } : {}),
+            ...(raw.testMap ? { testMap: Object.fromEntries(Object.entries(raw.testMap).map(([name, files]) => [named(name), files])) } : {}),
+          }
           if (raw.tests) testedBuilds.add(build.dir)
           const fingerprinted = yield* fingerprintRuns(r.runs, workspace.dir, {
             ...(pack.locate ? { locate: pack.locate } : {}),
@@ -511,6 +531,34 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       })
     }
 
+    /**
+     * What an affected suite ran, for the report: how many tests of how many
+     * (the base's tests of the classes left out make up the rest), and why.
+     */
+    function selectionRecord(applied: ReadonlyMap<string, Selection>, ran: number): CheckRecord["selection"] {
+      if (applied.size === 0) return undefined
+      const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+      const dirs = [...applied.keys()].sort()
+      const why = dirs.map((d) => {
+        const s = applied.get(d)!
+        const at = multi && d !== "." ? `${d}: ` : ""
+        if (s.kind === "all") return `${at}every test ran: ${s.reason}`
+        const what = [
+          ...(s.classes.length > 0 ? [`${plural(s.classes.length, "test class that executed", "test classes that executed")} what the change touches`] : []),
+          ...(s.files.length > 0 ? [plural(s.files.length, "new test file", "new test files")] : []),
+        ].join(", and ")
+        const left = s.deselected.length > 0 ? `${plural(s.deselected.length, "test class", "test classes")} didn't need to run` : "none could be left out"
+        return `${at}ran ${what}; ${left}`
+      })
+      const left = dirs.flatMap((d) => {
+        const s = applied.get(d)!
+        return s.kind === "some" ? s.deselected : []
+      })
+      left.forEach((c) => deselected.add(c))
+      const excused = excusedBySelection(Option.match(baseline, { onNone: () => [], onSome: (b) => b.testIds }), left)
+      return { ran, of: ran + excused.length, why, ...(left.length > 0 ? { deselected: [...left].sort() } : {}) }
+    }
+
     function runOne(check: Check, dir: string): Effect.Effect<Omit<CheckRecord, "tier" | "check" | "pointer" | "advisory">, never, ProcessRunner | FileSystem.FileSystem | Path.Path> {
       return Effect.gen(function*() {
         let start: (ctx: GateContext) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>
@@ -521,6 +569,19 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         let multiRerun: ((ctx: GateContext, subset: TestSubset, label: string) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) | undefined
         // The suite's run measures coverage too (onceForCoverage); its reruns don't.
         let measuredCoverage = false
+        // An affected suite (spec 0013): what each build ran, and a baseline's request for the map.
+        const applied = new Map<string, Selection>()
+        const affected = check.kind === "suite" && ir.suites.some((s) => s.kind === "suite" && s.name === check.name && s.affected === true)
+        const selections = affected && !input.recording ? input.selections?.get(check.name) : undefined
+        const narrowed = (buildDir: string, ctx: GateContext): { ctx: GateContext; subset?: TestSubset } => {
+          if (input.recording) return { ctx: affected ? { ...ctx, recordTestMap: true } : ctx }
+          const chosen = selections?.get(buildDir)
+          if (!chosen) return { ctx }
+          // The project's CI already ran every test; its reports stand in for this run.
+          applied.set(buildDir, ctx.fromCi ? { kind: "all", reason: "the project's CI ran them" } : chosen)
+          if (ctx.fromCi || chosen.kind === "all") return { ctx }
+          return { ctx, subset: { files: ownedBy(buildDirs, buildDir, chosen.files), ids: [], seed: seedFor(facts.head, 0), classes: chosen.classes, affected: true } }
+        }
         if (check.kind === "suite" && multi) {
           const suite = ir.suites.find((s) => s.name === check.name)
           const targets = targetsFor((p) => p.runSuite !== undefined)
@@ -529,7 +590,11 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const located = (d: string) => ({ name: suite.name, location: suite.location.startsWith(`${d}/`) ? toBuild(d, suite.location) : suite.location })
           suiteRun = { suite: { name: suite.name, location: suite.location }, runner: targets[0]!.pack.runSuite!, reruns: targets.every((t) => t.pack.reruns === true) }
           measuredCoverage = hasCoverageGate && targets.some((t) => t.pack.suiteWithCoverage === true)
-          start = (ctx) => acrossBuilds(check, targets, dir, ctx, (bctx, t) => t.pack.runSuite!(located(t.build.dir), bctx))
+          start = (ctx) =>
+            acrossBuilds(check, targets, dir, ctx, (bctx, t) => {
+              const n = narrowed(t.build.dir, bctx)
+              return t.pack.runSuite!(located(t.build.dir), n.ctx, n.subset)
+            })
           multiRerun = (ctx, subset, label) =>
             acrossBuilds(check, targets.filter((t) => ownedBy(buildDirs, t.build.dir, subset.files).length > 0), `${dir}-${label}`, ctx, (bctx, t) =>
               t.pack.runSuite!(located(t.build.dir), bctx, { ...subset, files: ownedBy(buildDirs, t.build.dir, subset.files) }))
@@ -540,7 +605,10 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           if (!runner || !suite || suite.kind !== "suite") return { status: "not-executed", reason: "no used pack runs test suites" }
           suiteRun = { suite: { name: suite.name, location: suite.location }, runner, reruns: suitePack.reruns === true }
           measuredCoverage = hasCoverageGate && suitePack.suiteWithCoverage === true
-          start = (ctx) => runner({ name: suite.name, location: suite.location }, ctx)
+          start = (ctx) => {
+            const n = narrowed(".", ctx)
+            return runner({ name: suite.name, location: suite.location }, n.ctx, n.subset)
+          }
         } else if (check.kind === "gate") {
           const found = specOf(check.name)
           const impl = found?.pack.gates[check.name]
@@ -602,7 +670,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         if (check.kind === "suite") {
           if (!run.tests || files.length === 0) return { status: "failed", reason: "no test report was produced (a silent green fails)", proof }
           suiteTests.push(run.tests)
+          if (run.testMap) testMaps.push(run.testMap)
           const c = run.tests.counts
+          const selection = selectionRecord(applied, c.executed)
           if (c.executed === 0) return { status: "failed", reason: "no tests ran (a silent green fails)", proof, tests: c }
           // A baseline records what trunk does; flakiness is judged on changes.
           // The CI's own run can't be run again here, so its failures are failures.
@@ -643,6 +713,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
             ...(flaky.length > 0 ? { flaky } : {}),
             ...(st.quarantined.length > 0 ? { quarantined: [...st.quarantined] } : {}),
             ...(st.failingOnBase.length > 0 ? { failingOnBase: [...st.failingOnBase] } : {}),
+            ...(selection ? { selection } : {}),
           }
           const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
           if (st.newFlaky.length > 0) {

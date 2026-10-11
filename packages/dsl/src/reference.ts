@@ -13,7 +13,7 @@ zone money {                         // code that needs its owners' review; scop
   rule kotlin.no-floating-money      // rules from the catalog
 }
 arch { module domain must not depend on infra, web }
-suites { unit "src/test/**" }
+suites { unit "src/test/**" }       // add affected after the path to run only the tests a change affects
 integrity {                          // only adds or tightens; defaults always apply
   ratchet executed tests, assertions per test
   forbid  new skips, new suppressions

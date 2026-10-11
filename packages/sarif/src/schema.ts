@@ -106,6 +106,8 @@ export const RunProperties = Schema.Struct({
     legacy: Schema.optionalKey(Schema.Array(LegacyEntry)),
     /** Test ids that ran when the baseline was recorded, for the deleted-tests check. */
     testIds: Schema.optionalKey(Schema.Array(Schema.String)),
+    /** What each test class executed when the baseline was recorded (spec 0013): each path once, classes by index. */
+    testMap: Schema.optionalKey(Schema.Struct({ files: Schema.Array(Schema.String), tests: Schema.Record(Schema.String, Schema.Array(Schema.Number)) })),
     /** Present on the `gauntlet` run of a baseline file. */
     baseline: Schema.optionalKey(Schema.Struct({ commit: Schema.String, irHash: Schema.String, gauntletVersion: Schema.String })),
   })),

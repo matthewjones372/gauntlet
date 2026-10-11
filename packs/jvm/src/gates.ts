@@ -1,14 +1,16 @@
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
-import { compilerWarningsRun, warningsGate } from "@gauntlet/core"
+import { compilerWarningsRun, excusedBySelection, warningsGate } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
-import { convertJUnit, decodeLog, type Log, type Result, type Run, renderDetektBaseline, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
+import { convertJUnit, decodeLog, type Log, type Result, type Run, renderDetektBaseline, SARIF_SCHEMA, SARIF_VERSION, type TestMap } from "@gauntlet/sarif"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { gradle, type GradleRun, taskMissing } from "./gradle.ts"
 import { runRules } from "./kotlin/rules.ts"
 import { isKotlin, line, ofType, parseKotlin } from "./kotlin/syntax.ts"
 import { parseCoverage, parseMutations } from "./reports.ts"
 import { isMainSource, packageOf, pitestTargets, sourceIndex } from "./sources.ts"
+import { includesFor, isSource, testMapOf } from "./test-map.ts"
+import { LISTENER_BYTES, LISTENER_CLASS } from "./testmap-listener.ts"
 
 // The JVM pack's gates. Each runs its tool through Gradle (or parses Kotlin
 // itself), reads only the reports written into the check's output directory,
@@ -59,8 +61,9 @@ export const warnings: GateImpl = warningsGate((ctx) => build({ kind: "gate", na
 
 // ---------- suites ----------
 
-/** Test classes a subset names: from test ids (`svc.FxTest.rounds`) and files (`src/test/kotlin/svc/FxTest.kt`). */
+/** Test classes a subset names: by name, from test ids (`svc.FxTest.rounds`) and from files (`src/test/kotlin/svc/FxTest.kt`). */
 export const testClasses = (subset: TestSubset): string[] => [...new Set([
+  ...(subset.classes ?? []),
   ...subset.ids.map((id) => id.slice(0, id.lastIndexOf(".")).replace(/\$.*$/, "")).filter((c) => c !== ""),
   ...subset.files.flatMap((f) => {
     const m = /^(?:.*\/)?src\/[^/]+\/(?:kotlin|java)\/(.+)\.(?:kt|java)$/.exec(f)
@@ -85,17 +88,60 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     const sourceSet = suiteTask(suite.location)
     if (!sourceSet) return { command: [], exitCode: -1, runs: [], error: `can't map suite '${suite.name}' ("${suite.location}") to a Gradle test task; use src/<sourceSet>/**, **/src/<sourceSet>/** or <module>/src/<sourceSet>/**` }
     // A rerun selects test classes, and JUnit orders classes and methods randomly with the subset's seed.
+    // The tests a change affects (spec 0013) are selected the same way, but run in the usual order.
     const classes = subset ? testClasses(subset) : []
     if (subset && classes.length === 0) return { command: [], exitCode: -1, runs: [], error: "no test classes to run again" }
     // With withCoverage the same run writes coverage too (gauntletCoverage runs after the tests), for the coverage gate.
-    const coverage = ctx.withCoverage && !subset ? ["gauntletCoverage"] : []
-    const r = ctx.fromCi ? FROM_CI : yield* gradle(ctx, [sourceSet, ...classes.flatMap((c) => ["--tests", c]), ...coverage], subset ? { GAUNTLET_JUNIT_SEED: String(subset.seed) } : {})
+    const coverage = ctx.withCoverage && (!subset || subset.affected) ? ["gauntletCoverage"] : []
+    const env: Record<string, string> = subset?.affected ? { GAUNTLET_SELECTED: "1" } : subset ? { GAUNTLET_JUNIT_SEED: String(subset.seed) } : {}
+    const r = ctx.fromCi ? FROM_CI : yield* gradle(ctx, [sourceSet, ...classes.flatMap((c) => ["--tests", c]), ...coverage], env)
     if (!r.error && taskMissing(r.stderr, sourceSet)) return { ...base(r), error: `the build has no '${sourceSet}' test task` }
     const xml = yield* reports(ctx, (p) => (ctx.fromCi ? CI_JUNIT.test(p) : p.startsWith("junit/") && p.endsWith(".xml")))
     if (r.error || xml.length === 0) return base(r)
     const junit = yield* Effect.exit(convertJUnit(suite.name, xml.map((f) => ({ path: f.path, content: f.content }))))
     if (junit._tag === "Failure") return { ...base(r), error: "the JUnit XML couldn't be read" }
-    return { ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids: junit.value.tests.map((t) => t.id) } }
+    const ids = junit.value.tests.map((t) => t.id)
+    const testMap = ctx.recordTestMap && !subset && !ctx.fromCi ? yield* mapTests(ctx, sourceSet, ids) : undefined
+    return { ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids }, ...(testMap ? { testMap } : {}) }
+  })
+
+/**
+ * A baseline's map of what each test class executes (spec 0013): the suite
+ * runs once more with JaCoCo's agent and Gauntlet's listener, into its own
+ * directory beside the suite's so the suite's proof stays its own. Undefined
+ * when the map can't be trusted: two test classes ran at once, the listener
+ * couldn't read the agent, or a test class the suite ran has no data.
+ */
+const mapTests = (ctx: GateContext, sourceSet: string, ids: ReadonlyArray<string>) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const out = `${ctx.outputDir}-testmap`
+    const listener = path.join(path.dirname(ctx.outputDir), "gauntlet-testmap")
+    const ready = yield* Effect.exit(Effect.gen(function*() {
+      yield* fs.makeDirectory(out, { recursive: true })
+      yield* fs.makeDirectory(path.join(listener, "gauntlet"), { recursive: true })
+      yield* fs.makeDirectory(path.join(listener, "META-INF/services"), { recursive: true })
+      yield* fs.writeFile(path.join(listener, "gauntlet/TestMapListener.class"), Uint8Array.from(atob(LISTENER_BYTES), (c) => c.charCodeAt(0)))
+      yield* fs.writeFileString(path.join(listener, "META-INF/services/org.junit.platform.launcher.TestExecutionListener"), `${LISTENER_CLASS}\n`)
+    }))
+    if (ready._tag === "Failure") return undefined
+    const sources = yield* readFiles(ctx, ctx.files.filter(isSource))
+    const includes = includesFor(sources)
+    const r = yield* gradle({ ...ctx, outputDir: out }, [sourceSet], { GAUNTLET_TEST_MAP: listener, ...(includes ? { GAUNTLET_TEST_MAP_INCLUDES: includes } : {}) })
+    if (r.error) return undefined
+    const written = yield* fs.readDirectory(path.join(out, "testmap"), { recursive: true }).pipe(Effect.orElseSucceed(() => [] as string[]))
+    if (written.some((f) => ["overlap", "failed"].includes(path.basename(f)))) return undefined
+    const execs: { testClass: string; bytes: Uint8Array }[] = []
+    for (const f of written.filter((w) => w.endsWith(".exec")).sort()) {
+      const bytes = yield* fs.readFile(path.join(out, "testmap", f)).pipe(Effect.option)
+      if (Option.isNone(bytes)) return undefined
+      execs.push({ testClass: path.basename(f).replace(/(\.\d+)?\.exec$/, ""), bytes: bytes.value })
+    }
+    const map: TestMap | undefined = testMapOf(execs, sources)
+    // Every test the suite ran must belong to a mapped class, or selection would leave it out unexcused.
+    if (map === undefined || excusedBySelection(ids, Object.keys(map)).length !== ids.length) return undefined
+    return map
   })
 
 // ---------- lint: detekt plus the zones' Kotlin rules ----------
