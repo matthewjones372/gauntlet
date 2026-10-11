@@ -16,6 +16,12 @@ export const buildsOf = (ir: Pick<PolicyIR, "packs" | "builds">): ReadonlyArray<
 /** Whether the policy names build folders (otherwise every pack runs at the root, as before). */
 export const hasBuilds = (ir: Pick<PolicyIR, "builds">): boolean => ir.builds !== undefined
 
+/** The build folders a change touches: the ones whose tests a check runs (ADR 0022). */
+export const touchedBuilds = (ir: Pick<PolicyIR, "packs" | "builds">, paths: ReadonlyArray<string>): string[] => {
+  const dirs = [...new Set(buildsOf(ir).map((b) => b.dir))]
+  return dirs.filter((d) => ownedBy(dirs, d, paths).length > 0).sort()
+}
+
 const holds = (dir: string, path: string) => dir === "." || path.startsWith(`${dir}/`)
 const depth = (dir: string) => (dir === "." ? 0 : dir.split("/").length)
 
