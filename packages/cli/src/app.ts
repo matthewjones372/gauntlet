@@ -1,5 +1,5 @@
 import {
-  agentSummary, BASELINE_PATH, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
+  agentSummary, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
   ProcessRunner, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
@@ -137,7 +137,7 @@ const check = Command.make("check", {
 // ---------- explain ----------
 
 const explain = Command.make("explain", {
-  block: Argument.optional(Argument.String("block").pipe(Argument.withDescription("mode, protect, zones, gates, integrity or review"))),
+  block: Argument.optional(Argument.String("block").pipe(Argument.withDescription("mode, protect, zones, gates, integrity, review or baseline"))),
   repo: repoFlag,
   policyRef: policyRefFlag,
   base: baseFlag,
@@ -154,6 +154,13 @@ const explain = Command.make("explain", {
     if (args.coverage) {
       const map = coverage(ir, yield* (yield* Git).listWorkingFiles(root))
       return yield* output.out(args.json ? prettyCanonicalJson(map) : renderCoverage(map))
+    }
+    if (Option.getOrUndefined(args.block) === "baseline") {
+      const ref = Option.getOrElse(args.policyRef, () => "HEAD")
+      const baseline = yield* (yield* BaselineStore).at(root, ref)
+      if (Option.isNone(baseline)) return yield* output.out(`No baseline at ${ref}: run \`gauntlet baseline\` on trunk to record one.\n`)
+      const summary = summarizeBaseline(baseline.value, ir)
+      return yield* output.out(args.json ? prettyCanonicalJson(summary) : renderBaselineSummary(summary))
     }
     const text = explainPolicy(ir, Option.getOrUndefined(args.block))
     yield* output.out(text)
