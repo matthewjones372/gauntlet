@@ -59,6 +59,8 @@ export interface FixtureResult {
   readonly caught: boolean
   readonly why: string
   readonly tier: string
+  /** Whether the fixture was judged with its gates run, or by integrity and the decision alone. */
+  readonly gatesRan: boolean
 }
 
 export interface SelftestResult {
@@ -81,10 +83,22 @@ const nominated = (r: Report, rule: string) => r.decision.nominations.some((n) =
  * integrity detector (skips, suppressions, test references in main code,
  * weakened assertions) or by the policy decision itself (a lowered threshold,
  * an edited baseline). Their checks skip the gates, which keeps selftest fast
- * without changing what it proves. A deleted test stays a full check, since
- * some packs find it only from the tests that ran.
+ * without changing what it proves.
  */
 const CAUGHT_WITHOUT_EXECUTION: ReadonlySet<string> = new Set(["added-skip", "added-suppression", "test-id-in-main", "weakened-assertion", "lowered-threshold", "edited-baseline"])
+
+/**
+ * Fixtures every pack's static detector catches today, though a detector could
+ * need the tests to run: a deleted test is a removed test function in the diff,
+ * or a test id missing from the tests that ran. Each is judged without gates
+ * first, and as a full check only if that misses. A full check runs the same
+ * static detectors, so it never reverses a static catch; it only adds the
+ * findings that need execution. On a large project the full check is most of
+ * selftest's time.
+ */
+const STATIC_FIRST: Readonly<Record<string, (r: Report) => boolean>> = {
+  "deleted-test": (r) => hasFinding(r, "deleted-tests"),
+}
 
 export const EXPECT: Record<BuiltInFixture, (r: Report, control: Report) => { caught: boolean; why: string }> = {
   "deleted-test": (r) => ({ caught: hasFinding(r, "deleted-tests"), why: "a deleted-tests forbid" }),
@@ -286,14 +300,23 @@ export const runSelftest = (request: SelftestRequest) =>
           yield* say(`  running ${fixture}...`)
           return yield* timed(Effect.gen(function*() {
             const sha = yield* commitWith(fixture, applyEdits(t.edits))
-            return (yield* judge(fixture, sha, CAUGHT_WITHOUT_EXECUTION.has(fixture))).report
+            const staticCatch = STATIC_FIRST[fixture]
+            if (CAUGHT_WITHOUT_EXECUTION.has(fixture)) return { report: (yield* judge(fixture, sha, true)).report, gatesRan: false }
+            if (staticCatch !== undefined) {
+              const quick = (yield* judge(fixture, sha, true)).report
+              if (staticCatch(quick)) return { report: quick, gatesRan: false }
+            }
+            return { report: (yield* judge(fixture, sha)).report, gatesRan: true }
           }))
         }))
-        const report = run.a
+        const { report, gatesRan } = run.a
         const control = (yield* controlRun).a
         const verdict = EXPECT[fixture](report, control)
         yield* finished(fixture, verdict.caught, report.decision.tier, run.ms)
-        return { fixture, description: t.description, tier: report.decision.tier, caught: verdict.caught, why: verdict.caught ? `caught by ${verdict.why}` : `expected ${verdict.why}` } satisfies FixtureResult
+        return {
+          fixture, description: t.description, tier: report.decision.tier, caught: verdict.caught, gatesRan,
+          why: verdict.caught ? `caught by ${verdict.why}` : `expected ${verdict.why}`,
+        } satisfies FixtureResult
       }), { concurrency: "unbounded" })]
     for (const file of projectFiles) {
       const name = file.slice(".gauntlet/selftest/".length).replace(/\.patch$/, "")
@@ -308,13 +331,13 @@ export const runSelftest = (request: SelftestRequest) =>
       const applied = yield* Effect.exit(commitWith(name, (dir) => git.applyPatch(dir, patch)))
       if (applied._tag === "Failure") {
         yield* finished(name, false, "-", (yield* Clock.currentTimeMillis) - start)
-        results.push({ fixture: name, description: fixture.description, tier: "-", caught: false, why: "the patch no longer applies to the base" })
+        results.push({ fixture: name, description: fixture.description, tier: "-", caught: false, gatesRan: false, why: "the patch no longer applies to the base" })
         continue
       }
       const report = (yield* judge(name, applied.value)).report
       const verdict = expectProject(fixture.expect)(report)
       yield* finished(name, verdict.caught, report.decision.tier, (yield* Clock.currentTimeMillis) - start)
-      results.push({ fixture: name, description: fixture.description, tier: report.decision.tier, caught: verdict.caught, why: verdict.caught ? `caught by ${verdict.why}` : `expected ${verdict.why}` })
+      results.push({ fixture: name, description: fixture.description, tier: report.decision.tier, caught: verdict.caught, gatesRan: true, why: verdict.caught ? `caught by ${verdict.why}` : `expected ${verdict.why}` })
     }
 
     const control = (yield* controlRun).a
