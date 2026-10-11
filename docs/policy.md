@@ -213,6 +213,12 @@ could still read them. There's no generator; you write the holdouts. See
 checks it. The DSL compiles to a canonical, hashed policy IR, so two policies
 that mean the same thing have the same hash.
 
+`gauntlet explain baseline` shows the bar every change is held to: where the
+baseline was recorded, each metric with its lowest files, the grandfathered
+findings by rule and file, and warnings where it falls short of the policy, such
+as project coverage below the floor changed code must meet, or a build with no
+coverage recorded at all. `--json` gives the same as data.
+
 ## Removing a feature
 
 Deleting a test is forbidden: it's the oldest way to make a check pass. But removing a feature removes its tests too. When a change deletes a test file together with the source file it's named after (`FxTest.kt` with `Fx.kt`, `fx.test.ts` with `fx.ts`, `fx_test.go` with `fx.go`, `test_fx.py` with `fx.py`), it's flagged instead: the change needs a person's review, not a fix. Those tests don't count against the executed-tests ratchet either. A test deleted while its code stays is still forbidden.
