@@ -1,5 +1,6 @@
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
-import { compilerWarningsRun, warningsGate } from "@gauntlet/core"
+import { compilerWarningsRun, type Mutant, mutationGateRun, mutationScopeOf, warningsGate } from "@gauntlet/core"
+import { availableParallelism } from "node:os"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, decodeLog, type Log, type Result, type Run, renderDetektBaseline, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
@@ -8,7 +9,7 @@ import { gradle, type GradleRun, taskMissing } from "./gradle.ts"
 import { runRules } from "./kotlin/rules.ts"
 import { isKotlin, line, ofType, parseKotlin } from "./kotlin/syntax.ts"
 import { parseCoverage, parseMutations } from "./reports.ts"
-import { isMainSource, packageOf, pitestTargets, sourceIndex } from "./sources.ts"
+import { isMainSource, packageOf, pitestExclusions, pitestTargets, sourceIndex } from "./sources.ts"
 
 // The JVM pack's gates. Each runs its tool through Gradle (or parses Kotlin
 // itself), reads only the reports written into the check's output directory,
@@ -181,8 +182,13 @@ export const mutation: GateImpl = (_check, ctx) =>
     if (inScope !== undefined && inScope.length === 0) {
       return { command: [], exitCode: 0, runs: [], nothingInScope: "no main classes in scope to mutate" }
     }
-    const env: Record<string, string> = {}
-    if (inScope) env.GAUNTLET_PITEST_TARGETS = (yield* readFiles(ctx, inScope)).flatMap((f) => pitestTargets(f.path, f.text)).join(",")
+    const env: Record<string, string> = { GAUNTLET_PITEST_THREADS: String(availableParallelism()) }
+    if (inScope) {
+      const sources = yield* readFiles(ctx, inScope)
+      env.GAUNTLET_PITEST_TARGETS = sources.flatMap((f) => pitestTargets(f.path, f.text)).join(",")
+      const lines = mutationScopeOf(ctx).changedLines
+      if (lines) env.GAUNTLET_PITEST_EXCLUDED_METHODS = pitestExclusions(sources, lines).join(",")
+    }
     const r = yield* gradle(ctx, ["pitest"], env)
     if (r.error) return base(r)
     const xml = yield* reports(ctx, (p) => p.startsWith("pitest/") && p.endsWith("mutations.xml"))
@@ -190,28 +196,12 @@ export const mutation: GateImpl = (_check, ctx) =>
       return taskMissing(r.stderr, "pitest") ? { ...base(r), error: "Pitest isn't applied; add the info.solidsoft.pitest Gradle plugin" } : base(r)
     }
     const locate = sourceIndex(ctx.files)
-    const mutants = xml.flatMap((f) => parseMutations(f.content)).map((m) => {
+    const mutants = xml.flatMap((f) => parseMutations(f.content)).map((m): Mutant => {
       const pkg = m.className.includes(".") ? m.className.slice(0, m.className.lastIndexOf(".")).replace(/\./g, "/") : ""
-      return { ...m, path: locate(pkg, m.sourceFile) }
-    }).filter((m) => inScope === undefined || (m.path !== undefined && inScope.includes(m.path)))
-    if (mutants.length === 0) return { ...base(r), nothingInScope: "Pitest generated no mutants for the code in scope" }
-    const perFile: Record<string, number> = {}
-    for (const p of [...new Set(mutants.flatMap((m) => m.path ?? []))].sort()) {
-      const mine = mutants.filter((m) => m.path === p)
-      perFile[p] = Math.round((mine.filter((m) => m.detected).length / mine.length) * 10000) / 100
-    }
-    const score = Math.round((mutants.filter((m) => m.detected).length / mutants.length) * 10000) / 100
+      return { path: locate(pkg, m.sourceFile), line: m.line, killed: m.detected, message: `${m.status === "NO_COVERAGE" ? "No test covers" : "No test kills"} a mutant in ${m.className}` }
+    })
     // Survivors, by line, so an agent knows exactly which assertions are missing.
-    const survivors: Run = {
-      tool: { driver: { name: "pitest" } },
-      results: mutants.filter((m) => !m.detected).map((m) => ({
-        ruleId: "mutation/survived",
-        level: "warning",
-        message: { text: `${m.status === "NO_COVERAGE" ? "No test covers" : "No test kills"} a mutant in ${m.className}` },
-        ...(m.path ? { locations: [{ physicalLocation: { artifactLocation: { uri: m.path }, region: { startLine: m.line } } }] } : {}),
-      })),
-    }
-    return { ...base(r), runs: [survivors], metrics: { mutation: { value: score, unit: "%", higherIsBetter: true, perFile } } }
+    return { ...base(r), ...mutationGateRun("pitest", mutants, ctx) }
   })
 
 // ---------- coverage: the project's Kover, or Kover's agent (Kotlin) or JaCoCo (Java) ----------

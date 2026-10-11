@@ -1,3 +1,4 @@
+import { type Mutant, mutationGateRun } from "@gauntlet/core"
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
@@ -181,22 +182,11 @@ export const mutation: GateImpl = (_check, ctx) =>
     const file = (yield* reports(ctx, (p) => p === "gremlins.json"))[0]
     const mutants = file ? Option.getOrElse(parseGremlins(file.content), () => []) : []
     if (!file) return { ...base(r), error: `gremlins wrote no report${r.stderr.trim() ? `: ${r.stderr.trim().split("\n").at(-1)}` : ""}` }
-    const counted = mutants.filter((m) => m.outcome !== "other" && (inScope === undefined || inScope.includes(m.path)))
-    if (counted.length === 0) return { ...base(r), exitCode: 0, nothingInScope: "gremlins generated no mutants for the code in scope" }
-    const detected = (ms: typeof counted) => ms.filter((m) => m.outcome === "killed" || m.outcome === "timeout").length
-    const pct = (ms: typeof counted) => Math.round((detected(ms) / ms.length) * 10000) / 100
-    const perFile: Record<string, number> = {}
-    for (const p of [...new Set(counted.map((m) => m.path))].sort()) perFile[p] = pct(counted.filter((m) => m.path === p))
-    const survivors: Run = {
-      tool: { driver: { name: "gremlins" } },
-      results: counted.filter((m) => m.outcome === "survived" || m.outcome === "not-covered").sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line)).map((m) => ({
-        ruleId: "mutation/survived",
-        level: "warning",
-        message: { text: `${m.outcome === "not-covered" ? "No test covers" : "No test kills"} a ${m.type.toLowerCase().replaceAll("_", " ")} mutant` },
-        locations: [{ physicalLocation: { artifactLocation: { uri: m.path }, region: { startLine: m.line } } }],
-      })),
-    }
-    return { ...base(r), exitCode: 0, runs: [survivors], metrics: { mutation: { value: pct(counted), unit: "%", higherIsBetter: true, perFile } } }
+    const counted: Mutant[] = mutants.filter((m) => m.outcome !== "other").map((m) => ({
+      path: m.path, line: m.line, killed: m.outcome === "killed" || m.outcome === "timeout",
+      message: `${m.outcome === "not-covered" ? "No test covers" : "No test kills"} a ${m.type.toLowerCase().replaceAll("_", " ")} mutant`,
+    }))
+    return { ...base(r), exitCode: 0, ...mutationGateRun("gremlins", counted, ctx) }
   })
 
 // ---------- coverage: go test -coverprofile ----------

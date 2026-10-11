@@ -1,4 +1,4 @@
-import { isKotlin } from "./kotlin/syntax.ts"
+import { isKotlin, ofType, parseKotlin, type Node } from "./kotlin/syntax.ts"
 
 // Mapping between reports that speak in packages and classes (Pitest,
 // Kover) and repository paths.
@@ -28,4 +28,56 @@ export const pitestTargets = (path: string, text: string): string[] => {
   const stem = path.split("/").pop()!.replace(/\.(kt|java)$/, "")
   const declared = [...text.matchAll(/^(?:[\w ]*\s)?(?:class|object|interface|enum class|data class|sealed class|value class)\s+(\w+)/gm)].map((m) => m[1]!)
   return [...new Set([stem, `${stem}Kt`, ...declared])].sort().map((n) => `${prefix}${n}*`)
+}
+
+/** Methods the Kotlin compiler writes that no test can be expected to pin down: data classes' and `equals` & co. */
+const GENERATED = ["component*", "copy", "copy$default", "equals", "hashCode", "toString"]
+
+const capitalised = (name: string) => name.charAt(0).toUpperCase() + name.slice(1)
+
+/** A property's JVM getter: `isActive` stays `isActive`, `limit` becomes `getLimit`. */
+const getterOf = (name: string) => (/^is[A-Z]/.test(name) ? name : `get${capitalised(name)}`)
+const setterOf = (name: string) => `set${capitalised(/^is[A-Z]/.test(name) ? name.slice(2) : name)}`
+
+const propertyName = (decl: Node) =>
+  decl.namedChildren.find((c) => c?.type === "variable_declaration")?.namedChildren.find((c) => c?.type === "identifier")?.text
+    ?? decl.namedChildren.find((c) => c?.type === "identifier")?.text
+
+/**
+ * Pitest's `excludedMethods` for a change (spec 0011): every method of the changed Kotlin files that no changed line
+ * is in, plus generated methods, so Pitest mutates only what the change touched. Pitest matches by name across
+ * classes, so a name any changed file touches is kept. With a changed Java file nothing is skipped.
+ */
+export const pitestExclusions = (
+  files: ReadonlyArray<{ readonly path: string; readonly text: string }>,
+  changed: ReadonlyMap<string, ReadonlySet<number>>,
+): string[] => {
+  if (files.some((f) => !isKotlin(f.path))) return []
+  const all = new Set<string>(GENERATED)
+  const kept = new Set<string>()
+  for (const f of files) {
+    const lines = changed.get(f.path) ?? new Set<number>()
+    const touched = (n: Node) => {
+      for (let l = n.startPosition.row + 1; l <= n.endPosition.row + 1; l++) if (lines.has(l)) return true
+      return false
+    }
+    const root = parseKotlin(f.text).rootNode
+    for (const fn of ofType(root, "function_declaration")) {
+      const name = fn.namedChildren.find((c) => c?.type === "identifier")?.text
+      if (!name) continue
+      all.add(name)
+      if (touched(fn)) kept.add(name)
+    }
+    for (const decl of [...ofType(root, "property_declaration"), ...ofType(root, "class_parameter")]) {
+      const name = propertyName(decl)
+      if (!name) continue
+      all.add(getterOf(name))
+      all.add(setterOf(name))
+      for (const accessor of decl.namedChildren) {
+        if (accessor?.type === "getter" && touched(accessor)) kept.add(getterOf(name))
+        if (accessor?.type === "setter" && touched(accessor)) kept.add(setterOf(name))
+      }
+    }
+  }
+  return [...all].filter((n) => !kept.has(n)).sort()
 }
