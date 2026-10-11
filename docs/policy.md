@@ -107,6 +107,14 @@ only in the zones that matter:
 verify { unit, mutation >= 60% on changed in zone money }
 ```
 
+With `on changed`, only mutants on lines the change added or edited count: the
+tools mutate whole classes, but a change answers only for its own lines. A
+`mutation ratchet on changed` then works like lint's ratchet: a surviving mutant
+on a changed line that the baseline didn't grandfather blocks the change, and
+the report names its line. Whole-project scoring (`on all`, and `gauntlet
+baseline`) still compares each file's score with the baseline's. See
+[spec 0011](specs/0011-mutation-on-changed-lines.md).
+
 `gauntlet setup` explains this before it adds mutation testing, setup skips
 the whole-project run, and a check whose mutation step takes over three
 minutes says so and how to speed it up.

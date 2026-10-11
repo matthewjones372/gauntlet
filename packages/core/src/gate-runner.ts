@@ -518,6 +518,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         let owner: Pack | undefined
         let spec: GateSpec | undefined
         let scope: ReadonlyArray<string> | undefined
+        let changedLinesOnly = false
         let multiRerun: ((ctx: GateContext, subset: TestSubset, label: string) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) | undefined
         // The suite's run measures coverage too (onceForCoverage); its reruns don't.
         let measuredCoverage = false
@@ -550,6 +551,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const zone = check.zone !== undefined ? ir.zones.find((z) => z.name === check.zone) : undefined
           const inScope = (p: string) => (check.scope !== "changed" || input.recording || changed.includes(p)) && (!zone || zone.globs.some((g) => globMatches(g, p)))
           const changedOnly = check.scope === "changed" && !input.recording
+          changedLinesOnly = changedOnly
           scope = changedOnly || zone ? [...new Set([...changed, ...facts.files.map((f) => f.path)])].filter(inScope).sort() : undefined
           start = multi
             ? (ctx) => acrossBuilds(check, targetsFor((p) => p.gates[check.name] !== undefined), dir, ctx, (bctx, t) => t.pack.gates[check.name]!(check, bctx))
@@ -568,6 +570,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           ir,
           facts,
           ...(scope ? { scope } : {}),
+          ...(changedLinesOnly ? { changedLinesOnly: true } : {}),
           files: input.files,
           legacy: Option.match(baseline, { onNone: () => [], onSome: (b) => b.legacy }),
           ...(!multi && isWarningsCheck(check) && compiledWarnings.has(".") ? { buildWarnings: compiledWarnings.get(".")! } : {}),
@@ -699,7 +702,21 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
             if (gate.threshold && !compareThreshold(value.value, gate.threshold.op, gate.threshold.value.value)) {
               reasons.push(`${gate.name} ${value.value}${value.unit === "%" ? "%" : ""} doesn't meet ${gate.threshold.op} ${gate.threshold.value.value}${gate.threshold.value.unit ?? ""}`)
             }
-            if (gate.ratchet && Option.isSome(baseline)) {
+            if (gate.ratchet && run.lineScoped) {
+              // Spec 0011: a changed-lines score can't be compared with a whole-file one, so the
+              // ratchet is lint's: a survivor the baseline didn't grandfather is new, and blocks.
+              let fresh = 0
+              for (const r of tagged) {
+                const grandfathered = Option.match(baseline, { onNone: () => [], onSome: (b) => b.results[r.tool.driver.name] ?? [] })
+                for (const v of compareWithBaseline(grandfathered, r.results, { renames }).results.filter((x) => x.baselineState === "new")) {
+                  fresh++
+                  const path = resultPath(v)
+                  const line = resultRegion(v)?.startLine
+                  newViolations.push({ check: gate.name, ruleId: v.ruleId, message: v.message.text, ...(path ? { path } : {}), ...(line ? { line } : {}) })
+                }
+              }
+              if (fresh > 0) reasons.push(`${fresh} mutant${fresh === 1 ? "" : "s"} on the changed lines survive${fresh === 1 ? "s" : ""}`)
+            } else if (gate.ratchet && Option.isSome(baseline)) {
               const recorded = baseline.value.metrics[gate.name]
               if (recorded) {
                 const c = compareMetrics({ [gate.name]: recorded }, { [gate.name]: value }, { scoped: scope !== undefined })

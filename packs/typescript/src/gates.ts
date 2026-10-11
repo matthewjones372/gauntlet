@@ -1,3 +1,4 @@
+import { type Mutant as Scored, mutationGateRun } from "@gauntlet/core"
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
@@ -339,21 +340,11 @@ export const mutation: GateImpl = (check, ctx) =>
       const verdict = new Map(Option.getOrElse(confirmed, () => []).map((m) => [key(m), m.status]))
       mutants = mutants.map((m) => UNDETECTED.has(m.status) && verdict.has(key(m)) ? { ...m, status: verdict.get(key(m))! } : m)
     }
-    const counted = mutants.filter((m) => (DETECTED.has(m.status) || UNDETECTED.has(m.status)) && (inScope === undefined || inScope.includes(m.path)))
-    if (counted.length === 0) return { ...base(r), nothingInScope: "Stryker generated no mutants for the code in scope" }
-    const pct = (ms: typeof counted) => Math.round((ms.filter((m) => DETECTED.has(m.status)).length / ms.length) * 10000) / 100
-    const perFile: Record<string, number> = {}
-    for (const p of [...new Set(counted.map((m) => m.path))].sort()) perFile[p] = pct(counted.filter((m) => m.path === p))
-    const survivors: Run = {
-      tool: { driver: { name: "stryker" } },
-      results: counted.filter((m) => UNDETECTED.has(m.status)).map((m) => ({
-        ruleId: "mutation/survived",
-        level: "warning",
-        message: { text: `${m.status === "NoCoverage" ? "No test covers" : "No test kills"} a ${m.mutator} mutant` },
-        locations: [{ physicalLocation: { artifactLocation: { uri: m.path }, region: { startLine: m.line } } }],
-      })),
-    }
-    return { ...base(r), exitCode: 0, runs: [survivors], metrics: { mutation: { value: pct(counted), unit: "%", higherIsBetter: true, perFile } } }
+    const counted: Scored[] = mutants.filter((m) => DETECTED.has(m.status) || UNDETECTED.has(m.status)).map((m) => ({
+      path: m.path, line: m.line, killed: DETECTED.has(m.status),
+      message: `${m.status === "NoCoverage" ? "No test covers" : "No test kills"} a ${m.mutator} mutant`,
+    }))
+    return { ...base(r), exitCode: 0, ...mutationGateRun("stryker", counted, ctx) }
   })
 
 // ---------- coverage ----------

@@ -1,5 +1,5 @@
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
-import { compilerWarningsRun, warningsGate } from "@gauntlet/core"
+import { compilerWarningsRun, type Mutant, mutationGateRun, warningsGate } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, decodeLog, type Log, type Result, type Run, renderDetektBaseline, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
@@ -190,28 +190,12 @@ export const mutation: GateImpl = (_check, ctx) =>
       return taskMissing(r.stderr, "pitest") ? { ...base(r), error: "Pitest isn't applied; add the info.solidsoft.pitest Gradle plugin" } : base(r)
     }
     const locate = sourceIndex(ctx.files)
-    const mutants = xml.flatMap((f) => parseMutations(f.content)).map((m) => {
+    const mutants = xml.flatMap((f) => parseMutations(f.content)).map((m): Mutant => {
       const pkg = m.className.includes(".") ? m.className.slice(0, m.className.lastIndexOf(".")).replace(/\./g, "/") : ""
-      return { ...m, path: locate(pkg, m.sourceFile) }
-    }).filter((m) => inScope === undefined || (m.path !== undefined && inScope.includes(m.path)))
-    if (mutants.length === 0) return { ...base(r), nothingInScope: "Pitest generated no mutants for the code in scope" }
-    const perFile: Record<string, number> = {}
-    for (const p of [...new Set(mutants.flatMap((m) => m.path ?? []))].sort()) {
-      const mine = mutants.filter((m) => m.path === p)
-      perFile[p] = Math.round((mine.filter((m) => m.detected).length / mine.length) * 10000) / 100
-    }
-    const score = Math.round((mutants.filter((m) => m.detected).length / mutants.length) * 10000) / 100
+      return { path: locate(pkg, m.sourceFile), line: m.line, killed: m.detected, message: `${m.status === "NO_COVERAGE" ? "No test covers" : "No test kills"} a mutant in ${m.className}` }
+    })
     // Survivors, by line, so an agent knows exactly which assertions are missing.
-    const survivors: Run = {
-      tool: { driver: { name: "pitest" } },
-      results: mutants.filter((m) => !m.detected).map((m) => ({
-        ruleId: "mutation/survived",
-        level: "warning",
-        message: { text: `${m.status === "NO_COVERAGE" ? "No test covers" : "No test kills"} a mutant in ${m.className}` },
-        ...(m.path ? { locations: [{ physicalLocation: { artifactLocation: { uri: m.path }, region: { startLine: m.line } } }] } : {}),
-      })),
-    }
-    return { ...base(r), runs: [survivors], metrics: { mutation: { value: score, unit: "%", higherIsBetter: true, perFile } } }
+    return { ...base(r), ...mutationGateRun("pitest", mutants, ctx) }
   })
 
 // ---------- coverage: the project's Kover, or Kover's agent (Kotlin) or JaCoCo (Java) ----------

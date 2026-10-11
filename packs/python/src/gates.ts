@@ -1,3 +1,4 @@
+import { type Mutant, mutationGateRun } from "@gauntlet/core"
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
@@ -192,30 +193,20 @@ export const mutation: GateImpl = (_check, ctx) =>
     if (files.length === 0) return base(r)
     const mutants = files.flatMap((f) => Option.getOrElse(parseMutmutMeta(f.path.slice("mutmut/".length).replace(/\.meta$/, ""), f.content), () => []))
       .filter((m) => inScope === undefined || inScope.includes(m.path))
-    const counted = mutants.filter((m) => m.outcome !== "skipped" && m.outcome !== "other")
-    if (counted.length === 0) return { ...base(r), nothingInScope: "mutmut generated no mutants for the code in scope" }
-    const detected = (ms: typeof counted) => ms.filter((m) => m.outcome === "killed" || m.outcome === "timeout").length
-    const pct = (ms: typeof counted) => Math.round((detected(ms) / ms.length) * 10000) / 100
-    const perFile: Record<string, number> = {}
-    for (const p of [...new Set(counted.map((m) => m.path))].sort()) perFile[p] = pct(counted.filter((m) => m.path === p))
-    // mutmut names a mutant by its function; point survivors at that function's line.
-    const sources = new Map((yield* readFiles(ctx, [...new Set(counted.map((m) => m.path))])).map((s) => [s.path, parsePython(s.text).rootNode] as const))
-    const lineOf = (p: string, fn: string) => {
+    const kept = mutants.filter((m) => m.outcome !== "skipped" && m.outcome !== "other")
+    // mutmut names a mutant by its function, not its line: the mutant is anywhere in that function.
+    const sources = new Map((yield* readFiles(ctx, [...new Set(kept.map((m) => m.path))])).map((s) => [s.path, parsePython(s.text).rootNode] as const))
+    const spanOf = (p: string, fn: string) => {
       const root = sources.get(p)
       const leaf = fn.split(".").pop()!
       const def = root ? ofType(root, "function_definition").find((d) => nameOf(d) === leaf) : undefined
-      return def ? line(def) : 1
+      return def ? { line: line(def), endLine: def.endPosition.row + 1 } : { line: 1 }
     }
-    const survivors: Run = {
-      tool: { driver: { name: "mutmut" } },
-      results: counted.filter((m) => m.outcome === "survived" || m.outcome === "no-tests").map((m) => ({
-        ruleId: "mutation/survived",
-        level: "warning",
-        message: { text: `${m.outcome === "no-tests" ? "No test covers" : "No test kills"} a mutant in ${m.function}` },
-        locations: [{ physicalLocation: { artifactLocation: { uri: m.path }, region: { startLine: lineOf(m.path, m.function) } } }],
-      })),
-    }
-    return { ...base(r), exitCode: 0, runs: [survivors], metrics: { mutation: { value: pct(counted), unit: "%", higherIsBetter: true, perFile } } }
+    const counted: Mutant[] = kept.map((m) => ({
+      path: m.path, ...spanOf(m.path, m.function), killed: m.outcome === "killed" || m.outcome === "timeout",
+      message: `${m.outcome === "no-tests" ? "No test covers" : "No test kills"} a mutant in ${m.function}`,
+    }))
+    return { ...base(r), exitCode: 0, ...mutationGateRun("mutmut", counted, ctx) }
   })
 
 // ---------- coverage: coverage.py ----------

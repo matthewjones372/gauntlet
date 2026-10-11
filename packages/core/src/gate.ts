@@ -22,6 +22,8 @@ export interface GateContext {
   readonly facts: DiffFacts
   /** Paths the check is limited to (`on changed`, `in zone`), or undefined for the whole project. */
   readonly scope?: ReadonlyArray<string>
+  /** `on changed`, judging a change: a gate that can tell lines apart counts only `facts.addedLines` (spec 0011). */
+  readonly changedLinesOnly?: boolean
   /** Every file in the judged checkout, repository-relative. */
   readonly files: ReadonlyArray<string>
   /** Legacy grandfathered entries from the baseline, for tools with their own baseline format. */
@@ -69,6 +71,8 @@ export interface GateRun {
    * another build has it; with one build, or none that has it, it's an error.
    */
   readonly notSetUp?: true
+  /** The metric is over the changed lines, so it can't be ratcheted against the baseline's whole-file values (spec 0011). */
+  readonly lineScoped?: true
 }
 
 type GateServices = ProcessRunner | FileSystem.FileSystem | Path.Path

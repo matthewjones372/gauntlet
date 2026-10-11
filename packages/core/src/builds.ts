@@ -130,6 +130,7 @@ export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; read
     ...(tests ? { tests } : {}),
     ...(Object.keys(metrics).length > 0 ? { metrics } : {}),
     ...(errored ? { error: `${errored.dir}: ${errored.run.error}` } : {}),
+    ...(ran.some((p) => p.run.lineScoped) ? { lineScoped: true as const } : {}),
   }
 }
 
