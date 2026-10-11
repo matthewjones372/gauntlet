@@ -1,1 +1,1 @@
-export const GAUNTLET_VERSION = "0.1.0-rc.22"
+export const GAUNTLET_VERSION = "0.1.0-rc.23"
