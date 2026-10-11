@@ -77,6 +77,20 @@ its own `settings.gradle.kts`).
 - Each build's runner configuration (Gradle's `gradle/**`, sbt's `project/**`)
   is protected in its own folder.
 
+## Compiler warnings
+
+Making warnings errors breaks an existing project's build on day one. A
+ratchet doesn't: today's warnings are grandfathered, and a change that adds
+one fails, naming it ([spec 0010](specs/0010-compiler-warnings.md)):
+
+```
+fast { build, warnings ratchet }
+```
+
+The JVM pack reads kotlinc's and javac's warnings, the Scala pack scalac's,
+from the build's own compile. Once there are none left, switch on
+`allWarningsAsErrors` or `-Werror` in the build.
+
 ## Mutation testing
 
 Mutation testing makes small deliberate bugs in your code (turning a `>` into
