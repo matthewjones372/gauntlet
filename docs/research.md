@@ -31,6 +31,22 @@ research below documents that in agentic and coding settings.
   hacks in code environments [5], the best model spotted 63% of hacks when it
   could compare against a benign trajectory, and 45% when judging one alone.
 
+## Mutation testing per change
+
+What teams that run mutation testing on every change do, which spec 0011 follows.
+
+- **Mutate the changed lines, not the changed files.** At Google the median
+  change gets 7 mutants; mutating whole files would give 820 [6]. Arcmutate's
+  git integration scopes Pitest to changed lines by default [9].
+- **Leave out code nobody wants findings on.** Google skips logging, timeouts,
+  config flags and similar code, which cut unproductive mutants from 85% to 11%
+  [6]. Arcmutate's Kotlin plugin filters compiler-generated code [9].
+- **Show survivors in review rather than gate on a score.** Google's mutants are
+  code-review findings an author needn't resolve unless a reviewer says so, and
+  it computes no mutation score [6, 7]. Arcmutate's GitHub check warns by
+  default [9]. At Meta, about half of developers shown a surviving mutant would
+  act on it [8].
+
 ## References
 
 1. Morampudi, A., Irrinki, U., Grandhi, R., Pagadala, V. and Maddula, M.
@@ -49,6 +65,17 @@ research below documents that in agentic and coding settings.
 5. Deshpande, D., Kannappan, A. and Qian, R. *Benchmarking Reward Hack Detection
    in Code Environments via Contrastive Analysis.* ICML 2026.
    [arXiv:2601.20103](https://arxiv.org/abs/2601.20103)
+6. Petrović, G., Ivanković, M., Fraser, G. and Just, R. *Practical Mutation
+   Testing at Scale: A view from Google.* IEEE TSE (2021).
+   [PDF](https://homes.cs.washington.edu/~rjust/publ/practical_mutation_testing_tse_2021.pdf)
+7. Petrović, G. and Ivanković, M. *State of Mutation Testing at Google.*
+   ICSE-SEIP 2018.
+8. Beller, M. et al. *What It Would Take to Use Mutation Testing in Industry: A
+   Study at Facebook.* ICSE-SEIP 2021.
+   [arXiv:2010.13464](https://arxiv.org/abs/2010.13464)
+9. Arcmutate documentation: [git integration](https://docs.arcmutate.com/docs/git-integration.html),
+   [Kotlin](https://docs.arcmutate.com/docs/kotlin.html),
+   [GitHub](https://docs.arcmutate.com/docs/github/overview.html).
 
 These papers motivate the problem Gauntlet addresses. None of them evaluates
 Gauntlet, and their findings come from their own settings (training rewards,
