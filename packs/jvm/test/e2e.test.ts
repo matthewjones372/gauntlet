@@ -164,5 +164,7 @@ describe.skipIf(!E2E)("JVM pack end to end (real Gradle)", () => {
     expect(result.control.wouldBlock).toBe(false)
     expect(missed).toEqual([])
     expect(result.fixtures.length).toBeGreaterThanOrEqual(9)
+    // A deleted test is caught from the diff, so its fixture never needs a full check.
+    expect(result.fixtures.find((f: { fixture: string }) => f.fixture === "deleted-test")?.gatesRan).toBe(false)
   }, 60 * 60 * 1000)
 })

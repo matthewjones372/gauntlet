@@ -32,8 +32,8 @@ describe("selftest in a terminal", () => {
     base: "0123456789abcdef",
     control: { tier: "auto", wouldBlock: false, executed: 634, reasons: [] },
     fixtures: [
-      { fixture: "deleted-test", description: "the change deletes the test \"a very long name\"", tier: "review", caught: true, why: "caught by a deleted-tests forbid" },
-      { fixture: "added-suppression", description: "the change adds a // @ts-ignore", tier: caught ? "review" : "auto", caught, why: caught ? "caught by a new-suppressions forbid" : "expected a new-suppressions forbid" },
+      { fixture: "deleted-test", description: "the change deletes the test \"a very long name\"", tier: "review", caught: true, gatesRan: false, why: "caught by a deleted-tests forbid" },
+      { fixture: "added-suppression", description: "the change adds a // @ts-ignore", tier: caught ? "review" : "auto", caught, gatesRan: false, why: caught ? "caught by a new-suppressions forbid" : "expected a new-suppressions forbid" },
     ],
     notApplicable: [],
     passed: caught,
