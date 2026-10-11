@@ -14,7 +14,7 @@ import type { TestRecord } from "./integrity.ts"
 import type { Pack } from "./pack-registry.ts"
 import type { CheckRecord } from "./report/build.ts"
 import type { NewViolation, Regression } from "./review.ts"
-import type { SuiteSelections } from "./selection.ts"
+import type { Selection, SuiteSelections } from "./selection.ts"
 import { assessStability, failuresOf, REPEATS, seedFor } from "./stability.ts"
 import { isCompilerWarnings } from "./compiler-warnings.ts"
 import type { PreparedWorkspace } from "./workspace.ts"
@@ -76,6 +76,8 @@ export interface GateRunnerOutput {
   readonly testMap?: TestMap
   /** Recording: why an affected suite's build recorded no map, when it couldn't. */
   readonly testMapMissing?: ReadonlyArray<string>
+  /** The map's test classes that selection left out of the suites that ran (spec 0013). */
+  readonly deselected?: ReadonlyArray<string>
 }
 
 const NOT_IN_V1: Partial<Record<Check["kind"], string>> = {
@@ -125,6 +127,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     const suiteTests: TestRecord[] = []
     const testMaps: TestMap[] = []
     const testMapMissing: string[] = []
+    const deselected = new Set<string>()
     const changed = facts.files.filter((f) => f.status !== "deleted").map((f) => f.path)
     const specOf = (name: string): { pack: Pack; spec: GateSpec } | undefined => {
       for (const pack of packs) {
@@ -273,6 +276,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       ...(multi ? { testedBuilds: [...testedBuilds].sort() } : {}),
       ...(testMap ? { testMap } : {}),
       ...(testMapMissing.length > 0 ? { testMapMissing } : {}),
+      ...(deselected.size > 0 ? { deselected: [...deselected].sort() } : {}),
     }
 
     /**
@@ -535,6 +539,11 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
      * What an affected suite ran, for the report: how many tests of how many
      * (the base's tests of the classes left out make up the rest), and why.
      */
+    /** The map's classes an affected suite's run left out, across its builds. */
+    function leftOut(applied: ReadonlyMap<string, Selection>): string[] {
+      return [...applied.values()].flatMap((s) => (s.kind === "some" ? s.deselected : []))
+    }
+
     function runOne(check: Check, dir: string): Effect.Effect<Omit<CheckRecord, "tier" | "check" | "pointer" | "advisory">, never, ProcessRunner | FileSystem.FileSystem | Path.Path> {
       return Effect.gen(function*() {
         let start: (ctx: GateContext) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>
@@ -546,7 +555,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         let multiRerun: ((ctx: GateContext, subset: TestSubset, label: string) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) | undefined
         // The suite's run measures coverage too (onceForCoverage); its reruns don't.
         let measuredCoverage = false
-        // An affected suite (spec 0013): the tests each build runs, and a baseline's request for the map.
+        // An affected suite (spec 0013): what each build ran, and a baseline's request for the map.
+        const applied = new Map<string, Selection>()
         const affected = check.kind === "suite" && ir.suites.some((s) => s.kind === "suite" && s.name === check.name && s.affected === true)
         const selections = affected && !input.recording ? input.selections?.get(check.name) : undefined
         const narrowed = (buildDir: string, ctx: GateContext): { ctx: GateContext; subset?: TestSubset } => {
@@ -554,6 +564,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const chosen = selections?.get(buildDir)
           if (!chosen) return { ctx }
           // The project's CI already ran every test; its reports stand in for this run.
+          applied.set(buildDir, ctx.fromCi ? { kind: "all", reason: "the project's CI ran them" } : chosen)
           if (ctx.fromCi || chosen.kind === "all") return { ctx }
           return { ctx, subset: { files: ownedBy(buildDirs, buildDir, chosen.files), ids: [], seed: seedFor(facts.head, 0), classes: chosen.classes, affected: true } }
         }
@@ -649,6 +660,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           suiteTests.push(run.tests)
           if (run.testMap) testMaps.push(run.testMap)
           if (run.testMapMissing !== undefined) testMapMissing.push(run.testMapMissing)
+          // Integrity doesn't miss the base's tests of classes selection left out (spec 0013).
+          leftOut(applied).forEach((c) => deselected.add(c))
           const c = run.tests.counts
           if (c.executed === 0) return { status: "failed", reason: "no tests ran (a silent green fails)", proof, tests: c }
           // A baseline records what trunk does; flakiness is judged on changes.
