@@ -156,3 +156,7 @@ export const suiteSelections = (input: {
   }
   return out
 }
+
+/** The map's classes the selections leave out, across suites and builds. */
+export const deselectedBy = (selections: SuiteSelections): string[] =>
+  [...new Set([...selections.values()].flatMap((m) => [...m.values()].flatMap((s) => (s.kind === "some" ? s.deselected : []))))].sort()
