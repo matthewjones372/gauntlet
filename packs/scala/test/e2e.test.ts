@@ -177,6 +177,11 @@ for (const fw of FRAMEWORKS) {
       repo.commit("broken")
       const broken = await checkOn(repo, base, "broken")
       const unit = broken.report.checks.find((c: { check: string }) => c.check === "unit")
+      // When the suite didn't run, say which gate stopped it and why: CI keeps no report to read afterwards.
+      if (unit.status !== "failed") {
+        console.log(JSON.stringify(broken.report.checks.map((c: { tier: string; check: string; status: string; reason?: string }) =>
+          ({ tier: c.tier, check: c.check, status: c.status, reason: c.reason })), null, 1))
+      }
       expect(unit.status).toBe("failed")
       expect(unit.tests.executed).toBe(2)
       expect(unit.failures.join("\n")).toContain(fw.suite)
