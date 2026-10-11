@@ -72,8 +72,9 @@ Suites:
 HoldoutSuite:
     'holdout' name=STRING ('paths' globs+=STRING (','? globs+=STRING)*)? ('ci' ciOnly?='only')? ','?;
 
+// \`unit "src/test/**" affected\`: a check runs only the tests the change affects (spec 0013).
 TestSuite:
-    kind=Name location=STRING ('from' 'env' env=Name)? ','?;
+    kind=Name location=STRING ('from' 'env' env=Name)? (affected?='affected')? ','?;
 
 Integrity:
     'integrity' '{' items+=IntegrityItem* '}';
@@ -223,18 +224,18 @@ QName returns string:
 
 // User-chosen names. A few keywords that read naturally as names are allowed.
 Name returns string:
-    ID | 'split' | 'reads' | 'baseline' | 'env' | 'command' | 'cumulative' | 'caution' | 'ci' | 'only' | 'fix' | 'fail' | 'until'
+    ID | 'split' | 'reads' | 'affected' | 'baseline' | 'env' | 'command' | 'cumulative' | 'caution' | 'ci' | 'only' | 'fix' | 'fail' | 'until'
     | 'changed' | 'all' | 'touched' | 'added' | 'missing' | 'pass';
 
 // Words inside an integrity list. The three list keywords are left out so a
 // new `ratchet`, `forbid` or `flag` line starts a new list.
 IntegrityWord returns string:
-    ID | 'split' | 'reads' | 'in' | 'on' | 'not' | 'env' | 'from' | 'only' | 'module' | 'baseline' | 'diff' | 'fail' | 'fix'
+    ID | 'split' | 'reads' | 'affected' | 'in' | 'on' | 'not' | 'env' | 'from' | 'only' | 'module' | 'baseline' | 'diff' | 'fail' | 'fix'
     | 'changed' | 'all' | 'no' | 'touched' | 'added' | 'missing' | 'pass';
 
 // Words inside a stack layer body, which is closed by '}'.
 LayerWord returns string:
-    ID | 'split' | 'reads' | 'zone' | 'budget' | 'gates' | 'paths' | 'rule' | 'module' | 'must' | 'not' | 'depend'
+    ID | 'split' | 'reads' | 'affected' | 'zone' | 'budget' | 'gates' | 'paths' | 'rule' | 'module' | 'must' | 'not' | 'depend'
     | 'on' | 'from' | 'env' | 'vs' | 'baseline' | 'ratchet' | 'in' | 'layer' | 'max' | 'diff'
     | 'cumulative' | 'ci' | 'only' | 'caution' | 'fix' | 'fail' | 'flag' | 'forbid' | 'review'
     | 'owner' | 'skim' | 'auto' | 'llm' | 'protect' | 'suites' | 'integrity' | 'arch' | 'stack'

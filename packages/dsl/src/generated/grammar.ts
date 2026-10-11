@@ -1133,6 +1133,16 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "cardinality": "?"
           },
           {
+            "$type": "Assignment",
+            "feature": "affected",
+            "operator": "?=",
+            "terminal": {
+              "$type": "Keyword",
+              "value": "affected"
+            },
+            "cardinality": "?"
+          },
+          {
             "$type": "Keyword",
             "value": ",",
             "cardinality": "?"
@@ -3187,6 +3197,10 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           },
           {
             "$type": "Keyword",
+            "value": "affected"
+          },
+          {
+            "$type": "Keyword",
             "value": "baseline"
           },
           {
@@ -3276,6 +3290,10 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "Keyword",
             "value": "reads"
+          },
+          {
+            "$type": "Keyword",
+            "value": "affected"
           },
           {
             "$type": "Keyword",
@@ -3376,6 +3394,10 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "Keyword",
             "value": "reads"
+          },
+          {
+            "$type": "Keyword",
+            "value": "affected"
           },
           {
             "$type": "Keyword",

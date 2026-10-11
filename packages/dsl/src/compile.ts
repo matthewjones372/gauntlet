@@ -384,7 +384,7 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
           `Write: holdout "${suite.location}" ci only`)
         continue
       }
-      addSuite(at({ kind: "suite", name: suite.kind, location: suite.location }, span))
+      addSuite(at({ kind: "suite", name: suite.kind, location: suite.location, ...(suite.affected ? { affected: true as const } : {}) }, span))
     }
   }
 
