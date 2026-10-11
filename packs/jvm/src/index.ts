@@ -35,7 +35,7 @@ export const jvmPack: Pack = {
   // The check's own Gradle daemon ends with the check (ADR 0020).
   stop: ({ root }) => stopDaemon(root),
   reruns: true,
-  // A baseline maps what each test class executes (spec 0013).
+  // A baseline maps what each test class executes, and a check runs the classes a change affects (spec 0013).
   testMaps: true,
   tamper,
   locate: (path, lines, line) => (isKotlin(path) ? enclosingSymbol(parseKotlin(lines.join("\n")), line) : undefined),

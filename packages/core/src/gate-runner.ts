@@ -14,7 +14,8 @@ import type { TestRecord } from "./integrity.ts"
 import type { Pack } from "./pack-registry.ts"
 import type { CheckRecord } from "./report/build.ts"
 import type { NewViolation, Regression } from "./review.ts"
-import { assessStability, failuresOf, REPEATS } from "./stability.ts"
+import type { SuiteSelections } from "./selection.ts"
+import { assessStability, failuresOf, REPEATS, seedFor } from "./stability.ts"
 import { isCompilerWarnings } from "./compiler-warnings.ts"
 import type { PreparedWorkspace } from "./workspace.ts"
 
@@ -54,6 +55,8 @@ export interface GateRunnerInput {
    * coverage and compile are read from them instead of run again.
    */
   readonly fromCi?: { readonly files: ReadonlyArray<{ readonly path: string; readonly content: string }>; readonly source: string }
+  /** What each \`affected\` suite runs in each build (spec 0013); ignored while recording. */
+  readonly selections?: SuiteSelections
 }
 
 export interface GateRunnerOutput {
@@ -543,9 +546,17 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         let multiRerun: ((ctx: GateContext, subset: TestSubset, label: string) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) | undefined
         // The suite's run measures coverage too (onceForCoverage); its reruns don't.
         let measuredCoverage = false
-        // A baseline asks an affected suite for its map of what each test class executes (spec 0013).
+        // An affected suite (spec 0013): the tests each build runs, and a baseline's request for the map.
         const affected = check.kind === "suite" && ir.suites.some((s) => s.kind === "suite" && s.name === check.name && s.affected === true)
-        const mapping = (ctx: GateContext): GateContext => (input.recording && affected ? { ...ctx, recordTestMap: true } : ctx)
+        const selections = affected && !input.recording ? input.selections?.get(check.name) : undefined
+        const narrowed = (buildDir: string, ctx: GateContext): { ctx: GateContext; subset?: TestSubset } => {
+          if (input.recording) return { ctx: affected ? { ...ctx, recordTestMap: true } : ctx }
+          const chosen = selections?.get(buildDir)
+          if (!chosen) return { ctx }
+          // The project's CI already ran every test; its reports stand in for this run.
+          if (ctx.fromCi || chosen.kind === "all") return { ctx }
+          return { ctx, subset: { files: ownedBy(buildDirs, buildDir, chosen.files), ids: [], seed: seedFor(facts.head, 0), classes: chosen.classes, affected: true } }
+        }
         if (check.kind === "suite" && multi) {
           const suite = ir.suites.find((s) => s.name === check.name)
           const targets = targetsFor((p) => p.runSuite !== undefined)
@@ -555,7 +566,10 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           suiteRun = { suite: { name: suite.name, location: suite.location }, runner: targets[0]!.pack.runSuite!, reruns: targets.every((t) => t.pack.reruns === true) }
           measuredCoverage = hasCoverageGate && targets.some((t) => t.pack.suiteWithCoverage === true)
           start = (ctx) =>
-            acrossBuilds(check, targets, dir, ctx, (bctx, t) => t.pack.runSuite!(located(t.build.dir), mapping(bctx)))
+            acrossBuilds(check, targets, dir, ctx, (bctx, t) => {
+              const n = narrowed(t.build.dir, bctx)
+              return t.pack.runSuite!(located(t.build.dir), n.ctx, n.subset)
+            })
           multiRerun = (ctx, subset, label) =>
             acrossBuilds(check, targets.filter((t) => ownedBy(buildDirs, t.build.dir, subset.files).length > 0), `${dir}-${label}`, ctx, (bctx, t) =>
               t.pack.runSuite!(located(t.build.dir), bctx, { ...subset, files: ownedBy(buildDirs, t.build.dir, subset.files) }))
@@ -566,7 +580,10 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           if (!runner || !suite || suite.kind !== "suite") return { status: "not-executed", reason: "no used pack runs test suites" }
           suiteRun = { suite: { name: suite.name, location: suite.location }, runner, reruns: suitePack.reruns === true }
           measuredCoverage = hasCoverageGate && suitePack.suiteWithCoverage === true
-          start = (ctx) => runner({ name: suite.name, location: suite.location }, mapping(ctx))
+          start = (ctx) => {
+            const n = narrowed(".", ctx)
+            return runner({ name: suite.name, location: suite.location }, n.ctx, n.subset)
+          }
         } else if (check.kind === "gate") {
           const found = specOf(check.name)
           const impl = found?.pack.gates[check.name]

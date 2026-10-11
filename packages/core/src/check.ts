@@ -12,6 +12,7 @@ import { inferZones } from "./infer.ts"
 import { behaviourUnchanged } from "./no-behaviour.ts"
 import { runImports } from "./imports.ts"
 import { runIntegrity, type TestRecord, testPathMatcher } from "./integrity.ts"
+import { type SuiteSelections, suiteSelections } from "./selection.ts"
 import { Overrides } from "./overrides.ts"
 import { PackRegistry, runnerConfigFor } from "./pack-registry.ts"
 import { PolicySource } from "./policy-source.ts"
@@ -131,6 +132,26 @@ const prepare = (request: { readonly repo: string; readonly policyRef?: string; 
   })
 
 type Prepared = Effect.Success<ReturnType<typeof prepare>>
+
+/**
+ * What each \`affected\` suite runs (spec 0013), from the baseline's map and
+ * everything that changed since the commit it was recorded at. Needs only
+ * git.
+ */
+const selectionsFor = (repo: string, p: Prepared) =>
+  Effect.gen(function*() {
+    if (!p.ir.suites.some((s) => s.kind === "suite" && s.affected === true)) return new Map() as SuiteSelections
+    const git = yield* Git
+    const recorded = Option.getOrUndefined(p.baseline)
+    const map = recorded?.testMap
+    const changes = recorded && map
+      ? yield* git.diff(repo, recorded.commit, p.head).pipe(
+        Effect.map((cs) => cs.map((c) => ({ path: c.path, status: c.status, ...(c.oldPath !== undefined ? { oldPath: c.oldPath } : {}) }))),
+        Effect.orElseSucceed(() => undefined),
+      )
+      : undefined
+    return suiteSelections({ ir: p.ir, packs: p.used, facts: p.facts, map, changes, isTestPath: testPathMatcher(p.ir) })
+  })
 
 /**
  * With build folders only the builds a change touches run their tests (ADR
@@ -263,6 +284,7 @@ export const runCheck = (request: CheckRequest) =>
       // From the base commit, like the policy: a change can't alter how it's built for its own judgement.
       const ci = request.ci ? Option.flatMap(yield* git.show(request.repo, p.base, CI_CONFIG_PATH).pipe(Effect.orElseSucceed(() => Option.none<string>())), parseCiConfig) : Option.none<CiConfig>()
       const today = yield* git.commitDate(request.repo, p.head)
+      const selections = yield* selectionsFor(request.repo, p)
       const gates: GateRunnerOutput = request.skipGates
         ? { checks: [], newViolations: [], regressions: [], ratchets: [], runs: [], metrics: {}, durationsMs: {} }
         : yield* runGates({
@@ -271,6 +293,7 @@ export const runCheck = (request: CheckRequest) =>
           ...(Option.isSome(ci) ? { ci: ci.value } : {}),
           ...(unchanged ? { behaviourUnchanged: true } : {}),
           ...(fromCi.length > 0 ? { fromCi: { files: fromCi, source: request.ciReports!.source } } : {}),
+          ...(selections.size > 0 ? { selections } : {}),
         })
       const imports = request.skipGates
         ? { checks: [], newViolations: [], runs: [], caution: [], records: [] }

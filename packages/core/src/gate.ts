@@ -97,6 +97,10 @@ export interface TestSubset {
   readonly files: ReadonlyArray<string>
   readonly ids: ReadonlyArray<string>
   readonly seed: number
+  /** Test classes to run too, by name (spec 0013). */
+  readonly classes?: ReadonlyArray<string>
+  /** The suite's own run, narrowed to the tests a change affects (spec 0013): in the usual order, measuring coverage when asked. */
+  readonly affected?: true
 }
 
 /** Runs a suite; with `subset`, only those tests, shuffled by its seed where the runner can (M15). */
