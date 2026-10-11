@@ -67,8 +67,18 @@ allprojects { p ->
         pitest.outputFormats.set(["XML"])
         pitest.timestampedReports.set(false)
         pitest.reportDir.set(new File(out, "pitest/${slug}"))
+        // After the build script, which may set its own targetClasses: the change's classes win,
+        // and a module the change doesn't touch finds nothing to mutate rather than failing. Pitest's
+        // targetTests defaults to targetClasses, so the tests keep the build's wider scope: narrowed
+        // with the classes, only tests named like them would run, and fewer mutants would be killed.
         def targets = System.getenv("GAUNTLET_PITEST_TARGETS")
-        if (targets != null && targets != "") pitest.targetClasses.set(targets.split(",") as List)
+        if (targets != null && targets != "") p.afterEvaluate {
+            def tests = pitest.targetTests.getOrElse([] as Set)
+            def classes = pitest.targetClasses.getOrElse([] as Set)
+            if (tests.isEmpty() && !classes.isEmpty()) pitest.targetTests.set(classes)
+            pitest.targetClasses.set(targets.split(",") as List)
+            pitest.failWhenNoMutations.set(false)
+        }
     }
 }
 
