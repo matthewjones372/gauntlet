@@ -75,6 +75,13 @@ export const ReportCheck = Schema.Struct({
   failingOnBase: Schema.optionalKey(Schema.Array(Schema.String)),
   /** Every failure that counts fails on the base too, so the change isn't blocked for it. */
   failedBefore: Schema.optionalKey(Schema.Literal(true)),
+  /** An affected suite (spec 0013): how many tests ran of how many, why the rest didn't (or why all did), and the test classes left out. */
+  selection: Schema.optionalKey(Schema.Struct({
+    ran: Schema.Number,
+    of: Schema.Number,
+    why: Schema.Array(Schema.String),
+    deselected: Schema.optionalKey(Schema.Array(Schema.String)),
+  })),
   source: Schema.optionalKey(SourceRef),
 })
 export type ReportCheck = typeof ReportCheck.Type
