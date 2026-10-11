@@ -79,6 +79,16 @@ allprojects { p ->
             pitest.targetClasses.set(targets.split(",") as List)
             pitest.failWhenNoMutations.set(false)
         }
+        // Spec 0011: methods no changed line is in, and generated ones, aren't mutated.
+        def skipped = System.getenv("GAUNTLET_PITEST_EXCLUDED_METHODS")
+        if (skipped != null && skipped != "") p.afterEvaluate {
+            pitest.excludedMethods.set(pitest.excludedMethods.getOrElse([] as Set) + (skipped.split(",") as List))
+        }
+        // Pitest runs one test JVM at a time unless told otherwise; a build that chose more keeps its choice.
+        def threads = System.getenv("GAUNTLET_PITEST_THREADS")
+        if (threads != null && threads != "") p.afterEvaluate {
+            if (pitest.threads.getOrElse(1) <= 1) pitest.threads.set(threads as Integer)
+        }
     }
 }
 

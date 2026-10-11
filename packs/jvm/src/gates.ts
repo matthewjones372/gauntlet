@@ -1,5 +1,6 @@
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
-import { compilerWarningsRun, type Mutant, mutationGateRun, warningsGate } from "@gauntlet/core"
+import { compilerWarningsRun, type Mutant, mutationGateRun, mutationScopeOf, warningsGate } from "@gauntlet/core"
+import { availableParallelism } from "node:os"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, decodeLog, type Log, type Result, type Run, renderDetektBaseline, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
@@ -8,7 +9,7 @@ import { gradle, type GradleRun, taskMissing } from "./gradle.ts"
 import { runRules } from "./kotlin/rules.ts"
 import { isKotlin, line, ofType, parseKotlin } from "./kotlin/syntax.ts"
 import { parseCoverage, parseMutations } from "./reports.ts"
-import { isMainSource, packageOf, pitestTargets, sourceIndex } from "./sources.ts"
+import { isMainSource, packageOf, pitestExclusions, pitestTargets, sourceIndex } from "./sources.ts"
 
 // The JVM pack's gates. Each runs its tool through Gradle (or parses Kotlin
 // itself), reads only the reports written into the check's output directory,
@@ -181,8 +182,13 @@ export const mutation: GateImpl = (_check, ctx) =>
     if (inScope !== undefined && inScope.length === 0) {
       return { command: [], exitCode: 0, runs: [], nothingInScope: "no main classes in scope to mutate" }
     }
-    const env: Record<string, string> = {}
-    if (inScope) env.GAUNTLET_PITEST_TARGETS = (yield* readFiles(ctx, inScope)).flatMap((f) => pitestTargets(f.path, f.text)).join(",")
+    const env: Record<string, string> = { GAUNTLET_PITEST_THREADS: String(availableParallelism()) }
+    if (inScope) {
+      const sources = yield* readFiles(ctx, inScope)
+      env.GAUNTLET_PITEST_TARGETS = sources.flatMap((f) => pitestTargets(f.path, f.text)).join(",")
+      const lines = mutationScopeOf(ctx).changedLines
+      if (lines) env.GAUNTLET_PITEST_EXCLUDED_METHODS = pitestExclusions(sources, lines).join(",")
+    }
     const r = yield* gradle(ctx, ["pitest"], env)
     if (r.error) return base(r)
     const xml = yield* reports(ctx, (p) => p.startsWith("pitest/") && p.endsWith("mutations.xml"))
