@@ -313,6 +313,15 @@ it lowers, and your approval accepts the lower bar with no override. Any other
 file in the same pull request and it's judged against the base's baseline as
 usual, so a lower bar can't come in alongside code.
 
+When a task needs a protected file changed, such as a build script or a
+workflow, `gauntlet grant <pr> <path>... --reason "<why>"` lets the agent change
+those files in that one pull request. Claude Code's hook then allows the edits
+on that pull request's branch, and the check judges the change as owner tier,
+naming your grant: it's reviewed, not hidden, and still needs your approval. A
+grant names exact files, never `.git/` (where approvals and overrides live),
+and lapses when the pull request merges; it never lets the agent approve,
+override or grant. Like `gauntlet approve`, it runs only in your own terminal.
+
 ## Everything it protects
 
 | Implemented today | How |

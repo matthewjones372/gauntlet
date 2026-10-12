@@ -14,7 +14,7 @@ const nested = (command: string): string[] =>
 const commands = (command: string): string[][] =>
   unquote(command).split(/&&|\|\||;|\||\n/).map((part) => part.trim().split(/\s+/).filter((w) => w !== ""))
 
-const OWNER_SUBCOMMANDS = new Set(["approve"])
+const OWNER_SUBCOMMANDS = new Set(["approve", "grant"])
 
 /** The program is Gauntlet: the binary by any path, or its source run with bun. */
 const isGauntlet = (word: string) => /(^|\/)gauntlet$/.test(word) || /packages\/cli\/src\/main\.ts$/.test(word)
@@ -24,6 +24,8 @@ export const ownerDecision = (command: string): string | undefined => {
   for (const words of commands(command)) {
     const at = words.findIndex(isGauntlet)
     if (at >= 0 && OWNER_SUBCOMMANDS.has(words[at + 1] ?? "")) return `gauntlet ${words[at + 1]}`
+    // Writing or pushing the grants' notes by hand is granting too.
+    if (words.includes("git") && words.some((w) => w.includes("gauntlet-grants"))) return "a grant"
     const gh = words.indexOf("gh")
     if (gh >= 0 && words[gh + 1] === "pr" && words[gh + 2] === "review" && words.some((w) => w === "--approve" || w === "-a")) return "an approving review"
   }
