@@ -289,6 +289,18 @@ Missing evidence, a failing gate, a regression or an integrity finding each
 nominate `review` (and block in enforce mode); any change to `.gauntlet/`
 nominates `owner`. If no rule matches, the level is `review`.
 
+## The owner's decisions
+
+`gauntlet approve <pr>` approves a pull request's current head as you, the
+owner: it posts the approval for that commit, and the check runs again. With
+`--override "<reason>"` it also accepts what blocks the change, for that
+commit only: it records the override, pushes it and then approves, so the check
+runs once with both. Name the commit you looked at with `--head <sha>`, and it
+refuses if anything was pushed since; without it, it shows the head and asks.
+It runs only in your own terminal, signed in to `gh` as an owner: it refuses in
+a coding agent's session, and Claude Code's hook refuses the agent's approving
+commands, since an agent often works under its owner's GitHub account.
+
 ## Everything it protects
 
 | Implemented today | How |
