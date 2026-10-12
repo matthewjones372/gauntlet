@@ -1,5 +1,5 @@
 import type { GateContext } from "@gauntlet/core"
-import { ProcessRunner } from "@gauntlet/core"
+import { ProcessRunner, whyNotRun } from "@gauntlet/core"
 import { Effect, FileSystem, Option, Path } from "effect"
 
 // How the Rust pack runs Cargo. Everything runs in the judged checkout. The
@@ -27,7 +27,7 @@ export const exec = (ctx: GateContext, argv: ReadonlyArray<string>, env: Readonl
       cwd: ctx.dir,
       env: { CARGO_TARGET_DIR: target, CARGO_TERM_COLOR: "never", CARGO_INCREMENTAL: "0", RUST_BACKTRACE: "0", ...env },
     }))
-    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: `${argv[0]} couldn't be started or timed out` } satisfies ToolRun
+    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: whyNotRun(argv[0]!, result) } satisfies ToolRun
     return { command: argv, ...result.value } satisfies ToolRun
   })
 

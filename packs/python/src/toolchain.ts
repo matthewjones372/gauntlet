@@ -1,5 +1,5 @@
 import type { GateContext } from "@gauntlet/core"
-import { ProcessRunner } from "@gauntlet/core"
+import { ProcessRunner, whyNotRun } from "@gauntlet/core"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { parseDependencies } from "./dependencies.ts"
 
@@ -30,7 +30,7 @@ const exec = (ctx: GateContext, argv: ReadonlyArray<string>, env: Readonly<Recor
       // No bytecode or caches written into the checkout; no colour codes in output.
       env: { PYTHONDONTWRITEBYTECODE: "1", NO_COLOR: "1", PY_COLORS: "0", ...env },
     }))
-    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: `${argv[0]} couldn't be started or timed out` } satisfies ToolRun
+    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: whyNotRun(argv[0]!, result) } satisfies ToolRun
     return { command: argv, ...result.value } satisfies ToolRun
   })
 

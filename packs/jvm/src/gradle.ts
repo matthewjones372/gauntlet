@@ -1,5 +1,5 @@
 import type { GateContext } from "@gauntlet/core"
-import { ProcessRunner } from "@gauntlet/core"
+import { ProcessRunner, whyNotRun } from "@gauntlet/core"
 import { Effect, FileSystem, Option, Path } from "effect"
 import initScript from "./assets/gauntlet.init.gradle" with { type: "text" }
 
@@ -85,7 +85,7 @@ export const gradle = (ctx: GateContext, tasks: ReadonlyArray<string>, env: Read
       "--no-build-cache", "--no-configuration-cache", "--no-watch-fs", "--console=plain", options.warnings ? "--warn" : "-q", "--init-script", script, ...tasks,
     ]
     const result = yield* Effect.exit(runner.run({ command: "sh", args: [own ? "./gradlew" : found.value, ...args], cwd: ctx.dir, env: { GAUNTLET_OUT: ctx.outputDir, ...env } }))
-    if (result._tag === "Failure") return { command, exitCode: -1, stderr: "", error: "Gradle couldn't be started or timed out" } satisfies GradleRun
+    if (result._tag === "Failure") return { command, exitCode: -1, stderr: "", error: whyNotRun("Gradle", result) } satisfies GradleRun
     return { command, exitCode: result.value.exitCode, stderr: result.value.stderr, ...(options.warnings ? { stdout: result.value.stdout } : {}) } satisfies GradleRun
   })
 

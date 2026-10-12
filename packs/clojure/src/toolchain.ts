@@ -1,5 +1,5 @@
 import type { GateContext } from "@gauntlet/core"
-import { ProcessRunner } from "@gauntlet/core"
+import { ProcessRunner, whyNotRun } from "@gauntlet/core"
 import { Effect } from "effect"
 
 // How the Clojure pack runs a project, with the Clojure CLI (deps.edn) or
@@ -79,6 +79,6 @@ export const run = (ctx: GateContext, argv: ReadonlyArray<string>) =>
   Effect.gen(function*() {
     const runner = yield* ProcessRunner
     const result = yield* Effect.exit(runner.run({ command: argv[0]!, args: argv.slice(1), cwd: ctx.dir, env: { NO_COLOR: "1", LEIN_SILENT: "true" } }))
-    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: `${argv[0]} couldn't be started or timed out` } satisfies ToolRun
+    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: whyNotRun(argv[0]!, result) } satisfies ToolRun
     return { command: argv, ...result.value } satisfies ToolRun
   })

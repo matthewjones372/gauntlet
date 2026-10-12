@@ -1,5 +1,5 @@
 import type { GateContext } from "@gauntlet/core"
-import { ProcessRunner } from "@gauntlet/core"
+import { ProcessRunner, toolTimeout, whyNotRun } from "@gauntlet/core"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { createHash } from "node:crypto"
 import { homedir } from "node:os"
@@ -182,6 +182,9 @@ export const warmCompiledSources = (ctx: GateContext) =>
     }
   })
 
+/** Longer than any sbt call the e2e fixtures or bank-checks make; GAUNTLET_TOOL_TIMEOUT changes it. */
+const SBT_TIMEOUT = "15 minutes"
+
 export const sbt = (ctx: GateContext, commands: ReadonlyArray<string>, env: Readonly<Record<string, string>> = {}) =>
   Effect.gen(function*() {
     const runner = yield* ProcessRunner
@@ -189,8 +192,9 @@ export const sbt = (ctx: GateContext, commands: ReadonlyArray<string>, env: Read
     // The build-definition and compiled-sources caches above made Linux checks slower
     // (measured: about 6s more per check), so they're not used (spec 0004).
     const argv = ["sbt", "--client", ["session clear-all", "reload", ...commands].join("; ")]
-    const result = yield* Effect.exit(runner.run({ command: argv[0]!, args: argv.slice(1), cwd: ctx.dir, env: { NO_COLOR: "1", SBT_OPTS: serverOpts(ctx, path.dirname), ...env } }))
-    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: "sbt couldn't be started or timed out" } satisfies ToolRun
+    // sbt's client can hang without a word (seen in CI: 20 minutes until the test gave up), so each call has its own limit.
+    const result = yield* Effect.exit(runner.run({ command: argv[0]!, args: argv.slice(1), cwd: ctx.dir, env: { NO_COLOR: "1", SBT_OPTS: serverOpts(ctx, path.dirname), ...env }, timeout: toolTimeout(SBT_TIMEOUT) }))
+    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: whyNotRun("sbt", result) } satisfies ToolRun
     return { command: argv, ...result.value, stdout: plain(result.value.stdout), stderr: plain(result.value.stderr) } satisfies ToolRun
   })
 
