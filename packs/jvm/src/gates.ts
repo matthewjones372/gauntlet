@@ -126,12 +126,15 @@ const mapTests = (ctx: GateContext, sourceSet: string, ids: ReadonlyArray<string
       yield* fs.writeFile(path.join(listener, "gauntlet/TestMapListener.class"), Uint8Array.from(atob(LISTENER_BYTES), (c) => c.charCodeAt(0)))
       yield* fs.writeFileString(path.join(listener, "META-INF/services/org.junit.platform.launcher.TestExecutionListener"), `${LISTENER_CLASS}\n`)
     }))
-    if (ready._tag === "Failure") return undefined
+    if (ready._tag === "Failure") { console.error("DIAG ready failed", ready.cause); return undefined }
     const sources = yield* readFiles(ctx, ctx.files.filter(isSource))
     const includes = includesFor(sources)
     const r = yield* gradle({ ...ctx, outputDir: out }, [sourceSet], { GAUNTLET_TEST_MAP: listener, ...(includes ? { GAUNTLET_TEST_MAP_INCLUDES: includes } : {}) })
+    console.error("DIAG gradle", r.exitCode, r.error, r.stderr.slice(-4000))
     if (r.error) return undefined
     const written = yield* fs.readDirectory(path.join(out, "testmap"), { recursive: true }).pipe(Effect.orElseSucceed(() => [] as string[]))
+    console.error("DIAG written", written)
+    for (const f of written.filter((w) => !w.endsWith(".exec"))) console.error("DIAG file", f, yield* fs.readFileString(path.join(out, "testmap", f)).pipe(Effect.orElseSucceed(() => "")))
     if (written.some((f) => ["overlap", "failed"].includes(path.basename(f)))) return undefined
     const execs: { testClass: string; bytes: Uint8Array }[] = []
     for (const f of written.filter((w) => w.endsWith(".exec")).sort()) {
@@ -141,6 +144,7 @@ const mapTests = (ctx: GateContext, sourceSet: string, ids: ReadonlyArray<string
     }
     const map: TestMap | undefined = testMapOf(execs, sources)
     // Every test the suite ran must belong to a mapped class, or selection would leave it out unexcused.
+    console.error("DIAG map", JSON.stringify(map), ids)
     if (map === undefined || excusedBySelection(ids, Object.keys(map)).length !== ids.length) return undefined
     return map
   })

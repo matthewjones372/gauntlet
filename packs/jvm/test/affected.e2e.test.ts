@@ -61,6 +61,7 @@ describe.skipIf(!E2E)("an affected suite end to end (real Gradle)", () => {
     writeFileSync(join(repo.dir, ".gauntlet", "policy.gx"), POLICY)
     repo.commit("trunk")
     const recorded = await jvm(["baseline", "--repo", repo.dir, "--trunk", "main"])
+    console.error("DIAG baseline", recorded.out, recorded.err)
     if (recorded.code !== 0) throw new Error(`baseline failed: ${recorded.err}`)
     base = repo.commit("baseline")
   }, TIMEOUT)
