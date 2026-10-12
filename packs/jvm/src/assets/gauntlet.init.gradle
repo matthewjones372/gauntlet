@@ -23,6 +23,8 @@ allprojects { p ->
         t.outputs.upToDateWhen { false }
         // Reruns that look for flaky tests shuffle classes and methods with a known seed.
         def seed = System.getenv("GAUNTLET_JUNIT_SEED")
+        // A check's run of the tests a change affects selects classes with --tests across every module too, in the usual order.
+        if (System.getenv("GAUNTLET_SELECTED") != null) t.filter.failOnNoMatchingTests = false
         if (testMap != null) mapTests(p, t, slug, out, testMap)
         if (seed != null) {
             // A rerun selects classes with --tests across every module; modules without them run nothing.

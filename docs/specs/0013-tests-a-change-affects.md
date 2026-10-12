@@ -1,6 +1,6 @@
 # Spec 0013: run the tests a change affects
 
-Status: proposed.
+Status: implemented for the JVM pack; other packs record no map yet, so their affected suites run every test.
 
 ## Problem
 

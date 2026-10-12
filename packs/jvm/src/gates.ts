@@ -62,8 +62,9 @@ export const warnings: GateImpl = warningsGate((ctx) => build({ kind: "gate", na
 
 // ---------- suites ----------
 
-/** Test classes a subset names: from test ids (`svc.FxTest.rounds`) and files (`src/test/kotlin/svc/FxTest.kt`). */
+/** Test classes a subset names: by name, from test ids (`svc.FxTest.rounds`) and from files (`src/test/kotlin/svc/FxTest.kt`). */
 export const testClasses = (subset: TestSubset): string[] => [...new Set([
+  ...(subset.classes ?? []),
   ...subset.ids.map((id) => id.slice(0, id.lastIndexOf(".")).replace(/\$.*$/, "")).filter((c) => c !== ""),
   ...subset.files.flatMap((f) => {
     const m = /^(?:.*\/)?src\/[^/]+\/(?:kotlin|java)\/(.+)\.(?:kt|java)$/.exec(f)
@@ -88,11 +89,13 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     const sourceSet = suiteTask(suite.location)
     if (!sourceSet) return { command: [], exitCode: -1, runs: [], error: `can't map suite '${suite.name}' ("${suite.location}") to a Gradle test task; use src/<sourceSet>/**, **/src/<sourceSet>/** or <module>/src/<sourceSet>/**` }
     // A rerun selects test classes, and JUnit orders classes and methods randomly with the subset's seed.
+    // The tests a change affects (spec 0013) are selected the same way, but run in the usual order.
     const classes = subset ? testClasses(subset) : []
     if (subset && classes.length === 0) return { command: [], exitCode: -1, runs: [], error: "no test classes to run again" }
     // With withCoverage the same run writes coverage too (gauntletCoverage runs after the tests), for the coverage gate.
-    const coverage = ctx.withCoverage && !subset ? ["gauntletCoverage"] : []
-    const r = ctx.fromCi ? FROM_CI : yield* gradle(ctx, [sourceSet, ...classes.flatMap((c) => ["--tests", c]), ...coverage], subset ? { GAUNTLET_JUNIT_SEED: String(subset.seed) } : {})
+    const coverage = ctx.withCoverage && (!subset || subset.affected) ? ["gauntletCoverage"] : []
+    const env: Record<string, string> = subset?.affected ? { GAUNTLET_SELECTED: "1" } : subset ? { GAUNTLET_JUNIT_SEED: String(subset.seed) } : {}
+    const r = ctx.fromCi ? FROM_CI : yield* gradle(ctx, [sourceSet, ...classes.flatMap((c) => ["--tests", c]), ...coverage], env)
     if (!r.error && taskMissing(r.stderr, sourceSet)) return { ...base(r), error: `the build has no '${sourceSet}' test task` }
     const xml = yield* reports(ctx, (p) => (ctx.fromCi ? CI_JUNIT.test(p) : p.startsWith("junit/") && p.endsWith(".xml")))
     if (r.error || xml.length === 0) return base(r)
