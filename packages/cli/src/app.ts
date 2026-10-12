@@ -1,5 +1,5 @@
 import {
-  agentSummary, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, pullRequestBase, protectionFor,
+  agentSummary, blockingSet, knownBlock, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, pullRequestBase, protectionFor,
   ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
@@ -1715,6 +1715,20 @@ const grantedHere = (root: string, path: string) =>
     return grants.some((g) => g.branch === current && g.paths.includes(path))
   }).pipe(Effect.orElseSucceed(() => false))
 
+/** Paths only the owner changes: protected files other than tests, which the agent's hook refuses. */
+const ownerPaths = (root: string) =>
+  Effect.gen(function*() {
+    const loaded = yield* Effect.option((yield* PolicySource).load({ repo: root }))
+    if (Option.isNone(loaded)) return (path: string) => path.startsWith(".gauntlet/")
+    const ir = loaded.value.compiled.ir
+    const runnerConfig = runnerConfigFor((yield* PackRegistry).packs, ir.packs, ir.builds)
+    return (path: string) => {
+      if (path.startsWith(".gauntlet/")) return true
+      const hit = protectionFor(path, ir.protect, runnerConfig)
+      return hit !== undefined && hit.kind !== "tests"
+    }
+  })
+
 const hookStop = Command.make("stop", {}, () =>
   Effect.gen(function*() {
     const output = yield* Output
@@ -1732,9 +1746,17 @@ const hookStop = Command.make("stop", {}, () =>
     const result = yield* Effect.exit(checkWorkingTree({ repo: root, outDir, gauntletVersion: GAUNTLET_VERSION, agent: agentFromEnv(process.env), ...(adoption ? { adoption: true } : {}) }))
     // If Gauntlet can't run here (no policy, no base), don't trap the agent; CI still decides.
     if (result._tag === "Failure") return
-    // The agent reported it's blocked on exactly this state: a person decides now.
-    if (result.value.blocked) return
-    if (!result.value.report.decision.wouldBlock) return
+    // The agent reported it's blocked and nothing it could change has changed since: a person decides
+    // now, so the hook says so in a line instead of raising the same block on every turn.
+    const decision = result.value.report.decision
+    const known = yield* knownBlock(root, { tree: result.value.snapshot.tree, blocking: blockingSet(decision) }, yield* ownerPaths(root)).pipe(
+      Effect.orElseSucceed(() => Option.none<{ readonly reason: string; readonly exact: boolean }>()),
+    )
+    if (!decision.wouldBlock) return
+    if (Option.isSome(known)) {
+      if (!known.value.exact) yield* output.out(JSON.stringify({ systemMessage: `Gauntlet: still waiting on the owner: ${known.value.reason}` }))
+      return
+    }
     const reason = renderAgentSummary(agentSummary(result.value.report, outDir))
     yield* output.out(JSON.stringify({ decision: "block", reason }))
   })).pipe(Command.withDescription("Claude Code Stop hook: block completion while Gauntlet would block the change."))
