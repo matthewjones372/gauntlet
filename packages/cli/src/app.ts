@@ -1,5 +1,5 @@
 import {
-  agentSummary, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, protectionFor,
+  agentSummary, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, protectionFor,
   ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
@@ -1518,7 +1518,8 @@ const githubStatusCommand = Command.make("github-status", {
     const read = (p: string) => fs.readFileString(path.resolve(root, p)).pipe(Effect.option)
     const evidence = Option.flatMap(yield* read(args.evidence), decodeReport)
     if (Option.isNone(evidence)) yield* output.err("No readable evidence report: every check counts as not executed.")
-    const head = yield* (yield* Git).revParse(root, args.head)
+    const git = yield* Git
+    const head = yield* git.revParse(root, args.head)
     const report = yield* judgeWithEvidence({
       repo: root, policyRef: args.policyRef, head, outDir: path.resolve(root, args.out), gauntletVersion: GAUNTLET_VERSION, record: args.record,
       ...(args.protectOnly ? { protectOnly: true } : {}),
@@ -1529,7 +1530,9 @@ const githubStatusCommand = Command.make("github-status", {
     const overrides = yield* (yield* Overrides).forHead(root, head)
     const comments = Option.isSome(args.comments) ? Option.getOrElse(Option.flatMap(yield* read(args.comments.value), decodeComments), () => []) : []
     const stack = Option.isSome(args.stack) ? Option.getOrUndefined(Option.flatMap(yield* read(args.stack.value), decodeStack)) : undefined
-    const status = githubStatus(report, reviews, teams, overrides, comments, stack)
+    // The code as judged, so an approval can follow it to a new commit with the same diff (spec 0015).
+    const code = { tree: yield* git.treeOf(root, report.policy.headSha), base: yield* git.treeOf(root, report.policy.baseSha) }
+    const status = githubStatus(report, reviews, teams, overrides, comments, stack, code)
     yield* fs.writeFileString(path.resolve(root, args.out, "status.json"), `${JSON.stringify(status, null, 2)}\n`)
     // The report posted on the pull request says who approved, under its first line, and shows its box ticked.
     if (status.conclusion === "success" && status.approvedBy.length > 0) {
@@ -1537,8 +1540,7 @@ const githubStatusCommand = Command.make("github-status", {
       const text = yield* fs.readFileString(md).pipe(Effect.option)
       if (Option.isSome(text)) {
         const [first, ...rest] = text.value.split("\n")
-        const who = `approved by ${status.approvedBy.join(", ")}`
-        const ticked = rest.map((l) => (l.startsWith(`- [ ] ${APPROVE_BOX}`) ? `- [x] ${APPROVE_BOX}: ${who} (commit \`${head.slice(0, 12)}\`)` : l))
+        const ticked = rest.map((l) => (l.startsWith(`- [ ] ${APPROVE_BOX}`) ? `- [x] ${APPROVE_BOX}: ${recordedApproval(status.approvedBy, head, code)}` : l))
         yield* fs.writeFileString(md, [first, "", `**${status.title}** for commit \`${head.slice(0, 12)}\`.`, ...ticked].join("\n"))
       }
     }
@@ -1551,7 +1553,7 @@ const githubStatusCommand = Command.make("github-status", {
         const at = lines.findIndex((l) => l.includes(": tick the box to approve this commit") || l.startsWith(`- [ ] ${APPROVE_BOX}`))
         if (at >= 0) {
           const under = stack.below.map((n) => `#${n}`)
-          lines.splice(at, 0, "> [!WARNING]", `> This pull request is the top of a stack: ${under.join(", ")} ${under.length === 1 ? "is" : "are"} under it. Ticking the box approves ${under.length === 1 ? "that one" : "all of them"} too, with all of their changes, so review ${under.length === 1 ? "it" : "them"} first. Merge the stack bottom first with merge commits (\`gh pr merge --merge\`): a squash or a rebase gives the pull requests above new commits, and they'd need approving again. Delete each branch as it merges (\`--delete-branch\`): GitHub then moves the next pull request onto the default branch, where otherwise it would merge into the branch below.`, "")
+          lines.splice(at, 0, "> [!WARNING]", `> This pull request is the top of a stack: ${under.join(", ")} ${under.length === 1 ? "is" : "are"} under it. Ticking the box approves ${under.length === 1 ? "that one" : "all of them"} too, with all of their changes, so review ${under.length === 1 ? "it" : "them"} first. Merge the stack bottom first with merge commits (\`gh pr merge --merge\`): a squash or a rebase gives the pull requests above new commits, and they'd need approving again. Don't delete a branch as it merges (no \`--delete-branch\`): Gauntlet's workflow moves the next pull request onto the default branch, then deletes the merged branch. Deleting it first closes the pull request above.`, "")
           yield* fs.writeFileString(md, lines.join("\n"))
         }
       }
