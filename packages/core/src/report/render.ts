@@ -143,6 +143,7 @@ const because = (n: Report["decision"]["nominations"][number]): string | undefin
     case "integrity-not-executed": return "a check didn't run"
     case "protected-changed": return / is a protected test /.test(n.reason) ? "it edits a protected test" : "it changes protected build configuration"
     case "gauntlet-changed": return "it changes Gauntlet's policy or baseline"
+    case "baseline-lowered": return "it lowers the baseline"
     case "no-rule-matched": return "no rule in the policy marks it as safe"
     case "flaky-test": return "a test is flaky"
     case "failing-on-base": return "tests fail that were already failing before it"

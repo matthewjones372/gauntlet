@@ -2,6 +2,7 @@ import { globMatches, type PolicyInvalid } from "@gauntlet/dsl"
 import type { PolicyIR } from "@gauntlet/ir"
 import type { Baseline, Metric, MetricDelta, Run } from "@gauntlet/sarif"
 import { Clock, Data, Effect, Option } from "effect"
+import { judgedBaseline, onlyBaseline } from "./baseline-pr.ts"
 import { BaselineStore, renamesOf } from "./baseline-store.ts"
 import { hasBuilds, touchedBuilds } from "./builds.ts"
 import { CI_CONFIG_PATH, type CiConfig, parseCiConfig } from "./ci-config.ts"
@@ -128,9 +129,18 @@ const prepare = (request: { readonly repo: string; readonly policyRef?: string; 
     const runnerConfig = runnerConfigFor(registry.packs, ir.packs, ir.builds)
     // Protect-only judges with the base's tests, pass or fail; otherwise an edited test runs as edited and needs review.
     const facts = yield* diffFacts(request.repo, base, head, ir, registry.packs, runnerConfig, !request.protectOnly)
-    const baseline = yield* (yield* BaselineStore).at(request.repo, base)
+    const store = yield* BaselineStore
+    const atBase = yield* store.at(request.repo, base)
+    // A change that only replaces the baseline is judged against the one it brings, for what it lowers (spec 0015).
+    // One that doesn't parse lowers nothing: the change is judged as any other.
+    const brought = !request.protectOnly && onlyBaseline(facts.files) && Option.isSome(atBase)
+      ? yield* store.at(request.repo, head).pipe(Effect.orElseSucceed(() => Option.none<Baseline>()))
+      : Option.none<Baseline>()
+    const judged = Option.isSome(atBase) && Option.isSome(brought) ? judgedBaseline(atBase.value, brought.value) : undefined
+    const lowered = judged?.lowered ?? []
+    const baseline = judged !== undefined && lowered.length > 0 ? Option.some(judged.baseline) : atBase
     const renames = renamesOf(facts.files.map((f) => ({ status: f.status, path: f.path, ...(f.oldPath !== undefined ? { oldPath: f.oldPath } : {}) })))
-    return { loaded, ir, base, head, used: registry.packs.filter((p) => ir.packs.includes(p.spec.name)), runnerConfig, facts, baseline, renames }
+    return { loaded, ir, base, head, used: registry.packs.filter((p) => ir.packs.includes(p.spec.name)), runnerConfig, facts, baseline, lowered, renames }
   })
 
 type Prepared = Effect.Success<ReturnType<typeof prepare>>
@@ -236,6 +246,7 @@ const judge = (
       integrity: counted,
       caution: executed.caution,
       ...(request.blocked ? { blocked: request.blocked } : {}),
+      ...(p.lowered.length > 0 ? { baselineLowered: p.lowered } : {}),
     }
     const { sourceMap, hash } = p.loaded.compiled
     const ir = p.ir
