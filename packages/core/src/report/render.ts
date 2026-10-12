@@ -2,6 +2,7 @@ import { prettyCanonicalJson, sha256, type SourceRef } from "@gauntlet/ir"
 import { type Log, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Schema } from "effect"
 import { MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT } from "../mutation-explained.ts"
+import { checksTheBaseMayExplain, ranAsBase } from "./ran-as-base.ts"
 import { Report, type ReportCheck } from "./schema.ts"
 
 /** The report as canonical JSON: sorted keys, two-space indent, trailing newline. */
@@ -235,6 +236,22 @@ export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
     "",
   )
   if (d.owners.length > 0) lines.push(`Suggested reviewers: ${d.owners.join(", ")}`, "")
+
+  // Near the top: what the change's own edits to protected files did (nothing yet) explains the checks below.
+  const asBase = ranAsBase(r)
+  if (asBase.length > 0) {
+    const explained = checksTheBaseMayExplain(r, asBase)
+    lines.push(
+      "### Ran as the base has them",
+      "",
+      "This change edits protected files, and Gauntlet ran them as the base has them, not as the change has them:",
+      "",
+      ...asBase.map((f) => `- ${link(f.path)} (${f.kind})${f.leftOut ? ", which the change adds, was left out" : ""}${f.kind === "policy" ? ": rules, gates and budgets the change adds to it don't run yet" : ""}`),
+      "",
+      `The change's version takes effect once it merges.${explained.length > 0 ? ` ${sentence(explained.map((c) => `**${c.check}** ${c.status}`))} with these files as the base has them: if the change adds what ${explained.length === 1 ? "it needs" : "they need"} there (a build plugin, a tool's configuration), this run didn't have it.` : ""}`,
+      "",
+    )
+  }
 
   // Where a person should look: the zones the change touches, with their owners and files.
   if (d.scope !== "protect-only" && r.facts.zonesTouched.length > 0) {

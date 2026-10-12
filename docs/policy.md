@@ -43,7 +43,10 @@ The pieces:
 
 - **Owners** approve sensitive changes and edits to the policy (`@user` or
   `@org/team`).
-- **Protected paths** are restored from the base before anything runs.
+- **Protected paths** are restored from the base before anything runs. When a
+  change edits one (a build plugin, a fixture, the policy itself), the report
+  and the agent's summary list it under "Ran as the base has them": the
+  change's version takes effect once it merges.
 - **Zones** mark code that needs its owner's review and can switch on stricter
   rules, such as no floating-point money.
 - **Layer rules** (`arch`) say which modules may not import which.
