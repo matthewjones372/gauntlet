@@ -61,6 +61,52 @@ export const sbtErrors = (lines: ReadonlyArray<string>) =>
 const lastError = (r: ToolRun) =>
   sbtErrors(`${r.stdout}\n${r.stderr}`.split("\n")).at(0) ?? (`${r.stdout}${r.stderr}`.trim() === "" ? `sbt exited with ${r.exitCode} and printed nothing` : "")
 
+/**
+ * The ids of the projects in the checkout's build, from sbt's \`projects\`:
+ * the block under "In file:<dir>" (the first block when none names the
+ * checkout), one per line, the current one starred.
+ */
+export const parseProjects = (output: string, dir: string): string[] => {
+  const blocks: { path: string; ids: string[] }[] = []
+  let current: { path: string; ids: string[] } | undefined
+  for (const line of output.split("\n")) {
+    const header = /^\[info\] In file:(.*?)\/?\s*$/.exec(line)
+    if (header) {
+      current = { path: header[1]!, ids: [] }
+      blocks.push(current)
+      continue
+    }
+    const project = current ? /^\[info\]\s*\t\s*(?:\*\s*)?(\S+)\s*$/.exec(line) : null
+    if (project) current!.ids.push(project[1]!)
+    else current = undefined
+  }
+  const own = blocks.find((b) => b.path === dir.replace(/\/$/, "") || b.path === `/private${dir.replace(/\/$/, "")}`) ?? blocks[0]
+  return [...(own?.ids ?? [])].sort()
+}
+
+/**
+ * Where scoverage writes, as an sbt \`set\`: under \`dir\` in the output directory.
+ * Each project of a build with several gets its own folder: they can't share
+ * one, as each project's coverageReport then reads every project's
+ * instrumentation and fails on files outside its own source roots ("No source
+ * root found"). \`set every\` can't name the folder per project (in sbt 2 a
+ * \`.value\` in it is the root project's), so the projects are listed first.
+ */
+const coverageDirs = (ctx: GateContext, dir: string) =>
+  Effect.gen(function*() {
+    const path = yield* Path.Path
+    const listed = yield* sbt(ctx, ["projects"])
+    const ids = listed.error || listed.exitCode !== 0 ? [] : parseProjects(listed.stdout, ctx.dir)
+    if (ids.length <= 1) return `set every coverageDataDir := file(${scalaString(dir)})`
+    return `set Seq(${ids.map((id) => `LocalProject(${scalaString(id)}) / coverageDataDir := file(${scalaString(path.join(dir, id))})`).join(", ")})`
+  })
+
+/** scoverage's Cobertura report: one for the build, or one per project in its own folder. */
+const OWN_COVERAGE = /^scoverage\/([^/]+\/)?coverage-report\/cobertura\.xml$/
+
+/** scoverage isn't applied: sbt doesn't know its key or command (in a \`set\`, the compiler says "not found"). */
+const noScoverage = (r: ToolRun) => notAvailable(r, "coverageDataDir") || notAvailable(r, "coverage") || /Not found: (value )?coverageDataDir/i.test(`${r.stdout}\n${r.stderr}`)
+
 // ---------- build ----------
 
 /** Compiles main and test code, keeping scalac's warnings for the warnings check (spec 0010). */
@@ -94,9 +140,10 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     if (subset && suites.length === 0) return failed(["sbt", "testOnly"], "no test suites to run again")
     // With withCoverage the same run writes scoverage's report too, for the coverage gate.
     const coverage = ctx.withCoverage && !subset
+    const dataDirs = coverage && !ctx.fromCi ? yield* coverageDirs(ctx, path.join(ctx.outputDir, "scoverage")) : undefined
     const r = ctx.fromCi ? FROM_CI : yield* sbt(ctx, [
       `set every Test / testReportsDirectory := file(${scalaString(junit)})`,
-      ...(coverage ? [`set every coverageDataDir := file(${scalaString(path.join(ctx.outputDir, "scoverage"))})`, "coverage"] : []),
+      ...(dataDirs ? [dataDirs, "coverage"] : []),
       // The frameworks share no shuffle option; reruns vary parallel execution instead.
       ...(subset ? [`set every Test / parallelExecution := ${subset.seed % 2 === 0}`] : []),
       subset ? `testOnly ${suites.join(" ")}` : "test",
@@ -220,11 +267,11 @@ const COMMENT_OR_BLANK = /^\s*($|\/\/|\*|\/\*)/
 export const coverage: GateImpl = (_check, ctx) =>
   Effect.gen(function*() {
     const path = yield* Path.Path
-    const r = ctx.fromCi || ctx.coverageFromSuite ? FROM_CI : yield* sbt(ctx, [`set every coverageDataDir := file(${scalaString(path.join(ctx.outputDir, "scoverage"))})`, "coverage", "test", "coverageReport"])
+    const r = ctx.fromCi || ctx.coverageFromSuite ? FROM_CI : yield* sbt(ctx, [yield* coverageDirs(ctx, path.join(ctx.outputDir, "scoverage")), "coverage", "test", "coverageReport"])
     if (r.error) return base(r)
-    if (notAvailable(r, "coverageDataDir") || notAvailable(r, "coverage")) return { ...base(r), error: "scoverage isn't applied; add the org.scoverage sbt-scoverage plugin" }
-    // The CI's run writes one report per module; Gauntlet's own run, one for the build.
-    const xmls = yield* reports(ctx, (p) => (ctx.fromCi ? CI_COVERAGE.test(p) : p === "scoverage/coverage-report/cobertura.xml"))
+    if (noScoverage(r)) return { ...base(r), error: "scoverage isn't applied; add the org.scoverage sbt-scoverage plugin" }
+    // The CI's run writes one report per module; Gauntlet's own, one per project of a build with several.
+    const xmls = yield* reports(ctx, (p) => (ctx.fromCi ? CI_COVERAGE.test(p) : OWN_COVERAGE.test(p)))
     if (xmls.length === 0) return { ...base(r), error: `scoverage wrote no report (do the tests compile and pass?): ${lastError(r)}` }
     const scoped = ctx.scope?.filter(isMainSource)
     const files = xmls.flatMap((x) => parseCobertura(x.content, ctx.files.filter(isScala))).filter((f) => ctx.scope === undefined || ctx.scope.includes(f.path))
