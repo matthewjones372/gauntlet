@@ -1,5 +1,5 @@
 import {
-  agentSummary, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, protectionFor,
+  agentSummary, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, protectionFor,
   ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
@@ -56,6 +56,7 @@ const describeFailure = (e: unknown): string => {
     case "BaselineInvalid": return `.gauntlet/baseline.sarif is invalid: ${tagged.reason ?? ""}`
     case "OverrideInvalid": return `Override not recorded: ${tagged.reason ?? ""}`
     case "OwnerRefused": return tagged.message ?? ""
+    case "GrantInvalid": return `Nothing was granted: ${tagged.reason ?? ""}`
     case "ForgeFailed": return tagged.message ?? ""
     default: return `Gauntlet couldn't finish: ${tagged.message ?? String(e)}`
   }
@@ -251,7 +252,7 @@ const ownerTarget = (args: { readonly pr: string; readonly head: Option.Option<s
     if (approver === undefined) {
       return yield* new OwnerRefused({ message: `gh is signed in as @${login}, who isn't an owner (${owners.join(", ") || "the policy names none"}). Sign in as an owner (gh auth switch), or ask one.` })
     }
-    return { root, pr, head, login, approver, irHash: loaded.compiled.hash }
+    return { root, pr, head, login, approver, irHash: loaded.compiled.hash, ir: loaded.compiled.ir }
   })
 
 /** An owner's command refused: the agent asked, the head moved, or gh isn't an owner. */
@@ -278,6 +279,38 @@ const approve = Command.make("approve", {
     yield* forge.comment(t.root, t.pr.number, `/gauntlet approve ${t.head}`)
     yield* output.out(`Approved #${t.pr.number} at ${short} as @${t.login}. The gauntlet check runs again now: ${t.pr.url}`)
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Owners: approve a pull request's head commit, and with --override accept what blocks it, in one step."))
+
+// ---------- grant (the owner's command) ----------
+
+const grantCommand = Command.make("grant", {
+  pr: prArgument,
+  paths: Argument.String("path").pipe(Argument.atLeast(1), Argument.withDescription("protected files the agent may change in this pull request, from the repository's root")),
+  reason: Flag.String("reason").pipe(Flag.withDescription("why the agent may change them")),
+  head: Flag.optional(Flag.String("head").pipe(Flag.withDescription("the head commit you looked at; refused if the pull request has moved on"))),
+  repo: repoFlag,
+}, (args) =>
+  Effect.gen(function*() {
+    const output = yield* Output
+    const forge = yield* Forge
+    const t = yield* ownerTarget(args, "granting")
+    const registry = yield* PackRegistry
+    const runnerConfig = runnerConfigFor(registry.packs, t.ir.packs, t.ir.builds)
+    // Only what the policy keeps from the agent, one file at a time: tests are the agent's already.
+    for (const path of args.paths) {
+      const problem = grantPathProblem(path)
+      if (problem !== undefined) return yield* new OwnerRefused({ message: problem })
+      const hit = protectionFor(path, t.ir.protect, runnerConfig)
+      if (!hit) return yield* new OwnerRefused({ message: `${path} isn't protected: the agent may change it already.` })
+      if (hit.kind === "tests") return yield* new OwnerRefused({ message: `${path} is a test, which the agent may already change.` })
+    }
+    yield* forge.fetch(t.root, [`refs/notes/${GRANTS_REF}:refs/notes/${GRANTS_REF}`]).pipe(Effect.ignore)
+    yield* recordGrant(t.root, { pr: t.pr.number, branch: t.pr.headRefName, headSha: t.head, paths: [...args.paths], reason: args.reason.trim(), approver: t.approver })
+    yield* forge.push(t.root, `refs/notes/${GRANTS_REF}`)
+    yield* output.out([
+      `The agent may change ${args.paths.join(", ")} in #${t.pr.number} (branch ${t.pr.headRefName}) until it merges or closes.`,
+      "Claude Code's hook allows those edits on that branch; the check names your grant and needs your approval, as an owner.",
+    ].join("\n"))
+  }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Owners: let the agent change protected files in one pull request; the check still needs your approval."))
 
 // ---------- baseline ----------
 
@@ -1651,6 +1684,27 @@ const branches = (root: string) =>
     return { current, defaults: [...new Set([remote, "main", "master"].filter(Boolean))] }
   })
 
+/**
+ * Whether the owner granted changing a path on the current branch: a grant
+ * for this branch, given at a commit HEAD is built on and the default branch
+ * hasn't taken in yet. Never on a default branch. Anything git can't answer is no.
+ */
+const grantedHere = (root: string, path: string) =>
+  Effect.gen(function*() {
+    const { current, defaults } = yield* branches(root)
+    if (current === "" || current === "HEAD" || defaults.includes(current)) return false
+    const git = yield* Git
+    const merged: string[] = []
+    for (const d of defaults) {
+      for (const ref of [`refs/remotes/origin/${d}`, `refs/heads/${d}`]) {
+        const sha = yield* git.resolve(root, ref)
+        if (Option.isSome(sha)) merged.push(sha.value)
+      }
+    }
+    const grants = yield* grantsBetween(root, merged, "HEAD")
+    return grants.some((g) => g.branch === current && g.paths.includes(path))
+  }).pipe(Effect.orElseSucceed(() => false))
+
 const hookStop = Command.make("stop", {}, () =>
   Effect.gen(function*() {
     const output = yield* Output
@@ -1739,11 +1793,13 @@ const hookPreToolUse = Command.make("pre-tool-use", {}, () =>
       if (exists && Option.isSome(yield* openAdoption(top.value))) yield* recordAdoptionEdit(top.value, relative)
       return
     }
+    // The owner let the agent change this path on this pull request's branch (spec 0015); the check still names it.
+    if (yield* grantedHere(top.value, relative)) return
     yield* output.out(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "deny",
-        permissionDecisionReason: `${relative} is protected by the Gauntlet policy (${hit.group}). In CI it is put back to the base version, so editing it can't make a check pass, and changing it needs ${hit.kind === "gauntlet" ? "an owner" : "review"}. If the task needs it changed, call the report_blocked tool with the reason.`,
+        permissionDecisionReason: `${relative} is protected by the Gauntlet policy (${hit.group}). In CI it is put back to the base version, so editing it can't make a check pass, and changing it needs ${hit.kind === "gauntlet" ? "an owner" : "review"}. If the task needs it changed, call the report_blocked tool with the reason; the owner can then let you change it in this pull request (\`gauntlet grant <pr> ${relative} --reason "..."\`).`,
       },
     }))
   })).pipe(Command.withDescription("Claude Code PreToolUse hook: deny edits to protected files."))
@@ -1787,7 +1843,7 @@ const report = Command.make("report").pipe(Command.withDescription("Reports over
 
 export const root = Command.make("gauntlet").pipe(
   Command.withDescription("Gauntlet: verification integrity for agent-written code."),
-  Command.withSubcommands([setup, apply, adopt, validate, check, explain, init, newProject, author, baseline, selftest, corpus, override, approve, report, connect, githubStatusCommand, needsBuild, hook, mcp, doctor]),
+  Command.withSubcommands([setup, apply, adopt, validate, check, explain, init, newProject, author, baseline, selftest, corpus, override, approve, grantCommand, report, connect, githubStatusCommand, needsBuild, hook, mcp, doctor]),
 )
 
 /** Runs the CLI on `args` (without the program name) and returns the exit code. */

@@ -59,6 +59,17 @@ export interface Evidence {
   readonly blocked?: { readonly reason: string }
   /** What a change that only replaces the baseline lowers (spec 0015): an owner accepts it. */
   readonly baselineLowered?: ReadonlyArray<Regression>
+  /** Protected paths the change touches that the owner let the agent change (spec 0015). */
+  readonly granted?: ReadonlyArray<GrantedChange>
+}
+
+/** A protected path a change touches under the owner's grant. */
+export interface GrantedChange {
+  readonly path: string
+  readonly group: string
+  readonly pr: number
+  readonly approver: string
+  readonly reason: string
 }
 
 export type ImplicitRule =
@@ -73,6 +84,7 @@ export type ImplicitRule =
   | "protected-changed"
   | "gauntlet-changed"
   | "baseline-lowered"
+  | "granted"
   | "reported-blocked"
   | "flaky-test"
   | "failing-on-base"
@@ -228,6 +240,11 @@ export const decide = (input: ReviewInput): Decision => {
 
   // A lower bar is the owner's to accept: the change is judged against it, and says so.
   if (evidence.baselineLowered !== undefined && evidence.baselineLowered.length > 0) nominate("owner", loweredReason(evidence.baselineLowered), implicit("baseline-lowered"))
+
+  // A granted change is still the owner's to accept: it's reviewed, not hidden.
+  for (const g of evidence.granted ?? []) {
+    nominate("owner", `${g.path} is protected (${g.group}); ${g.approver} granted the agent changing it in #${g.pr}: ${g.reason}`, implicit("granted", groupPointer(g.group)))
+  }
 
   if (evidence.blocked) nominate("review", `The agent reported it was blocked: ${evidence.blocked.reason}`, implicit("reported-blocked"))
 

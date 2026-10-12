@@ -132,6 +132,8 @@ jobs:
         run: |
           git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pr/head"
           git fetch --no-tags origin "+refs/notes/gauntlet:refs/notes/gauntlet" "+refs/notes/gauntlet-overrides:refs/notes/gauntlet-overrides" || true
+          # The owner's grants (spec 0015): the check names a protected change made under one, at owner tier.
+          git fetch --no-tags origin "+refs/notes/gauntlet-grants:refs/notes/gauntlet-grants" || true
       - name: Find the evidence for this commit
         run: |
           if [ "${{ github.event_name }}" != "pull_request_target" ]; then

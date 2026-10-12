@@ -259,6 +259,8 @@ ${indent(installStep(o, refs.base), 4)}
       run: |
         git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pr/head"
         git fetch --no-tags origin "+refs/notes/gauntlet:refs/notes/gauntlet" "+refs/notes/gauntlet-overrides:refs/notes/gauntlet-overrides" || true
+        # The owner's grants (spec 0015): the check names a protected change made under one, at owner tier.
+        git fetch --no-tags origin "+refs/notes/gauntlet-grants:refs/notes/gauntlet-grants" || true
     - name: Find the evidence for this commit
       run: |
         if [ "\${{ github.event_name }}" != "pull_request_target" ]; then
@@ -578,6 +580,7 @@ Org required workflows run on \`pull_request\` and \`merge_group\`, so merge que
 - **Cache poisoning.** The workflows disable dependency and Gradle caches (\`cache-disabled\`, \`enable-cache: false\`), and Gauntlet ignores mutation caches in enforce mode.
 - **Artifacts.** The status job reads only \`gauntlet-report.json\` from the evidence artifact, decodes it against Gauntlet's schema, and uses only gate outcomes from it.
 - **Team owners.** Approval by a member of an \`@org/team\` owner can only be checked with a token that may read org teams. Add it as the \`GAUNTLET_TEAMS_TOKEN\` secret; without it, only individual owners' approvals count.
+- **Grants.** \`gauntlet grant <pr> <path>... --reason "..."\` (owners only) records a note under \`refs/notes/gauntlet-grants\` that lets the coding agent's hook allow edits to those protected files on that pull request's branch. In CI a grant only ever raises the tier: the change is still restored for the run as any protected change is, and needs an owner's approval, naming the grant.
 - **Overrides.** \`gauntlet override\` records a note; the status job honours it only if the named approver is an owner and has approved the exact head commit. Push notes with \`git push origin refs/notes/gauntlet-overrides\`.
 `
 

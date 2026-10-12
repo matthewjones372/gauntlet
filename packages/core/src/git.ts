@@ -50,6 +50,8 @@ export class Git extends Context.Service<Git, {
   readonly config: (repo: string, key: string) => Effect.Effect<Option.Option<string>, GitFailure>
   readonly resolve: (repo: string, ref: string) => Effect.Effect<Option.Option<string>, GitFailure>
   readonly mergeBase: (repo: string, a: string, b: string) => Effect.Effect<string, GitFailure>
+  /** Whether \`a\` is \`b\` or one of its ancestors. False when git can't say, such as for a commit it doesn't have. */
+  readonly isAncestor: (repo: string, a: string, b: string) => Effect.Effect<boolean, GitFailure>
   /** File contents at a commit, or none when the file doesn't exist there. */
   readonly show: (repo: string, ref: string, path: string) => Effect.Effect<Option.Option<string>, GitFailure>
   /** Every file path in a commit's tree. */
@@ -168,6 +170,7 @@ export const GitLive = Layer.effect(
           const r = yield* runner.run({ command: "git", args: ["-c", "core.quotepath=off", ...args], cwd: repo, env: { ...env, ...identity } })
           if (r.exitCode !== 0) return yield* new GitError({ args, exitCode: r.exitCode, stderr: r.stderr.trim() })
         }),
+      isAncestor: (repo, a, b) => raw(repo, ["merge-base", "--is-ancestor", a, b]).pipe(Effect.map((r) => r.exitCode === 0)),
       notedCommits: (repo, ref) =>
         raw(repo, ["notes", `--ref=${ref}`, "list"]).pipe(
           Effect.map((r) => (r.exitCode === 0 ? r.stdout.split("\n").flatMap((l) => (l.trim() === "" ? [] : [l.trim().split(" ")[1]!])).sort() : [])),

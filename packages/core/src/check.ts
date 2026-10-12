@@ -9,6 +9,7 @@ import { CI_CONFIG_PATH, type CiConfig, parseCiConfig } from "./ci-config.ts"
 import { diffFacts } from "./diff-facts.ts"
 import { type GateRunnerOutput, runGates } from "./gate-runner.ts"
 import { Git } from "./git.ts"
+import { grantFor, grantsBetween } from "./grants.ts"
 import { inferZones } from "./infer.ts"
 import { behaviourUnchanged } from "./no-behaviour.ts"
 import { runImports } from "./imports.ts"
@@ -224,6 +225,12 @@ const judge = (
     const git = yield* Git
     const read = (ref: string) => (path: string) => git.show(repo, ref, path).pipe(Effect.orElseSucceed(() => Option.none<string>()))
     const compared = testsToCompare(p.baseline, executed)
+    // Protected paths the owner let the agent change in this pull request (spec 0015): named, at owner tier.
+    const grants = yield* grantsBetween(repo, [p.base], p.head)
+    const granted = p.facts.protectedTouched.filter((t) => t.action !== "kept").flatMap((t) => {
+      const g = grantFor(grants, t.path)
+      return g ? [{ path: t.path, group: t.group, pr: g.pr, approver: g.approver, reason: g.reason }] : []
+    })
     const integrity = yield* runIntegrity({
       ir: p.ir,
       facts: p.facts,
@@ -247,6 +254,7 @@ const judge = (
       caution: executed.caution,
       ...(request.blocked ? { blocked: request.blocked } : {}),
       ...(p.lowered.length > 0 ? { baselineLowered: p.lowered } : {}),
+      ...(granted.length > 0 ? { granted } : {}),
     }
     const { sourceMap, hash } = p.loaded.compiled
     const ir = p.ir
