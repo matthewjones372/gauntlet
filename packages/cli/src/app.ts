@@ -1,5 +1,5 @@
 import {
-  agentSummary, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, protectionFor,
+  agentSummary, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, pullRequestBase, protectionFor,
   ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
@@ -186,11 +186,20 @@ const override = Command.make("override", {
     const git = yield* Git
     const root = yield* absolute(args.repo)
     const headSha = yield* git.revParse(root, args.head)
-    const loaded = yield* (yield* PolicySource).load({ repo: root, ...sourceOptions(args.policyRef, args.base) })
+    // CI judges a pull request with its base's policy, so the override names that one, not the head's:
+    // one recorded against a policy the pull request edits would never match (spec 0015).
+    const policyRef = Option.isSome(args.policyRef)
+      ? args.policyRef
+      : yield* pullRequestBase(root, headSha, Option.getOrUndefined(args.base))
+    if (Option.isNone(policyRef)) {
+      return yield* fail("No default branch to find the pull request's base from, and CI judges an override against the base's policy. Pass --policy-ref <the pull request's base>.")
+    }
+    const loaded = yield* (yield* PolicySource).load({ repo: root, policyRef: policyRef.value })
     const requestedBy = process.env.GAUNTLET_REQUESTED_BY ?? Option.getOrElse(yield* git.config(root, "user.email"), () => "unknown")
-    yield* (yield* Overrides).record(root, { headSha, irHash: loaded.compiled.hash, reason: args.reason, approver: args.approver, requestedBy })
+    const policySha = loaded.origin === "base" ? Option.getOrUndefined(loaded.baseSha) : undefined
+    yield* (yield* Overrides).record(root, { headSha, irHash: loaded.compiled.hash, reason: args.reason, approver: args.approver, requestedBy, ...(policySha !== undefined ? { policySha } : {}) })
     yield* output.out(
-      `Override recorded for ${headSha.slice(0, 12)} (approver ${args.approver}). It doesn't change the tier. On GitHub it takes effect only after ${args.approver} approves this exact commit; push the note with: git push origin refs/notes/gauntlet-overrides`,
+      `Override recorded for ${headSha.slice(0, 12)} (approver ${args.approver}), against ${policySha !== undefined ? `the policy at ${policySha.slice(0, 12)}` : "this change's own policy (its base has none)"}, which CI judges it with. It doesn't change the tier. On GitHub it takes effect only after ${args.approver} approves this exact commit; push the note with: git push origin refs/notes/gauntlet-overrides`,
     )
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Record an override for the current commit. It needs a named owner's approval to take effect."))
 
@@ -252,7 +261,8 @@ const ownerTarget = (args: { readonly pr: string; readonly head: Option.Option<s
     if (approver === undefined) {
       return yield* new OwnerRefused({ message: `gh is signed in as @${login}, who isn't an owner (${owners.join(", ") || "the policy names none"}). Sign in as an owner (gh auth switch), or ask one.` })
     }
-    return { root, pr, head, login, approver, irHash: loaded.compiled.hash, ir: loaded.compiled.ir }
+    const policySha = loaded.origin === "base" ? Option.getOrUndefined(loaded.baseSha) : undefined
+    return { root, pr, head, login, approver, irHash: loaded.compiled.hash, ir: loaded.compiled.ir, ...(policySha !== undefined ? { policySha } : {}) }
   })
 
 /** An owner's command refused: the agent asked, the head moved, or gh isn't an owner. */
@@ -272,7 +282,7 @@ const approve = Command.make("approve", {
     if (Option.isSome(args.override)) {
       // The note goes up before the approval, so the check the comment starts sees both.
       yield* forge.fetch(t.root, [`refs/notes/${OVERRIDES_REF}:refs/notes/${OVERRIDES_REF}`]).pipe(Effect.ignore)
-      yield* (yield* Overrides).record(t.root, { headSha: t.head, irHash: t.irHash, reason: args.override.value, approver: t.approver, requestedBy: t.login })
+      yield* (yield* Overrides).record(t.root, { headSha: t.head, irHash: t.irHash, reason: args.override.value, approver: t.approver, requestedBy: t.login, ...(t.policySha !== undefined ? { policySha: t.policySha } : {}) })
       yield* forge.push(t.root, `refs/notes/${OVERRIDES_REF}`)
       yield* output.out(`Override recorded for ${short} (approver ${t.approver}) and pushed.`)
     }

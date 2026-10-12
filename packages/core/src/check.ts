@@ -15,7 +15,7 @@ import { behaviourUnchanged } from "./no-behaviour.ts"
 import { runImports } from "./imports.ts"
 import { runIntegrity, type TestRecord, testPathMatcher } from "./integrity.ts"
 import { deselectedBy, excusedBySelection, type SuiteSelections, suiteSelections } from "./selection.ts"
-import { Overrides } from "./overrides.ts"
+import { Overrides, recordedAgainst } from "./overrides.ts"
 import { PackRegistry, runnerConfigFor } from "./pack-registry.ts"
 import { PolicySource } from "./policy-source.ts"
 import { protectOnlyDecision, protectOnlyIr } from "./protect-only.ts"
@@ -260,12 +260,18 @@ const judge = (
     const ir = p.ir
     const decided = decide({ ir, sourceMap, facts: p.facts, evidence, mode: p.loaded.effectiveMode })
     const decision = request.protectOnly ? protectOnlyDecision(decided) : decided
+    // The policy judging this change is the one CI uses when it came from the base, or when the working
+    // copy's doesn't differ from it; only then can an override's policy be said to be the wrong one.
+    const asCi = p.loaded.origin === "base" || p.loaded.drift.length === 0
+    const judgedAt = Option.getOrElse(p.loaded.baseSha, () => p.base).slice(0, 12)
     const overrides = (yield* (yield* Overrides).forHead(repo, p.head)).map((o) => ({
       approver: o.approver,
       reason: o.reason,
       requestedBy: o.requestedBy,
       honoured: false,
-      note: "approval is checked by the GitHub integration; a local override is only recorded",
+      note: asCi && o.irHash !== hash
+        ? `recorded against ${recordedAgainst(o)}, but this change is judged with the policy at ${judgedAt} (IR ${hash.slice(0, 12)}), so it can't count. Record it again with \`gauntlet override --policy-ref ${judgedAt} --head ${p.head.slice(0, 12)} --approver ${o.approver} --reason "<reason>"\`, push the note and approve, or run \`gauntlet approve <pr> --override "<reason>"\``
+        : "approval is checked by the GitHub integration; a local override is only recorded",
     }))
     return buildReport({
       gauntletVersion: request.gauntletVersion,
