@@ -53,7 +53,13 @@ export const ArchRule = Schema.Struct({
 export type ArchRule = typeof ArchRule.Type
 
 export const Suite = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("suite"), name: Schema.String, location: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("suite"),
+    name: Schema.String,
+    location: Schema.String,
+    /** A check runs only the tests the change affects (spec 0013). Omitted: every test, as before. */
+    affected: Schema.optionalKey(Schema.Literal(true)),
+  }),
   Schema.Struct({
     kind: Schema.Literal("holdout"),
     name: Schema.String,
