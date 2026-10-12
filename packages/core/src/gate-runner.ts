@@ -672,7 +672,13 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         runs.push(...tagged)
         Object.assign(metrics, run.metrics ?? {})
 
-        if (run.error !== undefined) return { status: "errored", reason: run.error, proof }
+        // What the tool said, with the run's temporary paths as the proof has them, so identical runs read the same.
+        const said = (run.output ?? []).map((l) => placeholder(l).replaceAll("{checkout}/", ""))
+        const saidWhy = said.join(" / ")
+        if (run.error !== undefined) {
+          const told = said.length > 0 && !said.some((l) => run.error!.includes(l))
+          return { status: "errored", reason: told ? `${run.error}; the tool said: ${saidWhy}` : run.error, proof }
+        }
         if (run.nothingInScope !== undefined) return { status: "passed", reason: run.nothingInScope, proof }
 
         if (check.kind === "suite") {
@@ -750,7 +756,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         const gate = check as Extract<Check, { kind: "gate" }>
         switch (spec!.produces) {
           case "outcome":
-            return run.exitCode === 0 ? { status: "passed", proof } : { status: "failed", reason: `exited with ${run.exitCode}`, proof }
+            return run.exitCode === 0 ? { status: "passed", proof } : { status: "failed", reason: `exited with ${run.exitCode}${said.length > 0 ? `: ${saidWhy}` : ""}`, proof }
           case "violations": {
             if (files.length === 0) return { status: "failed", reason: "no report was produced (a silent green fails)", proof }
             const inScope = (p: string | undefined) => scope === undefined || (p !== undefined && scope.includes(p))

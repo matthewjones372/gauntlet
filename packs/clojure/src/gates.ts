@@ -1,4 +1,5 @@
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
+import { failingToolSaid } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, type Log, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
@@ -14,7 +15,7 @@ import { buildTool, CLOVERAGE, command, isClojure, isMainSource, isTestFile, KAO
 // Clojure has no mature mutation tool, so a policy's `mutation` is reported
 // not executed (missing evidence) by the gate runner.
 
-const base = (r: ToolRun): GateRun => ({ command: [...r.command], exitCode: r.exitCode, runs: [], ...(r.error ? { error: r.error } : {}) })
+const base = (r: ToolRun): GateRun => ({ command: [...r.command], exitCode: r.exitCode, runs: [], ...(r.error ? { error: r.error } : {}), ...failingToolSaid(r) })
 const failed = (command: ReadonlyArray<string>, error: string): GateRun => ({ command, exitCode: -1, runs: [], error })
 
 const readFiles = (ctx: GateContext, paths: ReadonlyArray<string>) =>

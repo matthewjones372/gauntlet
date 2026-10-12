@@ -1,4 +1,4 @@
-import { type Mutant, mutationGateRun } from "@gauntlet/core"
+import { type Mutant, mutationGateRun, failingToolSaid } from "@gauntlet/core"
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
 import { compilerWarningsRun, warningsGate } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
@@ -23,7 +23,7 @@ const CI_COVERAGE = /(^|\/)target\/(scala-[^/]+|out\/[^/]+\/scala-[^/]+\/[^/]+)\
 /** Stands in for an sbt run when the CI already ran it. */
 const FROM_CI: ToolRun = { command: ["ci"], exitCode: 0, stdout: "", stderr: "" }
 
-const base = (r: ToolRun): GateRun => ({ command: [...r.command], exitCode: r.exitCode, runs: [], ...(r.error ? { error: r.error } : {}) })
+const base = (r: ToolRun): GateRun => ({ command: [...r.command], exitCode: r.exitCode, runs: [], ...(r.error ? { error: r.error } : {}), ...failingToolSaid(r, sbtErrors) })
 const failed = (command: ReadonlyArray<string>, error: string): GateRun => ({ command, exitCode: -1, runs: [], error })
 
 const readFiles = (ctx: GateContext, paths: ReadonlyArray<string>) =>
@@ -50,8 +50,16 @@ const reports = (ctx: GateContext, test: (path: string) => boolean) => ctx.colle
 /** sbt's own message when a command or setting key comes from a plugin the build doesn't apply. */
 const notAvailable = (r: ToolRun, what: string) => new RegExp(`Not a valid (command|key|project ID): ${what}`).test(`${r.stdout}\n${r.stderr}`)
 
-/** The last sbt error line, for reasons. */
-const lastError = (r: ToolRun) => `${r.stdout}\n${r.stderr}`.split("\n").filter((l) => l.startsWith("[error]")).map((l) => l.replace(/^\[error\]\s*/, "")).filter((l) => l !== "" && !/^Total time/.test(l)).at(0) ?? ""
+/** sbt's own error lines, without the prefix, the timing line or a caret under the code. */
+export const sbtErrors = (lines: ReadonlyArray<string>) =>
+  lines.filter((l) => l.startsWith("[error]")).map((l) => l.replace(/^\[error\]\s*/, "")).filter((l) => l.trim() !== "" && !/^Total time/.test(l) && !/^\s*\|?\s*\^+\s*$/.test(l))
+
+/**
+ * The first sbt error line, for reasons. An sbt client that exits non-zero
+ * printing nothing at all happens (CI's zio-test e2e), and says so.
+ */
+const lastError = (r: ToolRun) =>
+  sbtErrors(`${r.stdout}\n${r.stderr}`.split("\n")).at(0) ?? (`${r.stdout}${r.stderr}`.trim() === "" ? `sbt exited with ${r.exitCode} and printed nothing` : "")
 
 // ---------- build ----------
 

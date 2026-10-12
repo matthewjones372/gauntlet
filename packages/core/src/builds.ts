@@ -98,6 +98,9 @@ export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; read
     return { command: [], exitCode: 0, runs: [], nothingInScope: parts.length === 0 ? "the change touches none of the builds" : [...new Set(parts.map((p) => p.run.nothingInScope!))].join("; ") }
   }
   const errored = ran.find((p) => p.run.error !== undefined)
+  // What the build that failed printed, named by its folder as its error is.
+  const said = (errored ?? ran.find((p) => p.run.exitCode !== 0 && p.run.output !== undefined && p.run.output.length > 0))
+  const output = said?.run.output?.length ? said.run.output.map((l, i) => (i === 0 ? `${said.dir}: ${l}` : l)) : undefined
   const command = [...ran.flatMap((p) => [`[${p.dir}]`, ...p.run.command]), ...left.map((p) => `[${p.dir}] left out: ${p.run.error}`)]
   const exitCode = ran.find((p) => p.run.exitCode !== 0)?.run.exitCode ?? 0
   const tested = ran.flatMap((p) => (p.run.tests ? [p.run.tests] : []))
@@ -136,6 +139,7 @@ export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; read
     ...(unmapped.length > 0 ? { testMapMissing: unmapped.join("; ") } : {}),
     ...(Object.keys(metrics).length > 0 ? { metrics } : {}),
     ...(errored ? { error: `${errored.dir}: ${errored.run.error}` } : {}),
+    ...(output ? { output } : {}),
     ...(ran.some((p) => p.run.lineScoped) ? { lineScoped: true as const } : {}),
   }
 }

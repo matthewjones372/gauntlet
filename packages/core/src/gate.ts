@@ -65,6 +65,11 @@ export interface GateRun {
   /** Set when the tool couldn't run at all; the check is then `errored`, never passed. */
   readonly error?: string
   /**
+   * What a failing tool last printed that says why (\`failingToolSaid\`): a
+   * few short, redacted lines for the reason, as "exited with 1" says nothing.
+   */
+  readonly output?: ReadonlyArray<string>
+  /**
    * Set when there was genuinely nothing to check (no changed classes to
    * mutate, no executable changed lines). The check passes with this reason
    * instead of reporting a made-up metric.
