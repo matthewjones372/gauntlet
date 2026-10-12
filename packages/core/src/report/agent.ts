@@ -1,3 +1,4 @@
+import { ranAsBase } from "./ran-as-base.ts"
 import type { Report } from "./schema.ts"
 
 // What a coding agent is told about a check (Stop hook and MCP `check`):
@@ -18,6 +19,8 @@ export interface AgentSummary {
   readonly suggestions: ReadonlyArray<string>
   /** For a big change over several parts: the stacked pull requests to offer, in review order. */
   readonly stack?: ReadonlyArray<{ readonly title: string; readonly files: ReadonlyArray<string>; readonly lines: number }>
+  /** Protected files the change edits that ran as the base has them; `(left out)` marks one the change adds. */
+  readonly ranAsBase: ReadonlyArray<string>
   readonly report: string
 }
 
@@ -32,10 +35,17 @@ export const agentSummary = (report: Report, reportDir: string): AgentSummary =>
   head: report.policy.headSha,
   suggestions: report.policy.notes.filter((n) => n.includes("/gauntlet-setup")),
   ...(report.stack ? { stack: report.stack.steps.map((s) => ({ title: s.title, files: s.files, lines: s.lines })) } : {}),
+  ranAsBase: ranAsBase(report).map((f) => `${f.path}${f.leftOut ? " (left out)" : ""}`),
   report: `${reportDir}/gauntlet-report.md`,
 })
 
 export const NOT_THE_CHECK = "Fix the cause, not the check. If it can't be done without changing protected tests or policy, call the report_blocked tool (or run `gauntlet report blocked --reason \"...\"`) and stop."
+
+// Otherwise the agent reads a check that ignores its new plugin or budget as something to fix, and keeps trying.
+const ranAsBaseLines = (s: AgentSummary) =>
+  s.ranAsBase.length > 0
+    ? [`These protected files ran as the base has them, not as you changed them: ${s.ranAsBase.join(", ")}. Your version takes effect once the change merges, so this check can't see what it adds (a build plugin, a policy budget); don't keep editing them to make it pass.`]
+    : []
 
 /** Passed on to the person rather than acted on: the agent can't change the policy. */
 const suggestionLines = (s: AgentSummary) => [
@@ -57,6 +67,7 @@ export const renderAgentSummary = (s: AgentSummary): string =>
       ...s.blocking.map((r) => `- ${r}`),
       ...s.failedChecks.flatMap((c) => (c.failures ? [`Failing in ${c.check}:`, ...c.failures.map((f) => `  - ${f}`)] : [])),
       ...(s.fixes.length > 0 ? ["How to fix:", ...s.fixes.map((f) => `- ${f.check}: ${f.fix}`)] : []),
+      ...ranAsBaseLines(s),
       ...suggestionLines(s),
       NOT_THE_CHECK,
       `Full report: ${s.report}`,
@@ -68,12 +79,14 @@ export const renderAgentSummary = (s: AgentSummary): string =>
       ...s.review.map((r) => `- ${r}`),
       ...s.zones.map((z) => `- Zone ${z.zone}${z.owners.length > 0 ? ` (owner ${z.owners.join(", ")})` : ""}: ${z.files.slice(0, 5).join(", ")}${z.files.length > 5 ? ` and ${z.files.length - 5} more` : ""}`),
       `On GitHub they approve the pull request (Files changed, Review changes, Approve), or, if they opened it, comment \`/gauntlet approve ${s.head.slice(0, 12)}\`.`,
+      ...ranAsBaseLines(s),
       ...suggestionLines(s),
       `Full report: ${s.report}`,
     ].join("\n")
     : [
       `Gauntlet passes this change (tier ${s.tier}).`,
       ...(s.review.length > 0 ? ["It still needs a person's review because:", ...s.review.map((r) => `- ${r}`)] : []),
+      ...ranAsBaseLines(s),
       ...suggestionLines(s),
       `Full report: ${s.report}`,
     ].join("\n")

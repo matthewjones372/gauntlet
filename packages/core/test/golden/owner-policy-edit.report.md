@@ -19,6 +19,15 @@ Policy `e2dfb6cfa346` from the base; base `111111111111`, head `222222222222`.
 
 Suggested reviewers: @payments, @platform
 
+### Ran as the base has them
+
+This change edits protected files, and Gauntlet ran them as the base has them, not as the change has them:
+
+- `build.gradle.kts` (config)
+- `.gauntlet/policy.gx` (policy): rules, gates and budgets the change adds to it don't run yet
+
+The change's version takes effect once it merges.
+
 ### Needs your attention
 
 - Zone **money** (owner @payments): `src/main/money/Fx.kt`
