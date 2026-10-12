@@ -99,21 +99,25 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     const junit = yield* Effect.exit(convertJUnit(suite.name, xml.map((f) => ({ path: f.path, content: f.content }))))
     if (junit._tag === "Failure") return { ...base(r), error: "the JUnit XML couldn't be read" }
     const ids = junit.value.tests.map((t) => t.id)
-    const testMap = ctx.recordTestMap && !subset && !ctx.fromCi ? yield* mapTests(ctx, sourceSet, ids) : undefined
-    return { ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids }, ...(testMap ? { testMap } : {}) }
+    const mapped = ctx.recordTestMap && !subset && !ctx.fromCi ? yield* mapTests(ctx, sourceSet, ids) : undefined
+    return {
+      ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids },
+      ...(mapped && "map" in mapped ? { testMap: mapped.map } : mapped ? { testMapMissing: mapped.why } : {}),
+    }
   })
 
 /**
  * A baseline's map of what each test class executes (spec 0013): the suite
  * runs once more with JaCoCo's agent and Gauntlet's listener, into its own
- * directory beside the suite's so the suite's proof stays its own. Undefined
- * when the map can't be trusted: two test classes ran at once, the listener
- * couldn't read the agent, or a test class the suite ran has no data.
+ * directory beside the suite's so the suite's proof stays its own. When the
+ * map can't be trusted (two test classes ran at once, the listener couldn't
+ * read the agent, a test the suite ran has no data) it says why instead.
  */
 const mapTests = (ctx: GateContext, sourceSet: string, ids: ReadonlyArray<string>) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
+    const missing = (why: string): { readonly why: string } => ({ why })
     const out = `${ctx.outputDir}-testmap`
     const listener = path.join(path.dirname(ctx.outputDir), "gauntlet-testmap")
     const ready = yield* Effect.exit(Effect.gen(function*() {
@@ -123,23 +127,33 @@ const mapTests = (ctx: GateContext, sourceSet: string, ids: ReadonlyArray<string
       yield* fs.writeFile(path.join(listener, "gauntlet/TestMapListener.class"), Uint8Array.from(atob(LISTENER_BYTES), (c) => c.charCodeAt(0)))
       yield* fs.writeFileString(path.join(listener, "META-INF/services/org.junit.platform.launcher.TestExecutionListener"), `${LISTENER_CLASS}\n`)
     }))
-    if (ready._tag === "Failure") return undefined
+    if (ready._tag === "Failure") return missing("Gauntlet's test listener couldn't be written next to the output directory")
     const sources = yield* readFiles(ctx, ctx.files.filter(isSource))
     const includes = includesFor(sources)
     const r = yield* gradle({ ...ctx, outputDir: out }, [sourceSet], { GAUNTLET_TEST_MAP: listener, ...(includes ? { GAUNTLET_TEST_MAP_INCLUDES: includes } : {}) })
-    if (r.error) return undefined
+    if (r.error) return missing(`the mapping run of the tests couldn't run: ${r.error}`)
+    // Gradle's own last words, for a run that wrote no data: a missing JaCoCo agent, a failed compile.
+    const exited = r.exitCode === 0 ? "" : ` (Gradle exited with ${r.exitCode}: ${r.stderr.trim().split("\n").slice(-3).join(" ").slice(0, 300)})`
     const written = yield* fs.readDirectory(path.join(out, "testmap"), { recursive: true }).pipe(Effect.orElseSucceed(() => [] as string[]))
-    if (written.some((f) => ["overlap", "failed"].includes(path.basename(f)))) return undefined
+    const marker = (name: string) => written.find((f) => path.basename(f) === name)
+    const said = (f: string) => fs.readFileString(path.join(out, "testmap", f)).pipe(Effect.orElseSucceed(() => ""), Effect.map((t) => t.trim().slice(0, 300)))
+    const overlap = marker("overlap")
+    if (overlap !== undefined) return missing(`test classes ran at the same time (${yield* said(overlap)}), so what each executed can't be told apart`)
+    const failed = marker("failed")
+    if (failed !== undefined) return missing(`the listener couldn't read JaCoCo's data (${yield* said(failed)})`)
     const execs: { testClass: string; bytes: Uint8Array }[] = []
     for (const f of written.filter((w) => w.endsWith(".exec")).sort()) {
       const bytes = yield* fs.readFile(path.join(out, "testmap", f)).pipe(Effect.option)
-      if (Option.isNone(bytes)) return undefined
+      if (Option.isNone(bytes)) return missing(`JaCoCo's data in ${path.basename(f)} couldn't be read`)
       execs.push({ testClass: path.basename(f).replace(/(\.\d+)?\.exec$/, ""), bytes: bytes.value })
     }
     const map: TestMap | undefined = testMapOf(execs, sources)
+    if (map === undefined) return missing("JaCoCo's data couldn't be read: a file isn't execution data")
     // Every test the suite ran must belong to a mapped class, or selection would leave it out unexcused.
-    if (map === undefined || excusedBySelection(ids, Object.keys(map)).length !== ids.length) return undefined
-    return map
+    const covered = new Set(excusedBySelection(ids, Object.keys(map)))
+    const unmapped = ids.filter((id) => !covered.has(id))
+    if (unmapped.length > 0) return missing(`${unmapped.length} ${unmapped.length === 1 ? "test the suite ran has" : "tests the suite ran have"} no data, such as ${unmapped[0]}${exited}`)
+    return { map }
   })
 
 // ---------- lint: detekt plus the zones' Kotlin rules ----------

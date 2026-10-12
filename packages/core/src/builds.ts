@@ -125,6 +125,7 @@ export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; read
     }
   }
   const maps = ran.flatMap((p) => (p.run.testMap ? [p.run.testMap] : []))
+  const unmapped = ran.flatMap((p) => (p.run.testMapMissing !== undefined ? [`${p.dir}: ${p.run.testMapMissing}`] : []))
   const testMap: TestMap | undefined = maps.length === 0 ? undefined : Object.assign({}, ...maps)
   return {
     command,
@@ -132,6 +133,7 @@ export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; read
     runs: ran.flatMap((p) => p.run.runs),
     ...(tests ? { tests } : {}),
     ...(testMap ? { testMap } : {}),
+    ...(unmapped.length > 0 ? { testMapMissing: unmapped.join("; ") } : {}),
     ...(Object.keys(metrics).length > 0 ? { metrics } : {}),
     ...(errored ? { error: `${errored.dir}: ${errored.run.error}` } : {}),
     ...(ran.some((p) => p.run.lineScoped) ? { lineScoped: true as const } : {}),

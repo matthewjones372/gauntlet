@@ -292,6 +292,7 @@ const runBaseline = (args: BaselineArgs) =>
     yield* output.out([
       `Wrote ${BASELINE_PATH}: ${Object.keys(next.metrics).length} metrics, ${findings} grandfathered findings, ${next.legacy.length} legacy entries, ${next.testIds.length} test ids${next.testMap ? `, a map of what ${Object.keys(next.testMap).length} test classes execute` : ""}.`,
       ...(loaded.compiled.ir.suites.some((s) => s.kind === "suite" && s.affected === true) && !next.testMap ? ["No map of what the tests execute was recorded, so affected suites run every test."] : []),
+      ...(recorded.testMapMissing ?? []).map((why) => `No test map: ${why}.`),
       ...missing.map((c) => `Not recorded: ${c.tier}: ${c.check} (${c.reason ?? c.status})`),
       ...(args.commitHint === false ? [] : [`Commit it. ${BASELINE_PATH} is protected, so the commit needs an owner's review.`]),
     ].join("\n"))

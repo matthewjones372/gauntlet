@@ -71,6 +71,8 @@ export interface GateRunnerOutput {
   readonly durationsMs: Readonly<Record<string, number>>
   /** Recording: what each test class of the \`affected\` suites executed (spec 0013), when the packs could measure it. */
   readonly testMap?: TestMap
+  /** Recording: why an affected suite's build recorded no map, when it couldn't. */
+  readonly testMapMissing?: ReadonlyArray<string>
 }
 
 const NOT_IN_V1: Partial<Record<Check["kind"], string>> = {
@@ -119,6 +121,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     const durationsMs: Record<string, number> = {}
     const suiteTests: TestRecord[] = []
     const testMaps: TestMap[] = []
+    const testMapMissing: string[] = []
     const changed = facts.files.filter((f) => f.status !== "deleted").map((f) => f.path)
     const specOf = (name: string): { pack: Pack; spec: GateSpec } | undefined => {
       for (const pack of packs) {
@@ -266,6 +269,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       checks, runs, newViolations, regressions, ratchets, ...(tests ? { tests } : {}), metrics, durationsMs,
       ...(multi ? { testedBuilds: [...testedBuilds].sort() } : {}),
       ...(testMap ? { testMap } : {}),
+      ...(testMapMissing.length > 0 ? { testMapMissing } : {}),
     }
 
     /**
@@ -627,6 +631,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           if (!run.tests || files.length === 0) return { status: "failed", reason: "no test report was produced (a silent green fails)", proof }
           suiteTests.push(run.tests)
           if (run.testMap) testMaps.push(run.testMap)
+          if (run.testMapMissing !== undefined) testMapMissing.push(run.testMapMissing)
           const c = run.tests.counts
           if (c.executed === 0) return { status: "failed", reason: "no tests ran (a silent green fails)", proof, tests: c }
           // A baseline records what trunk does; flakiness is judged on changes.

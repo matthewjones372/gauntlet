@@ -84,6 +84,8 @@ export interface GateRun {
    * measure it. Absent when it couldn't: then every test runs on a change.
    */
   readonly testMap?: TestMap
+  /** Why there's no \`testMap\` when \`recordTestMap\` asked for one, for the person recording the baseline. */
+  readonly testMapMissing?: string
 }
 
 type GateServices = ProcessRunner | FileSystem.FileSystem | Path.Path

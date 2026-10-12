@@ -38,4 +38,18 @@ describe("recording the JVM test map", () => {
       expect(r.testMap).toBeUndefined()
     }
   })
+
+  test("without a map, it says why", async () => {
+    const cases: Array<[ReturnType<typeof gradle>, string]> = [
+      [gradle(undefined, { overlap: "svc.FxTest and svc.MoneyTest" }), "test classes ran at the same time (svc.FxTest and svc.MoneyTest)"],
+      [gradle(undefined, { failed: "javax.management.InstanceNotFoundException: org.jacoco:type=Runtime" }), "the listener couldn't read JaCoCo's data (javax.management.InstanceNotFoundException: org.jacoco:type=Runtime)"],
+      [gradle({ "svc.FxTest": execFile([{ name: "svc/Fx", probes: [true] }]) }), "1 test the suite ran has no data, such as svc.MoneyTest.adds"],
+      [gradle({ "svc.FxTest": new Uint8Array([1, 2, 3]), "svc.MoneyTest": execFile([{ name: "svc/Money", probes: [true] }]) }), "JaCoCo's data couldn't be read"],
+    ]
+    for (const [g, why] of cases) {
+      const r = await g.run(runSuite(unit, { ...g.ctx, recordTestMap: true }))
+      expect(r.testMap).toBeUndefined()
+      expect(r.testMapMissing).toContain(why)
+    }
+  })
 })
