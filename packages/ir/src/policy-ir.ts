@@ -169,6 +169,7 @@ export const FactCondition = Schema.Literals([
   "budget-changed",
   "evidence-missing",
   "all-gates-pass",
+  "only-tests-changed",
 ])
 export type FactCondition = typeof FactCondition.Type
 

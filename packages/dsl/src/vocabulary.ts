@@ -17,6 +17,7 @@ export const FACT_CONDITIONS: Record<string, FactCondition> = {
   "budget changed": "budget-changed",
   "evidence missing": "evidence-missing",
   "all gates pass": "all-gates-pass",
+  "only tests changed": "only-tests-changed",
 }
 
 /** Integrity phrases by list keyword (ADR 0013). */

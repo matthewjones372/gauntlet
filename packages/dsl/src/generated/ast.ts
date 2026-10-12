@@ -290,6 +290,7 @@ export interface FactCondition extends langium.AstNode {
     readonly $type: 'FactCondition';
     all: boolean;
     negated: boolean;
+    only: boolean;
     state: StateWord;
     subject: SubjectWord;
 }
@@ -298,6 +299,7 @@ export const FactCondition = {
     $type: 'FactCondition',
     all: 'all',
     negated: 'negated',
+    only: 'only',
     state: 'state',
     subject: 'subject'
 } as const;
@@ -1233,6 +1235,11 @@ export class GauntletAstReflection extends langium.AbstractAstReflection {
                 },
                 negated: {
                     name: FactCondition.negated,
+                    defaultValue: false,
+                    optional: true
+                },
+                only: {
+                    name: FactCondition.only,
                     defaultValue: false,
                     optional: true
                 },

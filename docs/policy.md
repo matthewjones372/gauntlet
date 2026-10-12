@@ -297,6 +297,45 @@ Missing evidence, a failing gate, a regression or an integrity finding each
 nominate `review` (and block in enforce mode); any change to `.gauntlet/`
 nominates `owner`. If no rule matches, the level is `review`.
 
+### Review conditions
+
+A rule's conditions are joined with `and`, and a `predicate` names a group of
+them:
+
+| Condition | Holds when |
+| --- | --- |
+| `zone touched` / `no zone touched` | The change touches a zone's paths, or none. |
+| `protected changed` | The change edits a protected path (new tests don't count). |
+| `dependency added` | A manifest gains a dependency. |
+| `budget changed` | A perf budget's script changes. |
+| `evidence missing` | A check or integrity check didn't run. |
+| `all gates pass` | Every required check passed, with nothing new, worse or forbidden. |
+| `only tests changed` | Every changed file is a test (see below). |
+| `diff < N lines` | The change adds and removes fewer than N lines. |
+
+`only tests changed` lets a change that only adds tests skip review however
+big it is, for example:
+
+```
+auto when only tests changed and no zone touched and all gates pass
+```
+
+A file is a test when it matches a `suites` glob or a `tests` protect group:
+the same files the integrity checks treat as tests. The condition holds when
+the change has at least one file and every one is such a test, and none is:
+
+- deleted (a deletion is never "only tests"; deleted tests stay forbidden),
+- renamed from somewhere that isn't a test,
+- also in another protect group (`fixtures`, `config`), runner configuration
+  or `.gauntlet/`,
+- a dependency manifest that changed.
+
+Documentation, CI files and build files aren't tests, so a change that adds
+tests and touches a README doesn't hold. It doesn't loosen anything else: an
+edited existing protected test still nominates `review` on its own, and the most
+cautious nomination wins, so `only tests changed` can't auto-approve it; a
+failing gate, an integrity finding or a touched zone still win as before.
+
 ## The owner's decisions
 
 `gauntlet approve <pr>` approves a pull request's current head as you, the

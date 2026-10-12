@@ -171,7 +171,7 @@ DiffCondition:
     'diff' op=Cmp value=Quantity;
 
 FactCondition:
-    (negated?='no')? (all?='all')? subject=SubjectWord state=StateWord;
+    (negated?='no')? (all?='all')? (only?='only')? subject=SubjectWord state=StateWord;
 
 PredicateRef:
     name=Name;

@@ -1,7 +1,8 @@
 import { type Condition, type Mode, type PolicyIR, type SourceMap, type SourceRef, sourceRef, type Tier, TIER_ORDER } from "@gauntlet/ir"
 import { loweredReason } from "./baseline-pr.ts"
 import type { DiffFacts } from "./diff-facts.ts"
-import type { IntegrityFinding, IntegrityResult } from "./integrity.ts"
+import { globMatches } from "@gauntlet/dsl"
+import { type IntegrityFinding, type IntegrityResult, testPathMatcher } from "./integrity.ts"
 
 // The review decision (ADR 0005). Every rule whose conditions hold nominates
 // a tier; Gauntlet adds implicit nominations for failures, missing evidence
@@ -139,6 +140,25 @@ export const allGatesPass = (e: Evidence) =>
   e.regressions.length === 0 &&
   !e.integrity.findings.some(blockingIntegrity)
 
+/**
+ * Whether the change only adds or edits tests: it changes at least one file, and
+ * every changed path (both sides of a rename) is a test by the policy's own
+ * reckoning (a \`suites\` glob or a \`tests\` protect group, as the integrity
+ * checks read it), is not deleted, and is not also protected as something else
+ * (fixtures, config, runner configuration, \`.gauntlet/\`). Documentation is not a
+ * test. An edited protected test still nominates review on its own.
+ */
+export const onlyTestsChanged = (facts: DiffFacts, ir: PolicyIR): boolean => {
+  const isTest = testPathMatcher(ir)
+  const otherProtected = ir.protect.filter((g) => g.kind !== "tests").flatMap((g) => g.globs)
+  const notTests = new Set(facts.protectedTouched.filter((p) => p.kind !== "tests").map((p) => p.path))
+  const test = (path: string) => isTest(path) && !notTests.has(path) && !otherProtected.some((g) => globMatches(g, path))
+  return facts.files.length > 0 &&
+    !facts.gauntletChanged &&
+    facts.dependencyChanges.length === 0 &&
+    facts.files.every((f) => f.status !== "deleted" && test(f.path) && (f.oldPath === undefined || test(f.oldPath)))
+}
+
 export const evaluateCondition = (c: Condition, input: ReviewInput, depth = 0): boolean => {
   const { facts, evidence, ir } = input
   switch (c.kind) {
@@ -156,6 +176,8 @@ export const evaluateCondition = (c: Condition, input: ReviewInput, depth = 0): 
       return evidenceMissing(evidence)
     case "all-gates-pass":
       return allGatesPass(evidence)
+    case "only-tests-changed":
+      return onlyTestsChanged(facts, ir)
     case "diff":
       return compare(facts.linesChanged, c.op, c.lines)
     case "predicate": {

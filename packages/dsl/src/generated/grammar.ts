@@ -2472,6 +2472,16 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           },
           {
             "$type": "Assignment",
+            "feature": "only",
+            "operator": "?=",
+            "terminal": {
+              "$type": "Keyword",
+              "value": "only"
+            },
+            "cardinality": "?"
+          },
+          {
+            "$type": "Assignment",
             "feature": "subject",
             "operator": "=",
             "terminal": {
