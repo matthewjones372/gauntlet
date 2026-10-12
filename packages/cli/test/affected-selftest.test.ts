@@ -28,6 +28,8 @@ describe("an affected suite in selftest and check", () => {
     test(`selftest reports every fixture, ${name}`, async () => {
       const r = await trunk(policy)
       const res = await cli(["selftest", "--repo", r.dir, "--json"])
+      // When selftest wrote nothing, say what it said instead: CI keeps nothing to read afterwards.
+      if (res.out.trim() === "") console.log(`selftest wrote nothing (exit ${res.code}):\n${res.err}`)
       expect(res.err).not.toContain("Error")
       const result = JSON.parse(res.out)
       expect(result.control.wouldBlock).toBe(false)
