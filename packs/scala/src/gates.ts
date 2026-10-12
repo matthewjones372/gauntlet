@@ -14,9 +14,12 @@ import { isMainSource, isScala, isTestFile, packageOf, sbt, scalaString, type To
 // reports are pointed at the check's output directory with `set` commands, or
 // copied there from the tool's own location after the run (ADR 0012).
 
-/** Reports the project's own CI wrote (ADR 0024): sbt's JUnit results, and scoverage's Cobertura XML. */
-const CI_JUNIT = /(^|\/)target\/test-reports\/[^/]+\.xml$/
-const CI_COVERAGE = /(^|\/)target\/scala-[^/]+\/coverage-report\/cobertura\.xml$/
+/**
+ * Reports the project's own CI wrote (ADR 0024): sbt's JUnit results, and scoverage's Cobertura XML. sbt 1 writes them
+ * under target/ and target/scala-<version>/; sbt 2 under target/out/jvm/scala-<version>/<module>/.
+ */
+const CI_JUNIT = /(^|\/)target\/(out\/[^/]+\/scala-[^/]+\/[^/]+\/)?test-reports\/[^/]+\.xml$/
+const CI_COVERAGE = /(^|\/)target\/(scala-[^/]+|out\/[^/]+\/scala-[^/]+\/[^/]+)\/coverage-report\/cobertura\.xml$/
 /** Stands in for an sbt run when the CI already ran it. */
 const FROM_CI: ToolRun = { command: ["ci"], exitCode: 0, stdout: "", stderr: "" }
 
