@@ -17,7 +17,11 @@ When a requirement changes, the agent may change the tests that state it: the
 change then needs review, never auto. When a task can't be done without
 changing protected configuration or policy, the agent calls `report_blocked`
 with the reason. That's a legitimate outcome: the change
-goes to a person instead of the agent weakening the checks.
+goes to a person instead of the agent weakening the checks. While the owner
+works on it, the Stop hook doesn't raise the same block again: it says "still
+waiting on the owner" in a line, for as long as the blocking findings are the
+ones reported and only files the agent can't edit (protected files other than
+tests) have changed. A new or different finding, or any other edit, blocks again.
 
 The optional authoring agent (`gauntlet author`) drafts and critiques policies
 with a separate model key. It only proposes; every proposal must cite evidence
