@@ -301,6 +301,13 @@ It runs only in your own terminal, signed in to `gh` as an owner: it refuses in
 a coding agent's session, and Claude Code's hook refuses the agent's approving
 commands, since an agent often works under its owner's GitHub account.
 
+A pull request whose only change is `.gauntlet/baseline.sarif`, such as one
+`gauntlet baseline --update --allow-lower` wrote, is judged against the baseline
+it brings for each value it lowers, and needs an owner: the report names what
+it lowers, and your approval accepts the lower bar with no override. Any other
+file in the same pull request and it's judged against the base's baseline as
+usual, so a lower bar can't come in alongside code.
+
 ## Everything it protects
 
 | Implemented today | How |

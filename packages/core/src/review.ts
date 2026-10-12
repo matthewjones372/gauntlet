@@ -1,4 +1,5 @@
 import { type Condition, type Mode, type PolicyIR, type SourceMap, type SourceRef, sourceRef, type Tier, TIER_ORDER } from "@gauntlet/ir"
+import { loweredReason } from "./baseline-pr.ts"
 import type { DiffFacts } from "./diff-facts.ts"
 import type { IntegrityFinding, IntegrityResult } from "./integrity.ts"
 
@@ -56,6 +57,8 @@ export interface Evidence {
   readonly caution: ReadonlyArray<CautionSignal>
   /** Set when the agent called `report_blocked`. */
   readonly blocked?: { readonly reason: string }
+  /** What a change that only replaces the baseline lowers (spec 0015): an owner accepts it. */
+  readonly baselineLowered?: ReadonlyArray<Regression>
 }
 
 export type ImplicitRule =
@@ -69,6 +72,7 @@ export type ImplicitRule =
   | "integrity-not-executed"
   | "protected-changed"
   | "gauntlet-changed"
+  | "baseline-lowered"
   | "reported-blocked"
   | "flaky-test"
   | "failing-on-base"
@@ -221,6 +225,9 @@ export const decide = (input: ReviewInput): Decision => {
         implicit("protected-changed", groupPointer(p.group)))
     }
   }
+
+  // A lower bar is the owner's to accept: the change is judged against it, and says so.
+  if (evidence.baselineLowered !== undefined && evidence.baselineLowered.length > 0) nominate("owner", loweredReason(evidence.baselineLowered), implicit("baseline-lowered"))
 
   if (evidence.blocked) nominate("review", `The agent reported it was blocked: ${evidence.blocked.reason}`, implicit("reported-blocked"))
 
