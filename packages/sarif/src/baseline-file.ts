@@ -20,7 +20,28 @@ export interface Baseline {
   readonly testIds: ReadonlyArray<string>
   /** Grandfathered results, keyed by tool. */
   readonly results: Readonly<Record<string, ReadonlyArray<Result>>>
+  /**
+   * What each test class executed at the recorded commit, as repository paths
+   * (spec 0013), for running only the tests a change affects. Absent when no
+   * build could record one.
+   */
+  readonly testMap?: TestMap
 }
+
+/** Test class (with its build's \`<folder>:\` prefix, as test ids have it) to the files it executed. */
+export type TestMap = Readonly<Record<string, ReadonlyArray<string>>>
+
+/** A map as the file stores it: each path once, and each class's files as indexes into them. */
+const packMap = (map: TestMap) => {
+  const files = [...new Set(Object.values(map).flat())].sort()
+  const index = new Map(files.map((f, i) => [f, i]))
+  const tests: Record<string, number[]> = {}
+  for (const name of Object.keys(map).sort()) tests[name] = [...new Set(map[name]!.map((f) => index.get(f)!))].sort((a, b) => a - b)
+  return { files, tests }
+}
+
+const unpackMap = (packed: { readonly files: ReadonlyArray<string>; readonly tests: Readonly<Record<string, ReadonlyArray<number>>> }): TestMap =>
+  Object.fromEntries(Object.entries(packed.tests).map(([name, ids]) => [name, ids.flatMap((i) => (packed.files[i] !== undefined ? [packed.files[i]!] : []))]))
 
 export class BaselineInvalid extends Data.TaggedError("BaselineInvalid")<{ readonly reason: string }> {}
 
@@ -45,6 +66,7 @@ export const encodeBaseline = (b: Baseline): string => {
         metrics: b.metrics,
         legacy: [...b.legacy].sort((x, y) => (`${x.tool}\0${x.id}` < `${y.tool}\0${y.id}` ? -1 : 1)),
         testIds: [...new Set(b.testIds)].sort(),
+        ...(b.testMap ? { testMap: packMap(b.testMap) } : {}),
       },
     },
   }
@@ -71,6 +93,7 @@ export const decodeBaseline = (json: string) =>
       legacy: info.legacy ?? [],
       testIds: info.testIds ?? [],
       results,
+      ...(info.testMap ? { testMap: unpackMap(info.testMap) } : {}),
     } satisfies Baseline
   })
 
@@ -81,6 +104,8 @@ export interface UpdateRequest {
   readonly metrics: Readonly<Record<string, Metric>>
   readonly results: Readonly<Record<string, ReadonlyArray<Result>>>
   readonly testIds: ReadonlyArray<string>
+  /** The test map recorded in this run, if any. */
+  readonly testMap?: TestMap
   readonly allowLower: boolean
   /**
    * The policy gained gates: grandfather the findings of tools the old
@@ -141,6 +166,8 @@ export const updateBaseline = (old: Baseline, request: UpdateRequest): UpdateOut
       // Not ratcheted: a test deleted on trunk went through review (deleted tests are forbidden in PRs).
       testIds: request.testIds,
       results,
+      // A map describes the commit it was recorded at, so an older one never carries over.
+      ...(request.testMap ? { testMap: request.testMap } : {}),
     },
     loweredMetrics: metricUpdate.lowered,
     newlyGrandfathered,

@@ -9,6 +9,8 @@
 
 def out = System.getenv("GAUNTLET_OUT")
 if (out == null) throw new GradleException("GAUNTLET_OUT is not set")
+// A baseline's run that maps what each test class executes (spec 0013): the listener's directory.
+def testMap = System.getenv("GAUNTLET_TEST_MAP")
 
 allprojects { p ->
     def slug = p.path == ":" ? "root" : p.path.substring(1).replace(":", "-")
@@ -21,6 +23,9 @@ allprojects { p ->
         t.outputs.upToDateWhen { false }
         // Reruns that look for flaky tests shuffle classes and methods with a known seed.
         def seed = System.getenv("GAUNTLET_JUNIT_SEED")
+        // A check's run of the tests a change affects selects classes with --tests across every module too, in the usual order.
+        if (System.getenv("GAUNTLET_SELECTED") != null) t.filter.failOnNoMatchingTests = false
+        if (testMap != null) mapTests(p, t, slug, out, testMap)
         if (seed != null) {
             // A rerun selects classes with --tests across every module; modules without them run nothing.
             t.filter.failOnNoMatchingTests = false
@@ -47,6 +52,14 @@ allprojects { p ->
     p.plugins.withId("org.jetbrains.kotlinx.kover") {
         def kover = p.extensions.getByName("kover")
         kover.reports.total.xml.xmlFile.set(new File(out, "kover/${slug}.xml"))
+        // The test map's run measures with JaCoCo alone.
+        if (testMap != null) {
+            try {
+                kover.currentProject.instrumentation.disabledForAll.set(true)
+            } catch (Exception ignored) {
+                // An older Kover without the switch: both agents measure, and JaCoCo's view is still complete.
+            }
+        }
     }
 
     // One task for the coverage gate in every JVM module, whichever tool measures it.
@@ -103,6 +116,8 @@ def koverAgent(p, String slug, String out) {
     def dir = new File(out, "kover-data/${slug}")
     def tests = p.tasks.withType(Test)
     tests.configureEach { t ->
+        // The test map's run measures with JaCoCo alone.
+        if (System.getenv("GAUNTLET_TEST_MAP") != null) return
         def ic = new File(dir, "${t.name}.ic")
         def args = new File(dir, "${t.name}.args")
         t.doFirst { dir.mkdirs(); args.text = "report.file=${ic.absolutePath}\n" }
@@ -134,4 +149,25 @@ def jacoco(p, String slug, String out) {
         r.reports.csv.required.set(false)
     }
     p.tasks.register("gauntletCoverage") { it.dependsOn("jacocoTestReport") }
+}
+
+// The test map (spec 0013): JaCoCo's agent, read over JMX by Gauntlet's JUnit
+// Platform listener each time a test class finishes. The listener's classes
+// and its ServiceLoader entry are in the directory GAUNTLET_TEST_MAP names.
+// GAUNTLET_TEST_MAP_INCLUDES limits the agent to the build's own packages.
+def mapTests(p, Test t, String slug, String out, String listener) {
+    if (p.repositories.isEmpty()) p.repositories.mavenCentral()
+    def agent = p.configurations.detachedConfiguration(p.dependencies.create("org.jacoco:org.jacoco.agent:0.8.14:runtime"))
+    agent.transitive = false
+    def dir = new File(out, "testmap/${slug}/${t.name}")
+    def includes = System.getenv("GAUNTLET_TEST_MAP_INCLUDES")
+    t.systemProperty("gauntlet.testmap.dir", dir.absolutePath)
+    // Added as the task starts: the test classpath is only complete once the build has configured it.
+    t.doFirst {
+        dir.mkdirs()
+        t.classpath = t.classpath + p.files(listener)
+    }
+    t.jvmArgumentProviders.add({
+        ["-javaagent:${agent.singleFile.absolutePath}=output=none,jmx=true${includes ? ",includes=${includes}" : ""}".toString()]
+    } as CommandLineArgumentProvider)
 }

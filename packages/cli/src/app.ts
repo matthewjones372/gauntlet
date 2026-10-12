@@ -268,9 +268,9 @@ const runBaseline = (args: BaselineArgs) =>
     const meta = { commit: head, irHash: loaded.compiled.hash, gauntletVersion: GAUNTLET_VERSION }
     let next: Baseline
     if (Option.isNone(existing)) {
-      next = { ...emptyBaseline(meta.commit, meta.irHash, meta.gauntletVersion), metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, legacy }
+      next = { ...emptyBaseline(meta.commit, meta.irHash, meta.gauntletVersion), metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, legacy, ...(recorded.testMap ? { testMap: recorded.testMap } : {}) }
     } else {
-      const outcome = updateBaseline(existing.value, { ...meta, metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, allowLower: args.allowLower, ...(args.adoptNewGates ? { adoptNewTools: true } : {}) })
+      const outcome = updateBaseline(existing.value, { ...meta, metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, ...(recorded.testMap ? { testMap: recorded.testMap } : {}), allowLower: args.allowLower, ...(args.adoptNewGates ? { adoptNewTools: true } : {}) })
       if (outcome.lowers) {
         const lines = [
           ...outcome.loweredMetrics.map((m) => `- ${m.metric}${m.file ? ` (${m.file})` : ""}: ${m.base} -> ${m.head}`),
@@ -290,7 +290,9 @@ const runBaseline = (args: BaselineArgs) =>
     const findings = Object.values(next.results).reduce((n, rs) => n + rs.length, 0)
     const missing = recorded.checks.filter((c) => c.status === "not-executed" || c.status === "errored")
     yield* output.out([
-      `Wrote ${BASELINE_PATH}: ${Object.keys(next.metrics).length} metrics, ${findings} grandfathered findings, ${next.legacy.length} legacy entries, ${next.testIds.length} test ids.`,
+      `Wrote ${BASELINE_PATH}: ${Object.keys(next.metrics).length} metrics, ${findings} grandfathered findings, ${next.legacy.length} legacy entries, ${next.testIds.length} test ids${next.testMap ? `, a map of what ${Object.keys(next.testMap).length} test classes execute` : ""}.`,
+      ...(loaded.compiled.ir.suites.some((s) => s.kind === "suite" && s.affected === true) && !next.testMap ? ["No map of what the tests execute was recorded, so affected suites run every test."] : []),
+      ...(recorded.testMapMissing ?? []).map((why) => `No test map: ${why}.`),
       ...missing.map((c) => `Not recorded: ${c.tier}: ${c.check} (${c.reason ?? c.status})`),
       ...(args.commitHint === false ? [] : [`Commit it. ${BASELINE_PATH} is protected, so the commit needs an owner's review.`]),
     ].join("\n"))

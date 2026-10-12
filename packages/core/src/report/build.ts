@@ -19,6 +19,8 @@ export interface CheckRecord extends CheckOutcome {
   readonly quarantined?: ReadonlyArray<string>
   /** A holdout failed while the visible suites passed (ADR 0019). */
   readonly holdoutGap?: true
+  /** An affected suite (spec 0013): how many tests ran of how many, why the rest didn't (or why all did), and the test classes left out. */
+  readonly selection?: { readonly ran: number; readonly of: number; readonly why: ReadonlyArray<string>; readonly deselected?: ReadonlyArray<string> }
 }
 
 export interface ImportRecord {
@@ -84,6 +86,7 @@ export const buildReport = (input: ReportInput): Report => {
       ...(c.holdoutGap ? { holdoutGap: true as const } : {}),
       ...(c.failingOnBase && c.failingOnBase.length > 0 ? { failingOnBase: [...c.failingOnBase] } : {}),
       ...(c.failedBefore ? { failedBefore: true as const } : {}),
+      ...(c.selection ? { selection: { ran: c.selection.ran, of: c.selection.of, why: [...c.selection.why], ...(c.selection.deselected ? { deselected: [...c.selection.deselected] } : {}) } } : {}),
       ...opt("source", sourceRef(sourceMap, c.pointer)),
     }))
 

@@ -1,6 +1,6 @@
 import { globMatches, type PolicyInvalid } from "@gauntlet/dsl"
 import type { PolicyIR } from "@gauntlet/ir"
-import type { Metric, MetricDelta, Run } from "@gauntlet/sarif"
+import type { Baseline, Metric, MetricDelta, Run } from "@gauntlet/sarif"
 import { Clock, Data, Effect, Option } from "effect"
 import { BaselineStore, renamesOf } from "./baseline-store.ts"
 import { hasBuilds, touchedBuilds } from "./builds.ts"
@@ -12,6 +12,7 @@ import { inferZones } from "./infer.ts"
 import { behaviourUnchanged } from "./no-behaviour.ts"
 import { runImports } from "./imports.ts"
 import { runIntegrity, type TestRecord, testPathMatcher } from "./integrity.ts"
+import { deselectedBy, excusedBySelection, type SuiteSelections, suiteSelections } from "./selection.ts"
 import { Overrides } from "./overrides.ts"
 import { PackRegistry, runnerConfigFor } from "./pack-registry.ts"
 import { PolicySource } from "./policy-source.ts"
@@ -95,6 +96,8 @@ interface Executed {
   readonly caution: ReadonlyArray<CautionSignal>
   readonly imports: ReadonlyArray<ImportRecord>
   readonly durationsMs: Readonly<Record<string, number>>
+  /** The map's test classes that selection left out (spec 0013): their base tests aren't missing. */
+  readonly deselected?: ReadonlyArray<string>
 }
 
 const prepare = (request: { readonly repo: string; readonly policyRef?: string; readonly baseRef?: string; readonly head?: string; readonly protectOnly?: boolean }) =>
@@ -133,6 +136,27 @@ const prepare = (request: { readonly repo: string; readonly policyRef?: string; 
 type Prepared = Effect.Success<ReturnType<typeof prepare>>
 
 /**
+ * What each \`affected\` suite runs (spec 0013), from the baseline's map and
+ * everything that changed since the commit it was recorded at. Needs only
+ * git, so the trusted half works it out again rather than take the evidence
+ * job's word for which tests were left out.
+ */
+const selectionsFor = (repo: string, p: Prepared) =>
+  Effect.gen(function*() {
+    if (!p.ir.suites.some((s) => s.kind === "suite" && s.affected === true)) return new Map() as SuiteSelections
+    const git = yield* Git
+    const recorded = Option.getOrUndefined(p.baseline)
+    const map = recorded?.testMap
+    const changes = recorded && map
+      ? yield* git.diff(repo, recorded.commit, p.head).pipe(
+        Effect.map((cs) => cs.map((c) => ({ path: c.path, status: c.status, ...(c.oldPath !== undefined ? { oldPath: c.oldPath } : {}) }))),
+        Effect.orElseSucceed(() => undefined),
+      )
+      : undefined
+    return suiteSelections({ ir: p.ir, packs: p.used, facts: p.facts, map, changes, isTestPath: testPathMatcher(p.ir) })
+  })
+
+/**
  * With build folders only the builds a change touches run their tests (ADR
  * 0022), so the executed-tests ratchet compares the tests of those builds: the
  * baseline's tests named for them, against the tests that ran, both counted by name.
@@ -142,6 +166,37 @@ const byBuild = (metrics: Readonly<Record<string, Metric>>, testIds: ReadonlyArr
   const recorded = metrics[key]
   if (tested === undefined || !recorded) return metrics
   return { ...metrics, [key]: { ...recorded, value: testIds.filter((id) => tested.some((d) => id.startsWith(`${d}:`))).length } }
+}
+
+/**
+ * The tests integrity compares: the baseline's ratchet values and test ids
+ * against the tests that ran. With several builds, only the builds that ran
+ * count (ADR 0022). Tests of the classes selection left out (spec 0013) didn't
+ * run and aren't missing; then both sides are counted by name.
+ */
+export const testsToCompare = (
+  baseline: Option.Option<Baseline>,
+  executed: { readonly tests?: TestRecord; readonly testedBuilds?: ReadonlyArray<string>; readonly deselected?: ReadonlyArray<string> },
+): { readonly baselineMetrics: Readonly<Record<string, Metric>>; readonly headTests?: TestRecord; readonly baseTestIds?: ReadonlyArray<string> } => {
+  const tested = executed.testedBuilds
+  const baseIds = Option.match(baseline, { onNone: () => [], onSome: (b) => (tested ? b.testIds.filter((id) => tested.some((d) => id.startsWith(`${d}:`))) : b.testIds) })
+  const excused = new Set(excusedBySelection(baseIds, executed.deselected ?? []))
+  const recorded: Readonly<Record<string, Metric>> = Option.match(baseline, { onNone: () => ({}), onSome: (b) => byBuild(b.metrics, b.testIds, tested) })
+  const key = "integrity/executed-tests"
+  const executedAtBase = recorded[key]
+  const baselineMetrics = excused.size > 0 && executedAtBase ? { ...recorded, [key]: { ...executedAtBase, value: baseIds.length - excused.size } } : recorded
+  const tests = executed.tests
+  // Counted by name when the names are known; the trusted job has only the evidence's counts.
+  const byName = (tested !== undefined || excused.size > 0) && (tests?.ids.length ?? 0) > 0
+  return {
+    baselineMetrics,
+    ...(tests ? { headTests: byName ? { ...tests, counts: { ...tests.counts, executed: tests.ids.length } } : tests } : {}),
+    // A runner that reports no test ids can't be compared. One that ran no tests at all, where the base
+    // ran some, can: every base test no longer runs (a TestMain or setup that skips the suite, say).
+    ...(tests && (tests.ids.length > 0 || tests.counts.executed + tests.counts.skipped === 0) && baseIds.length > 0
+      ? { baseTestIds: baseIds.filter((id) => !excused.has(id)) }
+      : {}),
+  }
 }
 
 /** Integrity checks that need tests to have run. */
@@ -158,21 +213,14 @@ const judge = (
   Effect.gen(function*() {
     const git = yield* Git
     const read = (ref: string) => (path: string) => git.show(repo, ref, path).pipe(Effect.orElseSucceed(() => Option.none<string>()))
+    const compared = testsToCompare(p.baseline, executed)
     const integrity = yield* runIntegrity({
       ir: p.ir,
       facts: p.facts,
       readBase: read(p.base),
       readHead: read(p.head),
       isTestPath: testPathMatcher(p.ir),
-      baselineMetrics: Option.match(p.baseline, { onNone: () => ({}), onSome: (b) => byBuild(b.metrics, b.testIds, executed.testedBuilds) }),
-      // Counted by name when the names are known; the trusted job has only the evidence's counts.
-      ...(executed.tests ? { headTests: executed.testedBuilds && executed.tests.ids.length > 0 ? { ...executed.tests, counts: { ...executed.tests.counts, executed: executed.tests.ids.length } } : executed.tests } : {}),
-      // A runner that reports no test ids can't be compared. One that ran no tests at all, where the base
-      // ran some, can: every base test no longer runs (a TestMain or setup that skips the suite, say).
-      ...(executed.tests && (executed.tests.ids.length > 0 || executed.tests.counts.executed + executed.tests.counts.skipped === 0) && Option.isSome(p.baseline) && p.baseline.value.testIds.length > 0
-        // With several builds, only the base's tests of the builds that ran (their ids start "<folder>:") are compared.
-        ? { baseTestIds: executed.testedBuilds ? p.baseline.value.testIds.filter((id) => executed.testedBuilds!.some((d) => id.startsWith(`${d}:`))) : p.baseline.value.testIds }
-        : {}),
+      ...compared,
       headFiles: yield* git.listTree(repo, p.head),
       dir,
     }, p.used.flatMap((pack) => pack.detectors))
@@ -263,6 +311,7 @@ export const runCheck = (request: CheckRequest) =>
       // From the base commit, like the policy: a change can't alter how it's built for its own judgement.
       const ci = request.ci ? Option.flatMap(yield* git.show(request.repo, p.base, CI_CONFIG_PATH).pipe(Effect.orElseSucceed(() => Option.none<string>())), parseCiConfig) : Option.none<CiConfig>()
       const today = yield* git.commitDate(request.repo, p.head)
+      const selections = yield* selectionsFor(request.repo, p)
       const gates: GateRunnerOutput = request.skipGates
         ? { checks: [], newViolations: [], regressions: [], ratchets: [], runs: [], metrics: {}, durationsMs: {} }
         : yield* runGates({
@@ -271,6 +320,7 @@ export const runCheck = (request: CheckRequest) =>
           ...(Option.isSome(ci) ? { ci: ci.value } : {}),
           ...(unchanged ? { behaviourUnchanged: true } : {}),
           ...(fromCi.length > 0 ? { fromCi: { files: fromCi, source: request.ciReports!.source } } : {}),
+          ...(selections.size > 0 ? { selections } : {}),
         })
       const imports = request.skipGates
         ? { checks: [], newViolations: [], runs: [], caution: [], records: [] }
@@ -286,6 +336,7 @@ export const runCheck = (request: CheckRequest) =>
         caution: imports.caution,
         imports: imports.records,
         durationsMs: gates.durationsMs,
+        ...(gates.deselected ? { deselected: gates.deselected } : {}),
       }
       return { report: yield* judge(request.repo, p, request, executed, workspace.dir), executed }
     }))
@@ -328,7 +379,7 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
       const base = { tier: t.name, check: name, pointer: `/gates/${ti}/checks/${ci}`, advisory: t.advisory }
       const got = claimed(t.name, name)
       checks.push(got
-        ? { ...base, status: got.status, ...(got.reason !== undefined ? { reason: got.reason } : {}), ...(got.proof ? { proof: got.proof } : {}), ...(got.tests ? { tests: got.tests } : {}), ...(got.failures ? { failures: got.failures } : {}), ...(got.flaky ? { flaky: got.flaky } : {}), ...(got.quarantined ? { quarantined: got.quarantined } : {}), ...(got.holdoutGap ? { holdoutGap: true as const } : {}), ...(got.failingOnBase ? { failingOnBase: got.failingOnBase } : {}), ...(got.failedBefore ? { failedBefore: true as const } : {}) }
+        ? { ...base, status: got.status, ...(got.reason !== undefined ? { reason: got.reason } : {}), ...(got.proof ? { proof: got.proof } : {}), ...(got.tests ? { tests: got.tests } : {}), ...(got.failures ? { failures: got.failures } : {}), ...(got.flaky ? { flaky: got.flaky } : {}), ...(got.quarantined ? { quarantined: got.quarantined } : {}), ...(got.holdoutGap ? { holdoutGap: true as const } : {}), ...(got.failingOnBase ? { failingOnBase: got.failingOnBase } : {}), ...(got.failedBefore ? { failedBefore: true as const } : {}), ...(got.selection ? { selection: got.selection } : {}) }
         : { ...base, status: "not-executed", reason: "the evidence job reported no outcome for this check" })
     }))
     p.ir.imports.forEach((imp, i) => {
@@ -338,6 +389,7 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
         : { tier: "imports", check: imp.name, pointer: `/imports/${i}`, advisory: imp.trust === "caution", status: "not-executed", reason: "the evidence job reported no outcome for this import" })
     })
     const suiteNames = new Set(p.ir.suites.map((s) => s.name))
+    const deselected = deselectedBy(yield* selectionsFor(request.repo, p))
     const suiteCounts = checks.filter((c) => suiteNames.has(c.check) && c.tests).map((c) => c.tests!)
     const executed: Executed = {
       checks,
@@ -354,6 +406,8 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
       // The builds whose tests ran are the ones the change touches, worked out here from the diff: never the
       // evidence's word, which could name fewer builds and lower the executed-tests bar.
       ...(hasBuilds(p.ir) ? { testedBuilds: touchedBuilds(p.ir, p.facts.files.flatMap((f) => [f.path, ...(f.oldPath !== undefined ? [f.oldPath] : [])])) } : {}),
+      // Worked out here from the baseline and git, never taken from the evidence job.
+      ...(deselected.length > 0 ? { deselected } : {}),
     }
     // A checkout of the head to read files from; nothing in it is executed.
     const report = yield* Effect.scoped(Effect.gen(function*() {
