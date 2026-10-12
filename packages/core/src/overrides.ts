@@ -14,8 +14,22 @@ export const OverrideRecord = Schema.Struct({
   reason: Schema.String,
   approver: Schema.String,
   requestedBy: Schema.String,
+  /** The commit whose policy `irHash` is: the pull request's base, which CI judges with. Older notes don't have it. */
+  policySha: Schema.optionalKey(Schema.String),
 })
 export type OverrideRecord = typeof OverrideRecord.Type
+
+/** The policy an override was recorded against, for a person: its commit when known, and its IR hash. */
+export const recordedAgainst = (o: OverrideRecord) =>
+  o.policySha !== undefined ? `the policy at ${o.policySha.slice(0, 12)} (IR ${o.irHash.slice(0, 12)})` : `policy IR ${o.irHash.slice(0, 12)}`
+
+/**
+ * Overrides for this head that can't count because they name another policy
+ * than the one the change is judged with. Only the hash is compared, never
+ * loosened: this is for saying why, not for honouring them.
+ */
+export const mismatchedOverrides = (overrides: ReadonlyArray<OverrideRecord>, head: string, irHash: string) =>
+  overrides.filter((o) => o.headSha === head && o.irHash !== irHash)
 
 export class OverrideInvalid extends Data.TaggedError("OverrideInvalid")<{ readonly reason: string }> {}
 

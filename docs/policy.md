@@ -306,6 +306,12 @@ It runs only in your own terminal, signed in to `gh` as an owner: it refuses in
 a coding agent's session, and Claude Code's hook refuses the agent's approving
 commands, since an agent often works under its owner's GitHub account.
 
+An override names the policy CI judges the change with, the pull request's
+base's, even when the pull request edits `.gauntlet/policy.gx`; `gauntlet
+override` finds that base as the merge base with the default branch (or pass
+`--policy-ref`). One recorded against another policy doesn't count, and the
+check says so and what to run.
+
 A pull request whose only change is `.gauntlet/baseline.sarif`, such as one
 `gauntlet baseline --update --allow-lower` wrote, is judged against the baseline
 it brings for each value it lowers, and needs an owner: the report names what

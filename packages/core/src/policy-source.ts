@@ -47,6 +47,26 @@ export class PolicySource extends Context.Service<PolicySource, {
 
 const DEFAULT_BRANCHES = ["origin/HEAD", "origin/main", "origin/master", "main", "master"]
 
+/**
+ * The commit CI takes a pull request's policy from, worked out locally: the
+ * head's merge base with `branch`, else with the default branch (`--policy-ref
+ * <PR base>` in CI). None when there's no such branch.
+ */
+export const pullRequestBase = (repo: string, head: string, branch?: string) =>
+  Effect.gen(function*() {
+    const git = yield* Git
+    for (const ref of branch !== undefined ? [branch] : DEFAULT_BRANCHES) {
+      const sha = yield* git.resolve(repo, ref)
+      if (Option.isNone(sha)) {
+        if (branch !== undefined) return yield* new BaseRefNotFound({ ref })
+        continue
+      }
+      // Without a common ancestor, CI compares with the base itself.
+      return Option.some(yield* git.mergeBase(repo, sha.value, head).pipe(Effect.orElseSucceed(() => sha.value)))
+    }
+    return Option.none<string>()
+  })
+
 export const PolicySourceLive = Layer.effect(
   PolicySource,
   Effect.gen(function*() {

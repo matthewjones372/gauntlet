@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import type { OverrideRecord } from "./overrides.ts"
+import { mismatchedOverrides, type OverrideRecord, recordedAgainst } from "./overrides.ts"
 import { verdictLines } from "./report/render.ts"
 import type { Report } from "./report/schema.ts"
 
@@ -208,6 +208,16 @@ const howToUnblock = (owners: ReadonlyArray<string>, head: string): string =>
     `- If it must merge anyway: ${owners.length > 0 ? `an owner (${owners.join(", ")})` : "an owner"} runs \`gauntlet approve <pr> --override "<reason>" --head ${head.slice(0, 12)}\`, which records the override for this commit, pushes it and approves, in one step.`,
   ].join("\n")
 
+/**
+ * Why an override recorded for this commit doesn't count when it names
+ * another policy (one recorded against the head's edited policy, say): without
+ * this the check just stays blocked after the owner approved.
+ */
+const otherPolicy = (overrides: ReadonlyArray<OverrideRecord>, head: string, irHash: string): string =>
+  mismatchedOverrides(overrides, head, irHash).map((o) =>
+    `\n\nThe override by ${o.approver} for this commit doesn't count: it was recorded against ${recordedAgainst(o)}, but this change is judged with its base's policy (IR ${irHash.slice(0, 12)}). To record it against that policy and approve in one step, ${o.approver} runs \`gauntlet approve <pr> --override "<reason>" --head ${head.slice(0, 12)}\`.`
+  ).join("")
+
 const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>): GithubStatus => {
   const head = report.policy.headSha
   // The zones a change touches, in the check's title, so a list of pull requests shows where to look.
@@ -224,7 +234,7 @@ const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams
 
   if (d.blocking && honoured.length === 0) {
     const first = d.nominations.find((n) => n.blocking)
-    return { conclusion: "failure", title: `Blocked (${d.tier})`, summary: `${first ? first.reason : "A gate failed."}${howToUnblock(tierOwners, head)}`, approvedBy: approvers, honouredOverrides: [] }
+    return { conclusion: "failure", title: `Blocked (${d.tier})`, summary: `${first ? first.reason : "A gate failed."}${otherPolicy(overrides, head, report.policy.irHash)}${howToUnblock(tierOwners, head)}`, approvedBy: approvers, honouredOverrides: [] }
   }
   if (d.mode === "shadow" && d.wouldBlock) {
     return { conclusion: "neutral", title: `Would block in enforce mode (${d.tier})`, summary: "Shadow mode: Gauntlet reports but never blocks.", approvedBy: approvers, honouredOverrides: [] }
