@@ -10,7 +10,7 @@ name: gauntlet
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, closed]
   pull_request_review:
     types: [submitted, dismissed]
   issue_comment:
@@ -27,7 +27,7 @@ env:
 
 jobs:
   evidence:
-    if: github.event_name == 'pull_request_target'
+    if: github.event_name == 'pull_request_target' && github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -39,6 +39,17 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Find the base to judge against
+        # A reopened pull request's event keeps its old base commit: judge it against its base branch as it is now.
+        id: base
+        env:
+          EVENT_BASE: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          sha="$EVENT_BASE"
+          if [ "$ACTION" = reopened ]; then sha=$(git rev-parse "refs/remotes/origin/$BASE_REF"); fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Install Gauntlet 0.1.0
         run: |
           curl -fsSL "$GAUNTLET_URL" -o "$RUNNER_TEMP/gauntlet"
@@ -48,7 +59,7 @@ jobs:
       - name: Does the change need building?
         id: needs
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ steps.base.outputs.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: echo "build=$("$RUNNER_TEMP/gauntlet" needs-build --policy-ref "$BASE" --head "$HEAD")" >> "$GITHUB_OUTPUT"
       - name: Set up Java
@@ -64,7 +75,7 @@ jobs:
           cache-disabled: true
       - name: Check the change with the base commit's policy
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ steps.base.outputs.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           "$RUNNER_TEMP/gauntlet" check --policy-ref "$BASE" --head "$HEAD" --out gauntlet-out --no-record || true
@@ -82,8 +93,8 @@ jobs:
   status:
     needs: [evidence]
     # Runs again when an owner comments `/gauntlet approve <commit>` or ticks the box in Gauntlet's report
-    # (an author can't approve their own pull request).
-    if: always() && (github.event_name != 'issue_comment' || (github.event.issue.pull_request && (startsWith(github.event.comment.body, '/gauntlet approve') || (github.event.action == 'edited' && startsWith(github.event.comment.body, '<!-- gauntlet-report -->') && contains(github.event.comment.body, '- [x] **Approve this change**')))))
+    # (an author can't approve their own pull request). A merged or closed pull request isn't judged.
+    if: always() && github.event.action != 'closed' && (github.event_name != 'issue_comment' || (github.event.issue.pull_request && (startsWith(github.event.comment.body, '/gauntlet approve') || (github.event.action == 'edited' && startsWith(github.event.comment.body, '<!-- gauntlet-report -->') && contains(github.event.comment.body, '- [x] **Approve this change**')))))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -103,6 +114,12 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
+      # A reopened pull request's event keeps its old base commit: judge it against its base branch as it is now.
+      - name: Find a reopened pull request's base
+        if: github.event_name == 'pull_request_target' && github.event.action == 'reopened'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: echo "BASE=$(git rev-parse "refs/remotes/origin/$BASE_REF")" >> "$GITHUB_ENV"
       - name: Install Gauntlet 0.1.0
         run: |
           curl -fsSL "$GAUNTLET_URL" -o "$RUNNER_TEMP/gauntlet"
@@ -224,3 +241,33 @@ jobs:
       - name: Push Gauntlet's shadow history
         if: github.event_name == 'pull_request_target'
         run: git push origin refs/notes/gauntlet || true
+
+  stack:
+    if: github.event_name == 'pull_request_target' && github.event.action == 'closed' && github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MERGED: ${{ github.event.pull_request.head.ref }}
+      MERGED_SHA: ${{ github.event.pull_request.head.sha }}
+      INTO: ${{ github.event.pull_request.base.ref }}
+      SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Move the pull requests above it onto the branch it merged into, then delete its branch
+        run: |
+          for n in $(gh pr list --repo "$GITHUB_REPOSITORY" --state open --base "$MERGED" --json number --jq '.[].number'); do
+            # The REST call, not `gh pr edit`, which asks for project data the workflow's token can't read.
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$n" -f base="$INTO" > /dev/null
+            echo "Moved #$n onto $INTO."
+          done
+          [ "$SAME_REPO" = true ] || exit 0
+          [ "$MERGED" != "$DEFAULT_BRANCH" ] || exit 0
+          [ -z "$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --base "$MERGED" --json number --jq '.[].number')" ] || exit 0
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$MERGED" --jq .object.sha || true)
+          [ "$tip" = "$MERGED_SHA" ] || exit 0
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$MERGED" > /dev/null
+          echo "Deleted $MERGED."

@@ -18,8 +18,15 @@ describe("connect github --from-source (Gauntlet judging itself)", () => {
     expect(workflow).not.toContain("curl")
   })
 
+  // The stack job (spec 0015) only moves pull requests and deletes a merged branch: it runs no Gauntlet.
+  const judging = Object.entries(jobs).filter(([name]) => name !== "stack")
+
+  test("the stack job runs no code: nothing is checked out or built", () => {
+    expect(jobs.stack!.steps.every((s) => s.uses === undefined && !s.run?.includes("gauntlet"))).toBe(true)
+  })
+
   test("every job builds the judge from the base commit, never the pull request", () => {
-    for (const [name, job] of Object.entries(jobs)) {
+    for (const [name, job] of judging) {
       const source = job.steps.find((s) => s.name === "Check out Gauntlet's source at the base commit")
       expect(source?.with?.ref, name).toBe("${{ github.event.pull_request.base.sha }}")
       expect(source?.with?.["persist-credentials"], name).toBe(false)
@@ -30,6 +37,6 @@ describe("connect github --from-source (Gauntlet judging itself)", () => {
   })
 
   test("Bun is set up once per job", () => {
-    for (const job of Object.values(jobs)) expect(job.steps.filter((s) => s.uses?.startsWith("oven-sh/setup-bun@")).length).toBe(1)
+    for (const [, job] of judging) expect(job.steps.filter((s) => s.uses?.startsWith("oven-sh/setup-bun@")).length).toBe(1)
   })
 })

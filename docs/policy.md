@@ -129,11 +129,16 @@ Gauntlet's own settings in a pull request of their own. Parts under 30 lines
 join the next one. The agent offers to split the change and only does it if
 you agree. Ticking the box on the top pull request of a stack approves every
 pull request under it whose commit it contains, and its report warns of that
-above the box; merge the stack bottom first with merge commits, as a squash
-gives the pull requests above new commits to approve again, and delete each
-branch as it merges (`gh pr merge --merge --delete-branch`): otherwise GitHub
-merges the next pull request into the branch below instead of the default
-branch. Set the size with:
+above the box. Merge the stack bottom first with merge commits (`gh pr merge
+--merge`), without `--delete-branch`: when a pull request in the stack merges,
+Gauntlet's workflow moves the one above onto the branch it merged into and
+then deletes the merged branch, where deleting it first would close the one
+above. An approval follows the code rather than the commit: Gauntlet records
+the approved commit's tree and the base it was judged against, so a new commit
+with the same of both (a rebase onto a main that took the part below as a
+squash, say) keeps its approval, and any change to the diff needs a new one. A
+reopened pull request is judged against its base branch as it is now. Set the
+size with:
 
 ```
 split when diff > 600 lines

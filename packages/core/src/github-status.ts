@@ -33,7 +33,23 @@ const APPROVE = /^\/gauntlet approve ([0-9a-f]{7,40})$/i
 /** The ticked box in Gauntlet's report, as the person who ticked it sends it. */
 const TICKED = /^- \[x\] \*\*Approve this change\*\* \(commit `([0-9a-f]{7,40})`\)$/im
 /** An approval Gauntlet recorded in its own report comment, which only its workflow writes. */
-const RECORDED = /^- \[x\] \*\*Approve this change\*\*: approved by ([^(]+) \(commit `([0-9a-f]{7,40})`\)$/im
+const RECORDED = /^- \[x\] \*\*Approve this change\*\*: approved by ([^(]+) \(commit `([0-9a-f]{7,40})`\)(?: <!-- tree ([0-9a-f]{40}) base ([0-9a-f]{40}) -->)?$/im
+
+/**
+ * A commit's code as Gauntlet judged it: its tree, and the tree of the base
+ * it was compared with. Two commits with the same of both have the same diff.
+ */
+export interface JudgedCode {
+  readonly tree: string
+  readonly base: string
+}
+
+/**
+ * How Gauntlet records an approval in its report: who and the commit, for
+ * people, and the code they approved in a comment GitHub doesn't show (spec 0015).
+ */
+export const recordedApproval = (who: ReadonlyArray<string>, head: string, code?: JudgedCode) =>
+  `approved by ${who.join(", ")} (commit \`${head.slice(0, 12)}\`)${code ? ` <!-- tree ${code.tree} base ${code.base} -->` : ""}`
 const WORKFLOW = "github-actions[bot]"
 
 /**
@@ -47,14 +63,16 @@ const WORKFLOW = "github-actions[bot]"
  * review could never be given. The comment names the commit, so it counts
  * only for that commit, like a review; anyone but an owner is ignored.
  */
-export const commentApprovals = (comments: ReadonlyArray<PrComment>, head: string, owners: ReadonlyArray<string>, teams: Teams): Review[] =>
+export const commentApprovals = (comments: ReadonlyArray<PrComment>, head: string, owners: ReadonlyArray<string>, teams: Teams, code?: JudgedCode): Review[] =>
   comments.flatMap((c) => {
     // A box ticked earlier, as Gauntlet's own comment records it: still the owners' approval of that commit,
     // as long as nobody but Gauntlet's workflow edited the comment since.
     const who = wordsOf(c)
     const recorded = who === WORKFLOW ? RECORDED.exec(c.body) : null
     if (recorded) {
-      return head.toLowerCase().startsWith(recorded[2]!.toLowerCase())
+      // A later commit with the same tree and judged base has the same diff: the approval follows the code (spec 0015).
+      const sameCode = code !== undefined && recorded[3] === code.tree && recorded[4] === code.base
+      return head.toLowerCase().startsWith(recorded[2]!.toLowerCase()) || sameCode
         ? recorded[1]!.split(",").map((u) => u.trim()).filter((u) => isOwner(u, owners, teams)).map((user) => ({ user, state: "APPROVED", commitId: head }))
         : []
     }
@@ -105,6 +123,8 @@ export interface GithubStatus {
   readonly notOwners?: ReadonlyArray<string>
   /** Pull requests higher in the stack whose approved commit contains this one, and so approved it. */
   readonly approvedVia?: ReadonlyArray<number>
+  /** The commit an approval recorded with the same code was given on (spec 0015). */
+  readonly carriedFrom?: string
 }
 
 /** Logins whose latest review approves exactly this commit. A later push needs a new approval. */
@@ -126,10 +146,11 @@ const isOwner = (login: string, owners: ReadonlyArray<string>, teams: Teams) =>
  * integrity verdict and then the gate results, so a passing check can't hide
  * a weakened test behind one green badge (spec 0001).
  */
-export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>, comments: ReadonlyArray<PrComment> = [], stack?: StackInfo): GithubStatus => {
+export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>, comments: ReadonlyArray<PrComment> = [], stack?: StackInfo, code?: JudgedCode): GithubStatus => {
   const owners = [...new Set([...report.decision.owners, ...report.policy.owners])]
-  const fromAbove = stackApprovals(stack, report.policy.headSha, owners, teams)
-  const all = [...reviews, ...commentApprovals(comments, report.policy.headSha, owners, teams), ...fromAbove]
+  const head = report.policy.headSha
+  const fromAbove = stackApprovals(stack, head, owners, teams)
+  const all = [...reviews, ...commentApprovals(comments, head, owners, teams, code), ...fromAbove]
   const s = report.decision.scope === "protect-only" ? protectOnlyStatus(report, all) : tierStatus(report, all, teams, overrides)
   // A tick from someone who isn't an owner is ignored, and the check says so: the owner ticks the box themselves.
   const notOwners = s.conclusion === "success" ? [] : nonOwnerApprovals(comments, report.policy.headSha, owners, teams)
@@ -139,13 +160,24 @@ export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, tea
   // An approval that came down the stack says where it was given.
   const via = s.conclusion === "success" ? (stack?.above ?? []).filter((p) => p.contains && commentApprovals(p.comments, p.head, owners, teams).length > 0).map((p) => p.number) : []
   const viaLine = via.length > 0 ? [`Approved with its stack: the box was ticked on ${via.map((n) => `#${n}`).join(", ")}, whose commit contains this one.`, ""] : []
+  // An approval that came from an earlier commit with the same code says which.
+  const carried = s.conclusion === "success" && code !== undefined && commentApprovals(comments, head, owners, teams).length === 0 ? carriedFrom(comments, head, owners, teams, code) : undefined
+  const carriedLine = carried !== undefined ? [`The approval of ${carried.slice(0, 12)} carries over: this commit has the same code, compared with the same base.`, ""] : []
   return {
     ...s,
-    summary: [...verdictLines(report), "", ...ignored, ...viaLine, s.summary].join("\n"),
+    summary: [...verdictLines(report), "", ...ignored, ...viaLine, ...carriedLine, s.summary].join("\n"),
     ...(notOwners.length > 0 ? { notOwners } : {}),
     ...(via.length > 0 ? { approvedVia: via } : {}),
+    ...(carried !== undefined ? { carriedFrom: carried } : {}),
   }
 }
+
+/** The commit of a recorded approval that counts here only because the code is the same. */
+const carriedFrom = (comments: ReadonlyArray<PrComment>, head: string, owners: ReadonlyArray<string>, teams: Teams, code: JudgedCode): string | undefined =>
+  comments.flatMap((c) => {
+    const recorded = wordsOf(c) === WORKFLOW ? RECORDED.exec(c.body) : null
+    return recorded && commentApprovals([c], head, owners, teams, code).length > 0 ? [recorded[2]!] : []
+  })[0]
 
 /** Protect-only is pass or fail; approvals don't change it. */
 const protectOnlyStatus = (report: Report, reviews: ReadonlyArray<Review>): GithubStatus => {

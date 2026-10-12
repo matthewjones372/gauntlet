@@ -34,6 +34,8 @@ export type GitFailure = GitError | ProcessFailed | ProcessTimedOut
 /** The git operations Gauntlet needs. Every operation names the repository directory it runs in. */
 export class Git extends Context.Service<Git, {
   readonly revParse: (repo: string, ref: string) => Effect.Effect<string, GitFailure>
+  /** The tree a commit records: two commits with the same tree have the same files. */
+  readonly treeOf: (repo: string, ref: string) => Effect.Effect<string, GitFailure>
   /** The repository's git directory, absolute. */
   readonly gitDir: (repo: string) => Effect.Effect<string, GitFailure>
   /** A commit's committer date in UTC, as YYYY-MM-DD: "today" for decisions that depend on dates. */
@@ -113,6 +115,7 @@ export const GitLive = Layer.effect(
 
     return {
       revParse: (repo, ref) => git(repo, ["rev-parse", "--verify", `${ref}^{commit}`]).pipe(Effect.map((s) => s.trim())),
+      treeOf: (repo, ref) => git(repo, ["rev-parse", "--verify", `${ref}^{tree}`]).pipe(Effect.map((s) => s.trim())),
       gitDir: (repo) => git(repo, ["rev-parse", "--absolute-git-dir"]).pipe(Effect.map((s) => s.trim())),
       commitDate: (repo, commit) =>
         git(repo, ["show", "-s", "--format=%ct", commit]).pipe(Effect.map((s) => new Date(Number(s.trim()) * 1000).toISOString().slice(0, 10))),
