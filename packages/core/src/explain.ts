@@ -12,6 +12,7 @@ const describeCondition = (c: Condition): string => {
     case "budget-changed": return "a perf budget's script changes"
     case "evidence-missing": return "some evidence is missing"
     case "all-gates-pass": return "every required gate passes"
+    case "only-tests-changed": return "every changed file is a test"
     case "diff": return `the diff is ${c.op} ${c.lines} lines`
     case "predicate": return `'${c.name}' holds`
   }

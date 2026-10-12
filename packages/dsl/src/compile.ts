@@ -677,7 +677,7 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       refs.push({ kind: "predicate-ref", name: c.name, from: inPredicate, span })
       return at({ kind: "predicate", name: c.name }, span)
     }
-    const phrase = [c.negated ? "no" : "", c.all ? "all" : "", c.subject, c.state].filter((w) => w !== "").join(" ")
+    const phrase = [c.negated ? "no" : "", c.all ? "all" : "", c.only ? "only" : "", c.subject, c.state].filter((w) => w !== "").join(" ")
     const kind = FACT_CONDITIONS[phrase]
     if (!kind && (phrase === "policy changed" || phrase === "baseline changed")) {
       error("implicit-condition", span, `'${phrase}' needs no rule: any change under \`.gauntlet/\` already nominates owner.`,
