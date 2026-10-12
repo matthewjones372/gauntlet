@@ -1,6 +1,6 @@
 import {
-  agentSummary, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, PackRegistry, PolicySource, protectionFor,
-  ProcessRunner, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
+  agentSummary, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, protectionFor,
+  ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
@@ -19,6 +19,7 @@ import { exportCorpus } from "./corpus-export.ts"
 import { AuthorRuntime, type AuthorRuntimeShape, renderDropped } from "./author.ts"
 import { Ask, ExitStatus, exitWith, LaunchAgent, Output, Stdin, style, withGateProgress } from "./output.ts"
 import { withStopSignals } from "./stop-signals.ts"
+import { Forge, notTheOwner, OwnerSession } from "./owner.ts"
 import { GAUNTLET_VERSION } from "./version.ts"
 
 // The CLI. Handlers stay thin: parse flags, call a core program, print, set
@@ -54,6 +55,8 @@ const describeFailure = (e: unknown): string => {
     case "GitError": return `git failed: ${tagged.stderr ?? ""}`
     case "BaselineInvalid": return `.gauntlet/baseline.sarif is invalid: ${tagged.reason ?? ""}`
     case "OverrideInvalid": return `Override not recorded: ${tagged.reason ?? ""}`
+    case "OwnerRefused": return tagged.message ?? ""
+    case "ForgeFailed": return tagged.message ?? ""
     default: return `Gauntlet couldn't finish: ${tagged.message ?? String(e)}`
   }
 }
@@ -189,6 +192,92 @@ const override = Command.make("override", {
       `Override recorded for ${headSha.slice(0, 12)} (approver ${args.approver}). It doesn't change the tier. On GitHub it takes effect only after ${args.approver} approves this exact commit; push the note with: git push origin refs/notes/gauntlet-overrides`,
     )
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Record an override for the current commit. It needs a named owner's approval to take effect."))
+
+// ---------- approve (the owner's command) ----------
+
+const prArgument = Argument.String("pr").pipe(Argument.withDescription("the pull request's number"))
+
+/** The pull request's number, or undefined when it isn't one. */
+const prNumber = (text: string) => (/^#?[1-9][0-9]*$/.test(text) ? Number(text.replace(/^#/, "")) : undefined)
+
+/**
+ * Everyone who can approve some change: the policy's owners and every zone's.
+ * The check works out which of them a change needs; this only keeps a
+ * stranger's login from posting an approval that would never count.
+ */
+const ownersOf = (ir: PolicyIR) => [...new Set([...ir.owners, ...ir.zones.flatMap((z) => z.owners)])].sort()
+
+/**
+ * Who the owner approves as: their own login when the policy names it, else
+ * a team it names (the check resolves its members). Undefined when neither.
+ */
+const approverFor = (login: string, owners: ReadonlyArray<string>) =>
+  owners.find((o) => o.toLowerCase() === `@${login.toLowerCase()}`) ?? owners.find((o) => o.includes("/"))
+
+/**
+ * The checks shared by the owner's commands: an owner at a terminal, an open
+ * pull request whose head is the one the owner looked at, and gh signed in as
+ * an owner of the policy at the pull request's base. Fetches the head and the
+ * base so a note can be put on the commit.
+ */
+const ownerTarget = (args: { readonly pr: string; readonly head: Option.Option<string>; readonly repo: string }, what: string) =>
+  Effect.gen(function*() {
+    const session = yield* OwnerSession
+    const refusal = notTheOwner(what, session.env, session.interactive)
+    if (refusal !== undefined) return yield* new OwnerRefused({ message: refusal })
+    const n = prNumber(args.pr)
+    if (n === undefined) return yield* new OwnerRefused({ message: `'${args.pr}' isn't a pull request number.` })
+    const root = yield* absolute(args.repo)
+    const forge = yield* Forge
+    const pr = yield* forge.pullRequest(root, n)
+    if (pr.state !== "OPEN") return yield* new OwnerRefused({ message: `#${n} is ${pr.state.toLowerCase()}: only an open pull request can be decided.` })
+    const head = pr.headRefOid
+    if (Option.isSome(args.head)) {
+      const named = args.head.value.toLowerCase()
+      // The owner decides on the commit they looked at; anything pushed since, they haven't seen.
+      if (named.length < 7 || !head.toLowerCase().startsWith(named)) {
+        return yield* new OwnerRefused({ message: `#${n}'s head is now ${head.slice(0, 12)}, not ${named.slice(0, 12)}: something was pushed since you looked. Look at it, then run this again with --head ${head.slice(0, 12)}.` })
+      }
+    } else {
+      yield* (yield* Output).out([`#${n} ${pr.title}`, `  head ${head.slice(0, 12)}`, `  ${pr.url}`].join("\n"))
+      const reply = yield* (yield* Ask).question(`${what[0]!.toUpperCase()}${what.slice(1)} this commit? [y/N] `)
+      if (Option.getOrElse(reply, () => "").toLowerCase() !== "y") return yield* new OwnerRefused({ message: "Nothing was done." })
+    }
+    yield* forge.fetch(root, [`+refs/pull/${n}/head:refs/remotes/pr/${n}`, `+refs/heads/${pr.baseRefName}:refs/remotes/origin/${pr.baseRefName}`])
+    const loaded = yield* (yield* PolicySource).load({ repo: root, policyRef: pr.baseRefOid })
+    const owners = ownersOf(loaded.compiled.ir)
+    const login = yield* forge.login(root)
+    const approver = approverFor(login, owners)
+    if (approver === undefined) {
+      return yield* new OwnerRefused({ message: `gh is signed in as @${login}, who isn't an owner (${owners.join(", ") || "the policy names none"}). Sign in as an owner (gh auth switch), or ask one.` })
+    }
+    return { root, pr, head, login, approver, irHash: loaded.compiled.hash }
+  })
+
+/** An owner's command refused: the agent asked, the head moved, or gh isn't an owner. */
+class OwnerRefused extends Data.TaggedError("OwnerRefused")<{ readonly message: string }> {}
+
+const approve = Command.make("approve", {
+  pr: prArgument,
+  override: Flag.optional(Flag.String("override").pipe(Flag.withDescription("also override what blocks it, for this commit, with this reason"))),
+  head: Flag.optional(Flag.String("head").pipe(Flag.withDescription("the head commit you looked at; refused if the pull request has moved on"))),
+  repo: repoFlag,
+}, (args) =>
+  Effect.gen(function*() {
+    const output = yield* Output
+    const forge = yield* Forge
+    const t = yield* ownerTarget(args, "approving")
+    const short = t.head.slice(0, 12)
+    if (Option.isSome(args.override)) {
+      // The note goes up before the approval, so the check the comment starts sees both.
+      yield* forge.fetch(t.root, [`refs/notes/${OVERRIDES_REF}:refs/notes/${OVERRIDES_REF}`]).pipe(Effect.ignore)
+      yield* (yield* Overrides).record(t.root, { headSha: t.head, irHash: t.irHash, reason: args.override.value, approver: t.approver, requestedBy: t.login })
+      yield* forge.push(t.root, `refs/notes/${OVERRIDES_REF}`)
+      yield* output.out(`Override recorded for ${short} (approver ${t.approver}) and pushed.`)
+    }
+    yield* forge.comment(t.root, t.pr.number, `/gauntlet approve ${t.head}`)
+    yield* output.out(`Approved #${t.pr.number} at ${short} as @${t.login}. The gauntlet check runs again now: ${t.pr.url}`)
+  }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Owners: approve a pull request's head commit, and with --override accept what blocks it, in one step."))
 
 // ---------- baseline ----------
 
@@ -1592,6 +1681,18 @@ const hookPreToolUse = Command.make("pre-tool-use", {}, () =>
     const input = Option.getOrUndefined(decodeHookInput(yield* readStdin))
     // A change reaches the default branch only through a pull request, where the checks run.
     if (input?.tool_name === "Bash" && input.tool_input?.command !== undefined) {
+      // GitHub can't tell the agent from the owner whose account it uses: approving is refused here (spec 0015).
+      const decision = ownerDecision(input.tool_input.command)
+      if (decision !== undefined) {
+        yield* output.out(JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: `This is ${decision}, which is the owner's decision, not the agent's. Tell the person what you'd like decided and why; they run \`gauntlet approve <pr>\` themselves.`,
+          },
+        }))
+        return
+      }
       if (!/\bgit\b[^\n]*\bpush\b/.test(input.tool_input.command)) return
       const { current, defaults } = yield* branches(input.cwd ?? process.cwd())
       const hit = pushTarget(input.tool_input.command, current, defaults)
@@ -1684,7 +1785,7 @@ const report = Command.make("report").pipe(Command.withDescription("Reports over
 
 export const root = Command.make("gauntlet").pipe(
   Command.withDescription("Gauntlet: verification integrity for agent-written code."),
-  Command.withSubcommands([setup, apply, adopt, validate, check, explain, init, newProject, author, baseline, selftest, corpus, override, report, connect, githubStatusCommand, needsBuild, hook, mcp, doctor]),
+  Command.withSubcommands([setup, apply, adopt, validate, check, explain, init, newProject, author, baseline, selftest, corpus, override, approve, report, connect, githubStatusCommand, needsBuild, hook, mcp, doctor]),
 )
 
 /** Runs the CLI on `args` (without the program name) and returns the exit code. */
