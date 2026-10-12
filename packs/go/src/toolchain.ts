@@ -1,5 +1,5 @@
 import type { GateContext } from "@gauntlet/core"
-import { ProcessRunner } from "@gauntlet/core"
+import { ProcessRunner, whyNotRun } from "@gauntlet/core"
 import { Effect, FileSystem, Option, Path } from "effect"
 
 // How the Go pack runs the toolchain. Everything runs in the judged checkout
@@ -20,7 +20,7 @@ export const exec = (ctx: GateContext, argv: ReadonlyArray<string>, env: Readonl
   Effect.gen(function*() {
     const runner = yield* ProcessRunner
     const result = yield* Effect.exit(runner.run({ command: argv[0]!, args: argv.slice(1), cwd: ctx.dir, env: { ...GO_ENV, ...env } }))
-    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: `${argv[0]} couldn't be started or timed out` } satisfies ToolRun
+    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: whyNotRun(argv[0]!, result) } satisfies ToolRun
     return { command: argv, ...result.value } satisfies ToolRun
   })
 

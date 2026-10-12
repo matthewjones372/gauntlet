@@ -6,7 +6,7 @@ import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy,
 import { judgeBudget, parseBudgetResults } from "./budget.ts"
 import { asInCi, type CiConfig } from "./ci-config.ts"
 import type { DiffFacts } from "./diff-facts.ts"
-import { ProcessRunner } from "./process-runner.ts"
+import { ProcessRunner, whyNotRun } from "./process-runner.ts"
 import { fingerprintRuns } from "./fingerprints.ts"
 import { GateProgress } from "./gate-progress.ts"
 import type { GateContext, GateRun, SuiteImpl, TestSubset } from "./gate.ts"
@@ -420,7 +420,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         const files = yield* workspace.collect(dir).pipe(Effect.orElseSucceed(() => []))
         const exitCode = result._tag === "Success" ? result.value.exitCode : -1
         const proof: Proof = { command: ["sh", "-c", budget.command], exitCode, reports: Object.fromEntries(files.map((f) => [f.path, sha256(f.content)])) }
-        if (result._tag === "Failure") return { status: "errored", reason: "the budget's command couldn't be started or timed out", proof }
+        if (result._tag === "Failure") return { status: "errored", reason: whyNotRun("the budget's command", result), proof }
         const report = files.find((f) => f.path === "budget.json")
         const parsed = report ? parseBudgetResults(report.content) : undefined
         // A tool that says its own numbers can't be trusted (a load generator that fell behind) usually exits

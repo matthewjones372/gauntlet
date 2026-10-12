@@ -1,5 +1,5 @@
 import type { GateContext } from "@gauntlet/core"
-import { ProcessRunner } from "@gauntlet/core"
+import { ProcessRunner, whyNotRun } from "@gauntlet/core"
 import { Effect, FileSystem, Option, Path, Schema } from "effect"
 
 // How a TypeScript project builds and tests: its package manager, test
@@ -64,7 +64,7 @@ const exec = (ctx: GateContext, argv: ReadonlyArray<string>, env: Readonly<Recor
   Effect.gen(function*() {
     const runner = yield* ProcessRunner
     const result = yield* Effect.exit(runner.run({ command: argv[0]!, args: argv.slice(1), cwd: ctx.dir, env: { CI: "true", NO_COLOR: "1", ...env } }))
-    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: `${argv[0]} couldn't be started or timed out` } satisfies ToolRun
+    if (result._tag === "Failure") return { command: argv, exitCode: -1, stdout: "", stderr: "", error: whyNotRun(argv[0]!, result) } satisfies ToolRun
     return { command: argv, ...result.value } satisfies ToolRun
   })
 

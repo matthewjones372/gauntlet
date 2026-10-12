@@ -1,4 +1,4 @@
-import { Context, Data, Duration, Effect, Layer, Stream } from "effect"
+import { Context, Data, Duration, Effect, Exit, Layer, Option, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 
 export interface RunRequest {
@@ -35,7 +35,29 @@ export class ProcessRunner extends Context.Service<ProcessRunner, {
   readonly run: (request: RunRequest) => Effect.Effect<RunResult, ProcessFailed | ProcessTimedOut>
 }>()("@gauntlet/core/ProcessRunner") {}
 
-const DEFAULT_TIMEOUT = Duration.minutes(30)
+const DEFAULT_TIMEOUT = "30 minutes"
+
+/**
+ * How long a tool may run: the tool's own limit, or GAUNTLET_TOOL_TIMEOUT
+ * ("5 minutes", or a bare number of minutes) when it's set. A hung tool
+ * otherwise holds a check, or a CI job, until something far above it gives up.
+ */
+export const toolTimeout = (fallback: Duration.Input, env: Readonly<Record<string, string | undefined>> = process.env): Duration.Input => {
+  const set = env.GAUNTLET_TOOL_TIMEOUT?.trim()
+  if (!set) return fallback
+  const input = /^\d+(\.\d+)?$/.test(set) ? `${set} minutes` : set
+  return Option.match(Duration.fromInput(input as Duration.Input), { onNone: () => fallback, onSome: (d) => d })
+}
+
+/** Why a tool's run produced no result, for a reason: it ran out of time, or never started. */
+export const whyNotRun = (tool: string, exit: Exit.Exit<unknown, unknown>): string => {
+  if (!Exit.isFailure(exit)) return `${tool} couldn't be run`
+  const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
+  const error = fail && "error" in fail ? fail.error : undefined
+  if (error instanceof ProcessTimedOut) return `${tool} didn't finish within ${error.timeout} and was stopped (it may have hung; GAUNTLET_TOOL_TIMEOUT sets the limit)`
+  if (error instanceof ProcessFailed) return `${tool} couldn't be started: ${error.reason}`
+  return `${tool} couldn't be started or was interrupted`
+}
 
 export const ProcessRunnerLive = Layer.effect(
   ProcessRunner,
@@ -46,7 +68,7 @@ export const ProcessRunnerLive = Layer.effect(
       run: (request: RunRequest) => {
         const failed = (reason: unknown) =>
           new ProcessFailed({ command: request.command, args: request.args, reason: String(reason) })
-        const timeout = request.timeout ?? DEFAULT_TIMEOUT
+        const timeout = request.timeout ?? toolTimeout(DEFAULT_TIMEOUT)
         return Effect.scoped(
           Effect.gen(function*() {
             const command = ChildProcess.make(request.command, [...request.args], {
