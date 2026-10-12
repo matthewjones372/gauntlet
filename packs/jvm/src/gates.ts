@@ -1,5 +1,5 @@
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
-import { compilerWarningsRun, excusedBySelection, type Mutant, mutationGateRun, mutationScopeOf, warningsGate } from "@gauntlet/core"
+import { compilerWarningsRun, excusedBySelection, failingToolSaid, type Mutant, mutationGateRun, mutationScopeOf, warningsGate } from "@gauntlet/core"
 import { availableParallelism } from "node:os"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
@@ -23,7 +23,15 @@ const CI_COVERAGE = /(^|\/)build\/reports\/(kover\/(xml\/|project-xml\/)?report|
 /** Stands in for a Gradle run when the CI already ran it. */
 const FROM_CI: GradleRun = { command: ["ci"], exitCode: 0, stderr: "" }
 
-const base = (r: GradleRun): GateRun => ({ command: r.command, exitCode: r.exitCode, runs: [], ...(r.error ? { error: r.error } : {}) })
+const base = (r: GradleRun): GateRun => ({ command: r.command, exitCode: r.exitCode, runs: [], ...(r.error ? { error: r.error } : {}), ...failingToolSaid(r, gradleWentWrong) })
+
+/** Gradle's "What went wrong" block: the rest of its failure text is advice ("Run with --stacktrace"). */
+export const gradleWentWrong = (lines: ReadonlyArray<string>) => {
+  const start = lines.findIndex((l) => l === "* What went wrong:")
+  if (start < 0) return []
+  const end = lines.findIndex((l, i) => i > start && /^\* (Try|Exception is|Get more help):?/.test(l))
+  return lines.slice(start + 1, end < 0 ? undefined : end).filter((l) => !/^BUILD FAILED/.test(l))
+}
 
 const readFiles = (ctx: GateContext, paths: ReadonlyArray<string>) =>
   Effect.gen(function*() {

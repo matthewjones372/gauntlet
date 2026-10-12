@@ -1,4 +1,4 @@
-import { type Mutant, mutationGateRun } from "@gauntlet/core"
+import { type Mutant, mutationGateRun, failingToolSaid } from "@gauntlet/core"
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
@@ -14,7 +14,7 @@ import { ensureModules, exec, goTool, isGo, isMainSource, modulePath, packageDir
 // lands in the check's output directory (ADR 0012). Tests never come from
 // Go's test cache (-count=1).
 
-const base = (r: ToolRun): GateRun => ({ command: [...r.command], exitCode: r.exitCode, runs: [], ...(r.error ? { error: r.error } : {}) })
+const base = (r: ToolRun): GateRun => ({ command: [...r.command], exitCode: r.exitCode, runs: [], ...(r.error ? { error: r.error } : {}), ...failingToolSaid(r) })
 const failed = (command: ReadonlyArray<string>, error: string): GateRun => ({ command, exitCode: -1, runs: [], error })
 
 const prepared = (ctx: GateContext, gate: string) =>
