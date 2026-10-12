@@ -40,6 +40,7 @@ review {
 
 let repo: TempRepo
 let base = ""
+let recorded = ""
 const jvm = (args: string[]) => cli(args, [jvmPack])
 const read = (p: string) => readFileSync(join(FIXTURE, p), "utf8")
 
@@ -60,8 +61,9 @@ describe.skipIf(!E2E)("an affected suite end to end (real Gradle)", () => {
     cpSync(FIXTURE, repo.dir, { recursive: true, filter: (src) => !/\/(build|\.gradle|\.kotlin)(\/|$)/.test(src) })
     writeFileSync(join(repo.dir, ".gauntlet", "policy.gx"), POLICY)
     repo.commit("trunk")
-    const recorded = await jvm(["baseline", "--repo", repo.dir, "--trunk", "main"])
-    if (recorded.code !== 0) throw new Error(`baseline failed: ${recorded.err}`)
+    const baseline = await jvm(["baseline", "--repo", repo.dir, "--trunk", "main"])
+    if (baseline.code !== 0) throw new Error(`baseline failed: ${baseline.err}`)
+    recorded = `${baseline.out}\n${baseline.err}`
     base = repo.commit("baseline")
   }, TIMEOUT)
 
@@ -69,6 +71,8 @@ describe.skipIf(!E2E)("an affected suite end to end (real Gradle)", () => {
 
   test("the baseline maps what each test class executed", () => {
     const meta = JSON.parse(readFileSync(join(repo.dir, ".gauntlet", "baseline.sarif"), "utf8")).runs[0].properties.gauntlet
+    // The baseline says why when it records no map: show it rather than fail on a missing field.
+    if (meta.testMap === undefined) throw new Error(`no test map was recorded:\n${recorded}`)
     const files = (cls: string) => meta.testMap.tests[cls].map((i: number) => meta.testMap.files[i])
     expect(files("svc.domain.MoneyTest")).toEqual(["src/main/kotlin/svc/domain/Money.kt", "src/test/kotlin/svc/domain/MoneyTest.kt"])
     expect(files("svc.settlement.FxTest")).toEqual(["src/main/kotlin/svc/domain/Money.kt", "src/main/kotlin/svc/settlement/Fx.kt", "src/test/kotlin/svc/settlement/FxTest.kt"])
