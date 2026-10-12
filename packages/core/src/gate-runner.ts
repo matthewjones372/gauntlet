@@ -14,7 +14,7 @@ import type { TestRecord } from "./integrity.ts"
 import type { Pack } from "./pack-registry.ts"
 import type { CheckRecord } from "./report/build.ts"
 import type { NewViolation, Regression } from "./review.ts"
-import type { Selection, SuiteSelections } from "./selection.ts"
+import { excusedBySelection, type Selection, type SuiteSelections } from "./selection.ts"
 import { assessStability, failuresOf, REPEATS, seedFor } from "./stability.ts"
 import { isCompilerWarnings } from "./compiler-warnings.ts"
 import type { PreparedWorkspace } from "./workspace.ts"
@@ -544,6 +544,26 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       return [...applied.values()].flatMap((s) => (s.kind === "some" ? s.deselected : []))
     }
 
+    function selectionRecord(applied: ReadonlyMap<string, Selection>, ran: number): CheckRecord["selection"] {
+      if (applied.size === 0) return undefined
+      const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+      const dirs = [...applied.keys()].sort()
+      const why = dirs.map((d) => {
+        const s = applied.get(d)!
+        const at = multi && d !== "." ? `${d}: ` : ""
+        if (s.kind === "all") return `${at}every test ran: ${s.reason}`
+        const what = [
+          ...(s.classes.length > 0 ? [`${plural(s.classes.length, "test class that executed", "test classes that executed")} what the change touches`] : []),
+          ...(s.files.length > 0 ? [plural(s.files.length, "new test file", "new test files")] : []),
+        ].join(", and ")
+        const left = s.deselected.length > 0 ? `${plural(s.deselected.length, "test class", "test classes")} didn't need to run` : "none could be left out"
+        return `${at}ran ${what}; ${left}`
+      })
+      const left = leftOut(applied)
+      const excused = excusedBySelection(Option.match(baseline, { onNone: () => [], onSome: (b) => b.testIds }), left)
+      return { ran, of: ran + excused.length, why, ...(left.length > 0 ? { deselected: [...left].sort() } : {}) }
+    }
+
     function runOne(check: Check, dir: string): Effect.Effect<Omit<CheckRecord, "tier" | "check" | "pointer" | "advisory">, never, ProcessRunner | FileSystem.FileSystem | Path.Path> {
       return Effect.gen(function*() {
         let start: (ctx: GateContext) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>
@@ -663,6 +683,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           // Integrity doesn't miss the base's tests of classes selection left out (spec 0013).
           leftOut(applied).forEach((c) => deselected.add(c))
           const c = run.tests.counts
+          const selection = selectionRecord(applied, c.executed)
           if (c.executed === 0) return { status: "failed", reason: "no tests ran (a silent green fails)", proof, tests: c }
           // A baseline records what trunk does; flakiness is judged on changes.
           // The CI's own run can't be run again here, so its failures are failures.
@@ -703,6 +724,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
             ...(flaky.length > 0 ? { flaky } : {}),
             ...(st.quarantined.length > 0 ? { quarantined: [...st.quarantined] } : {}),
             ...(st.failingOnBase.length > 0 ? { failingOnBase: [...st.failingOnBase] } : {}),
+            ...(selection ? { selection } : {}),
           }
           const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
           if (st.newFlaky.length > 0) {

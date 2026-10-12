@@ -39,6 +39,8 @@ const STATUS: Record<Report["checks"][number]["status"], string> = {
 const proofText = (c: Report["checks"][number]) => {
   const parts: string[] = []
   if (c.tests) parts.push(`${c.tests.executed} run, ${c.tests.failed + c.tests.errored} failed, ${c.tests.skipped} skipped`)
+  // An affected suite (spec 0013) says how many of the suite's tests that was, and why.
+  if (c.selection) parts.push(`${c.selection.ran} of ${c.selection.of} tests (${c.selection.why.join("; ")})`)
   if (c.proof) {
     parts.push(`exit ${c.proof.exitCode}`)
     const reports = Object.entries(c.proof.reports).sort(([a], [b]) => (a < b ? -1 : 1))
