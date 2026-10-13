@@ -64,3 +64,50 @@ export const describePruning = (v: PruningVerdict): string => {
       return `Whether removing ${tests} loses kills can't be told: ${v.why}.`
   }
 }
+
+/**
+ * What the policy's mutation gate does for a change that only removes tests:
+ * fail at once when the kill map shows lost kills, or mutate the files the
+ * removed tests protected so the run can confirm it. Undefined for any other
+ * change, or when the kill map can't tell: the gate then runs as usual.
+ */
+export const pruningRun = (input: {
+  readonly facts: Pick<DiffFacts, "files">
+  readonly isTestPath: (path: string) => boolean
+  readonly baseTestIds: ReadonlyArray<string> | undefined
+  readonly headTestIds: ReadonlyArray<string> | undefined
+  readonly killMap: KillMap | undefined
+}):
+  | { readonly kind: "confirm"; readonly verdict: Extract<PruningVerdict, { kind: "keeps-every-kill" }>; readonly files: ReadonlyArray<string> }
+  | { readonly kind: "rejected"; readonly verdict: Extract<PruningVerdict, { kind: "loses-kills" }> }
+  | undefined => {
+  const removed = removedTests(input.facts, input.isTestPath, input.baseTestIds, input.headTestIds)
+  if (!removed) return undefined
+  const verdict = pruningVerdict(removed, input.killMap)
+  if (verdict.kind === "loses-kills") return { kind: "rejected", verdict }
+  if (verdict.kind === "unproven" || verdict.mutants.length === 0) return undefined
+  return { kind: "confirm", verdict, files: [...new Set(verdict.mutants.map((m) => m.path))].sort() }
+}
+
+/** A score as mutation gates report it: killed over all, as a percentage to two places. */
+const score = (killed: number, all: number) => Math.round((killed / all) * 10000) / 100
+
+/**
+ * The confirming run's verdict: each file the removed tests protected scores
+ * at least what the kill map says it scored at base. The main code didn't
+ * change, so the mutants are the same ones, and the same score is the same kills.
+ */
+export const confirmPruning = (files: ReadonlyArray<string>, killMap: KillMap, headPerFile: Readonly<Record<string, number>> | undefined): { readonly confirmed: boolean; readonly reason: string } => {
+  const killedAtBase = new Set(Object.values(killMap.tests).flatMap((t) => t.killed))
+  const dropped: string[] = []
+  for (const file of files) {
+    const mutants = killMap.mutants.map((m, i) => ({ ...m, i })).filter((m) => m.path === file)
+    const base = score(mutants.filter((m) => killedAtBase.has(m.i)).length, mutants.length)
+    const head = headPerFile?.[file]
+    if (head === undefined) dropped.push(`${file} (no score at head, ${base}% at base)`)
+    else if (head < base) dropped.push(`${file} (${head}%, ${base}% at base)`)
+  }
+  return dropped.length > 0
+    ? { confirmed: false, reason: `the removal loses kills: ${list(dropped)} scored lower with the tests that stay` }
+    : { confirmed: true, reason: `the tests that stay still kill every mutant the removed tests killed: ${list([...files])} score${files.length === 1 ? "s" : ""} as at base (spec 0016)` }
+}

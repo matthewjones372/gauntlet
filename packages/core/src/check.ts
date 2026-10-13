@@ -239,6 +239,7 @@ const judge = (
       isTestPath: testPathMatcher(p.ir),
       ...compared,
       ...Option.match(p.baseline, { onNone: () => ({}), onSome: (b) => (b.killMap ? { killMap: b.killMap } : {}) }),
+      ...(executed.checks.some((c) => c.check === "mutation" && c.status === "passed" && c.pruning === "confirmed") ? { pruningConfirmed: true } : {}),
       headFiles: yield* git.listTree(repo, p.head),
       dir,
     }, p.used.flatMap((pack) => pack.detectors))
@@ -405,7 +406,7 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
       const base = { tier: t.name, check: name, pointer: `/gates/${ti}/checks/${ci}`, advisory: t.advisory }
       const got = claimed(t.name, name)
       checks.push(got
-        ? { ...base, status: got.status, ...(got.reason !== undefined ? { reason: got.reason } : {}), ...(got.proof ? { proof: got.proof } : {}), ...(got.tests ? { tests: got.tests } : {}), ...(got.failures ? { failures: got.failures } : {}), ...(got.flaky ? { flaky: got.flaky } : {}), ...(got.quarantined ? { quarantined: got.quarantined } : {}), ...(got.holdoutGap ? { holdoutGap: true as const } : {}), ...(got.failingOnBase ? { failingOnBase: got.failingOnBase } : {}), ...(got.failedBefore ? { failedBefore: true as const } : {}), ...(got.selection ? { selection: got.selection } : {}) }
+        ? { ...base, status: got.status, ...(got.reason !== undefined ? { reason: got.reason } : {}), ...(got.proof ? { proof: got.proof } : {}), ...(got.tests ? { tests: got.tests } : {}), ...(got.failures ? { failures: got.failures } : {}), ...(got.flaky ? { flaky: got.flaky } : {}), ...(got.quarantined ? { quarantined: got.quarantined } : {}), ...(got.holdoutGap ? { holdoutGap: true as const } : {}), ...(got.failingOnBase ? { failingOnBase: got.failingOnBase } : {}), ...(got.failedBefore ? { failedBefore: true as const } : {}), ...(got.selection ? { selection: got.selection } : {}), ...(got.pruning ? { pruning: got.pruning } : {}) }
         : { ...base, status: "not-executed", reason: "the evidence job reported no outcome for this check" })
     }))
     p.ir.imports.forEach((imp, i) => {

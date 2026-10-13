@@ -327,7 +327,13 @@ When the baseline at HEAD recorded which tests kill which mutants (a mutation ga
 
 Property tests are never listed, and holdouts aren't read. It's a list: it changes nothing, and removing one of these tests is still a deleted-tests forbid.
 
-A change that only removes tests (it changes nothing but test files) is also checked against the baseline's kill map: the report says whether the tests that stay still kill every mutant the removed tests killed, and which mutants would be lost. The removal stays forbidden until a mutation run on the change confirms it (spec 0016). `--json` prints the same list as JSON.
+A change that only removes tests (it changes nothing but test files) can go through review instead of being forbidden, when the policy has a `mutation` gate and the baseline a kill map (spec 0016):
+
+1. The kill map is read first: every mutant a removed test killed must still be killed by a test that stays. If not, the `mutation` gate fails at once, naming the mutants that would be lost.
+2. The `mutation` gate then mutates the whole of each file the removed tests protected, with the tests that stay. The main code didn't change, so each file must score what it scored at base; a lower score fails the gate.
+3. When it passes, the deleted-tests findings are flagged instead of forbidden, and the executed-tests and assertions ratchets allow for the removal. The change still needs a person's review.
+
+Without a `mutation` gate or a kill map, or when either step fails, removing tests stays forbidden. `--json` prints the same list as JSON.
 
 ## Review levels
 

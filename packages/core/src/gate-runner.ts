@@ -10,13 +10,14 @@ import { ProcessRunner, whyNotRun } from "./process-runner.ts"
 import { fingerprintRuns } from "./fingerprints.ts"
 import { GateProgress } from "./gate-progress.ts"
 import type { GateContext, GateRun, SuiteImpl, TestSubset } from "./gate.ts"
-import type { TestRecord } from "./integrity.ts"
+import { type TestRecord, testPathMatcher } from "./integrity.ts"
 import type { Pack } from "./pack-registry.ts"
 import type { CheckRecord } from "./report/build.ts"
 import type { NewViolation, Regression } from "./review.ts"
 import { excusedBySelection, type Selection, type SuiteSelections } from "./selection.ts"
 import { assessStability, failuresOf, REPEATS, seedFor } from "./stability.ts"
 import { isCompilerWarnings } from "./compiler-warnings.ts"
+import { confirmPruning, describePruning, pruningRun } from "./pruning.ts"
 import type { PreparedWorkspace } from "./workspace.ts"
 
 // Runs the policy's gate tiers in order (PLAN section 7). A tier with a
@@ -610,6 +611,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         let spec: GateSpec | undefined
         let scope: ReadonlyArray<string> | undefined
         let changedLinesOnly = false
+        // A change that only removes tests: the mutation gate confirms the tests that stay kill as much (spec 0016).
+        let pruning: ReturnType<typeof pruningRun> = undefined
         let multiRerun: ((ctx: GateContext, subset: TestSubset, label: string) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) | undefined
         // The suite's run measures coverage too (onceForCoverage); its reruns don't.
         let measuredCoverage = false
@@ -660,10 +663,19 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           spec = found.spec
           owner = found.pack
           const zone = check.zone !== undefined ? ir.zones.find((z) => z.name === check.zone) : undefined
+          if (check.name === "mutation" && !input.recording && !zone) {
+            pruning = pruningRun({
+              facts, isTestPath: testPathMatcher(ir),
+              baseTestIds: Option.getOrUndefined(baseline)?.testIds,
+              headTestIds: suiteTests.length > 0 ? suiteTests.flatMap((t) => t.ids) : undefined,
+              killMap: Option.getOrUndefined(baseline)?.killMap,
+            })
+            if (pruning?.kind === "rejected") return { status: "failed", reason: describePruning(pruning.verdict) }
+          }
           const inScope = (p: string) => (check.scope !== "changed" || input.recording || changed.includes(p)) && (!zone || zone.globs.some((g) => globMatches(g, p)))
-          const changedOnly = check.scope === "changed" && !input.recording
+          const changedOnly = check.scope === "changed" && !input.recording && pruning === undefined
           changedLinesOnly = changedOnly
-          scope = changedOnly || zone ? [...new Set([...changed, ...facts.files.map((f) => f.path)])].filter(inScope).sort() : undefined
+          scope = pruning?.kind === "confirm" ? [...pruning.files] : changedOnly || zone ? [...new Set([...changed, ...facts.files.map((f) => f.path)])].filter(inScope).sort() : undefined
           start = multi
             ? (ctx) => acrossBuilds(check, targetsFor((p) => p.gates[check.name] !== undefined), dir, ctx, (bctx, t) => t.pack.gates[check.name]!(check, bctx))
             : (ctx) => impl(check, ctx)
@@ -794,6 +806,10 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         }
 
         const gate = check as Extract<Check, { kind: "gate" }>
+        if (pruning?.kind === "confirm") {
+          const c = confirmPruning(pruning.files, Option.getOrUndefined(baseline)!.killMap!, run.metrics?.[gate.name]?.perFile)
+          return c.confirmed ? { status: "passed", reason: c.reason, proof, pruning: "confirmed" as const } : { status: "failed", reason: c.reason, proof }
+        }
         switch (spec!.produces) {
           case "outcome":
             return run.exitCode === 0 ? { status: "passed", proof } : { status: "failed", reason: `exited with ${run.exitCode}${said.length > 0 ? `: ${saidWhy}` : ""}`, proof }

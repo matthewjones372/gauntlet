@@ -75,6 +75,8 @@ export const ReportCheck = Schema.Struct({
   failingOnBase: Schema.optionalKey(Schema.Array(Schema.String)),
   /** Every failure that counts fails on the base too, so the change isn't blocked for it. */
   failedBefore: Schema.optionalKey(Schema.Literal(true)),
+  /** The mutation gate confirmed that a change that only removes tests loses no kills (spec 0016). */
+  pruning: Schema.optionalKey(Schema.Literal("confirmed")),
   /** An affected suite (spec 0013): how many tests ran of how many, why the rest didn't (or why all did), and the test classes left out. */
   selection: Schema.optionalKey(Schema.Struct({
     ran: Schema.Number,

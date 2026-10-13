@@ -3,10 +3,11 @@
 Status: stage 1 implemented (`gauntlet prune tests` with the signals that need no mutation
 run, for every pack). Stage 2 implemented for Pitest and StrykerJS (Vitest, Jest): the baseline records a kill
 map and `prune tests` reads it. Stryker4s isn't read yet: it isn't known to name every
-killer rather than the first. Stage 3 in progress: a change that only removes tests is
+killer rather than the first. Stage 3 implemented: a change that only removes tests is
 checked against the baseline's kill map first (every mutant a removed test killed must
-still be killed by a test that stays), then confirmed by a mutation run on those files;
-the kill-map check is in, and the removal stays forbidden until the confirming run is. Stages 3 and 4
+still be killed by a test that stays), then the policy's mutation gate confirms it on
+those files; a confirmed removal is flagged for review instead of forbidden. Stage 4
+proposed. Stages 3 and 4
 proposed. Uses spec 0011's mutant helper and spec
 0013's map of what each test exercises; shares the killer recording of spec 0012 §6.
 
