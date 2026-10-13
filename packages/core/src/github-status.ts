@@ -151,7 +151,8 @@ export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, tea
   const head = report.policy.headSha
   const fromAbove = stackApprovals(stack, head, owners, teams)
   const all = [...reviews, ...commentApprovals(comments, head, owners, teams, code), ...fromAbove]
-  const s = report.decision.scope === "protect-only" ? protectOnlyStatus(report, all) : tierStatus(report, all, teams, overrides)
+  const sameCode = code !== undefined ? sameCodeCommits(comments, head, owners, teams, code) : []
+  const s = report.decision.scope === "protect-only" ? protectOnlyStatus(report, all) : tierStatus(report, all, teams, overrides, sameCode)
   // A tick from someone who isn't an owner is ignored, and the check says so: the owner ticks the box themselves.
   const notOwners = s.conclusion === "success" ? [] : nonOwnerApprovals(comments, report.policy.headSha, owners, teams)
   const ignored = notOwners.length > 0
@@ -163,9 +164,11 @@ export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, tea
   // An approval that came from an earlier commit with the same code says which.
   const carried = s.conclusion === "success" && code !== undefined && commentApprovals(comments, head, owners, teams).length === 0 ? carriedFrom(comments, head, owners, teams, code) : undefined
   const carriedLine = carried !== undefined ? [`The approval of ${carried.slice(0, 12)} carries over: this commit has the same code, compared with the same base.`, ""] : []
+  const carriedOverride = s.honouredOverrides.find((o) => o.headSha !== head)
+  const overrideLine = carriedOverride !== undefined ? [`The override recorded for ${carriedOverride.headSha.slice(0, 12)} carries over too.`, ""] : []
   return {
     ...s,
-    summary: [...verdictLines(report), "", ...ignored, ...viaLine, ...carriedLine, s.summary].join("\n"),
+    summary: [...verdictLines(report), "", ...ignored, ...viaLine, ...carriedLine, ...overrideLine, s.summary].join("\n"),
     ...(notOwners.length > 0 ? { notOwners } : {}),
     ...(via.length > 0 ? { approvedVia: via } : {}),
     ...(carried !== undefined ? { carriedFrom: carried } : {}),
@@ -174,10 +177,17 @@ export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, tea
 
 /** The commit of a recorded approval that counts here only because the code is the same. */
 const carriedFrom = (comments: ReadonlyArray<PrComment>, head: string, owners: ReadonlyArray<string>, teams: Teams, code: JudgedCode): string | undefined =>
+  sameCodeCommits(comments, head, owners, teams, code)[0]
+
+/**
+ * The earlier commits (as recorded, possibly abbreviated) whose owners' approval counts here because
+ * the code is the same: the overrides recorded for them follow the code with it (spec 0015).
+ */
+export const sameCodeCommits = (comments: ReadonlyArray<PrComment>, head: string, owners: ReadonlyArray<string>, teams: Teams, code: JudgedCode): string[] =>
   comments.flatMap((c) => {
     const recorded = wordsOf(c) === WORKFLOW ? RECORDED.exec(c.body) : null
-    return recorded && commentApprovals([c], head, owners, teams, code).length > 0 ? [recorded[2]!] : []
-  })[0]
+    return recorded && !head.toLowerCase().startsWith(recorded[2]!.toLowerCase()) && commentApprovals([c], head, owners, teams, code).length > 0 ? [recorded[2]!] : []
+  })
 
 /** Protect-only is pass or fail; approvals don't change it. */
 const protectOnlyStatus = (report: Report, reviews: ReadonlyArray<Review>): GithubStatus => {
@@ -218,7 +228,7 @@ const otherPolicy = (overrides: ReadonlyArray<OverrideRecord>, head: string, irH
     `\n\nThe override by ${o.approver} for this commit doesn't count: it was recorded against ${recordedAgainst(o)}, but this change is judged with its base's policy (IR ${irHash.slice(0, 12)}). To record it against that policy and approve in one step, ${o.approver} runs \`gauntlet approve <pr> --override "<reason>" --head ${head.slice(0, 12)}\`.`
   ).join("")
 
-const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>): GithubStatus => {
+const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>, sameCode: ReadonlyArray<string> = []): GithubStatus => {
   const head = report.policy.headSha
   // The zones a change touches, in the check's title, so a list of pull requests shows where to look.
   // A report from an older evidence job may carry no facts.
@@ -229,8 +239,9 @@ const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams
   // Owners who can approve an owner tier: those the decision names, and the policy owners.
   const tierOwners = [...new Set([...d.owners, ...report.policy.owners])]
   // An override counts only if its approver approved this exact commit and owns the policy or a touched zone.
+  // One recorded for an earlier commit with the same code follows it, as the approval does (spec 0015).
   const honoured = overrides.filter((o) =>
-    o.headSha === head && o.irHash === report.policy.irHash && tierOwners.includes(o.approver) && approvers.some((a) => isOwner(a, [o.approver], teams)))
+    (o.headSha === head || sameCode.some((c) => o.headSha.toLowerCase().startsWith(c.toLowerCase()))) && o.irHash === report.policy.irHash && tierOwners.includes(o.approver) && approvers.some((a) => isOwner(a, [o.approver], teams)))
 
   if (d.blocking && honoured.length === 0) {
     const first = d.nominations.find((n) => n.blocking)
