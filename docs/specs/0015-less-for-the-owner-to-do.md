@@ -1,6 +1,6 @@
 # Spec 0015: less for the owner to do
 
-Status: proposed.
+Status: implemented (#102–#105). Overrides follow the code like approvals (§3).
 
 ## Problem
 
@@ -40,9 +40,11 @@ separate override. Any other file in the same PR, and it's judged as now.
 
 An approval records the tree of the approved commit and the base it was judged against. A new commit whose tree and
 judged diff are the same (a rebase that changed nothing, a merge of identical content) keeps the approval; any change
-to the diff voids it, as now. `gauntlet connect github` adds stack support: when a stack PR's base branch merges, the
-PR above is retargeted to main before its branch is deleted. A reopened PR is judged against the base branch's current
-tip, not the stale base commit in the event.
+to the diff voids it, as now. An override follows the code with the approval: one recorded for an earlier commit
+counts for a new commit whose approval carried over from it. A blocked change's report shows no box to tick, so
+Gauntlet records its approval, with the code, under the report the same way. `gauntlet connect github` adds stack
+support: when a stack PR's base branch merges, the PR above is retargeted to main before its branch is deleted. A
+reopened PR is judged against the base branch's current tip, not the stale base commit in the event.
 
 ### 4. The owner can let the agent edit a protected path, once
 

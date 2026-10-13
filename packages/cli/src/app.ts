@@ -1,5 +1,5 @@
 import {
-  agentSummary, blockingSet, knownBlock, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, pullRequestBase, protectionFor,
+  agentSummary, blockingSet, knownBlock, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, sameCodeCommits, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, pullRequestBase, protectionFor,
   ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderPruneTests, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow, surveyTests,
   attemptBranch, attemptNote, renderStopHookCorpus, runStopHookCorpus, clearAttempts, commonDir, exhaustedLine, fingerprintLines, fingerprintOf, listAttempts, nextAttempt, readAttempts, reportedBlocked, worktreeOf, writeAttempts,
@@ -1578,11 +1578,15 @@ const githubStatusCommand = Command.make("github-status", {
     })
     const reviews = Option.getOrElse(Option.flatMap(yield* read(args.reviews), decodeReviews), () => [])
     const teams = Option.isSome(args.teams) ? Option.getOrElse(Option.flatMap(yield* read(args.teams.value), decodeTeams), () => ({})) : {}
-    const overrides = yield* (yield* Overrides).forHead(root, head)
     const comments = Option.isSome(args.comments) ? Option.getOrElse(Option.flatMap(yield* read(args.comments.value), decodeComments), () => []) : []
     const stack = Option.isSome(args.stack) ? Option.getOrUndefined(Option.flatMap(yield* read(args.stack.value), decodeStack)) : undefined
     // The code as judged, so an approval can follow it to a new commit with the same diff (spec 0015).
     const code = { tree: yield* git.treeOf(root, report.policy.headSha), base: yield* git.treeOf(root, report.policy.baseSha) }
+    // Overrides for this commit, and for earlier ones whose approval follows the code here: theirs follow it too.
+    const owners = [...new Set([...report.decision.owners, ...report.policy.owners])]
+    const earlier = yield* Effect.forEach(sameCodeCommits(comments, head, owners, teams, code), (c) => git.revParse(root, c).pipe(Effect.option))
+    const notes = yield* Overrides
+    const overrides = (yield* Effect.forEach([head, ...earlier.flatMap((c) => Option.toArray(c))], (c) => notes.forHead(root, c))).flat()
     const status = githubStatus(report, reviews, teams, overrides, comments, stack, code)
     yield* fs.writeFileString(path.resolve(root, args.out, "status.json"), `${JSON.stringify(status, null, 2)}\n`)
     // The report posted on the pull request says who approved, under its first line, and shows its box ticked.
@@ -1591,8 +1595,11 @@ const githubStatusCommand = Command.make("github-status", {
       const text = yield* fs.readFileString(md).pipe(Effect.option)
       if (Option.isSome(text)) {
         const [first, ...rest] = text.value.split("\n")
-        const ticked = rest.map((l) => (l.startsWith(`- [ ] ${APPROVE_BOX}`) ? `- [x] ${APPROVE_BOX}: ${recordedApproval(status.approvedBy, head, code)}` : l))
-        yield* fs.writeFileString(md, [first, "", `**${status.title}** for commit \`${head.slice(0, 12)}\`.`, ...ticked].join("\n"))
+        const box = `- [x] ${APPROVE_BOX}: ${recordedApproval(status.approvedBy, head, code)}`
+        const ticked = rest.map((l) => (l.startsWith(`- [ ] ${APPROVE_BOX}`) ? box : l))
+        // A blocked change shows no box, but its override and approval are recorded the same way, so they follow the code too.
+        const recorded = ticked.some((l) => l === box) ? ticked : [...ticked, "", box]
+        yield* fs.writeFileString(md, [first, "", `**${status.title}** for commit \`${head.slice(0, 12)}\`.`, ...recorded].join("\n"))
       }
     }
     // A pull request with others under it in a stack: its box approves them all, so it says so above the box.
