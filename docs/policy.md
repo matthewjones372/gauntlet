@@ -325,7 +325,15 @@ When the baseline at HEAD recorded which tests kill which mutants (a mutation ga
 
 `gauntlet baseline` records that kill map when the mutation tool reports which tests killed each mutant: Pitest (recording turns on its full mutation matrix) and StrykerJS with Vitest or Jest (recording turns off its bail, so every killer is named). Bun's command runner, Stryker4s, mutmut, cargo-mutants and Gremlins don't report killers.
 
-Property tests are never listed, and holdouts aren't read. It's a list: it changes nothing, and removing one of these tests is still a deleted-tests forbid. `--json` prints the same list as JSON.
+Property tests are never listed, and holdouts aren't read. It's a list: it changes nothing, and removing one of these tests is still a deleted-tests forbid.
+
+A change that only removes tests (it changes nothing but test files) can go through review instead of being forbidden, when the policy has a `mutation` gate and the baseline a kill map (spec 0016):
+
+1. The kill map is read first: every mutant a removed test killed must still be killed by a test that stays. If not, the `mutation` gate fails at once, naming the mutants that would be lost.
+2. The `mutation` gate then mutates the whole of each file the removed tests protected, with the tests that stay. The main code didn't change, so each file must score what it scored at base; a lower score fails the gate.
+3. When it passes, the deleted-tests findings are flagged instead of forbidden, and the executed-tests and assertions ratchets allow for the removal. The change still needs a person's review.
+
+Without a `mutation` gate or a kill map, or when either step fails, removing tests stays forbidden. `--json` prints the same list as JSON.
 
 ## Review levels
 

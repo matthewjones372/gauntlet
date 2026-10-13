@@ -1,8 +1,9 @@
 import { globMatches } from "@gauntlet/dsl"
 import type { FlagCheck, ForbidCheck, PolicyIR, RatchetCheck } from "@gauntlet/ir"
-import { compareMetrics, type Metric, type TestCounts } from "@gauntlet/sarif"
+import { compareMetrics, type KillMap, type Metric, type TestCounts } from "@gauntlet/sarif"
 import { Effect, type FileSystem, type Option, type Path } from "effect"
 import type { DiffFacts } from "./diff-facts.ts"
+import { describePruning, pruningVerdict, removedTests } from "./pruning.ts"
 
 // Integrity checks: is the verification itself intact? (ADR 0013)
 // Core implements what needs no language knowledge; packs supply detectors
@@ -60,6 +61,10 @@ export interface IntegrityInput extends DetectorInput {
   readonly headTests?: TestRecord
   /** Test ids recorded at base, when the baseline has them. */
   readonly baseTestIds?: ReadonlyArray<string>
+  /** Which tests killed which mutants at base, when the baseline recorded it (spec 0016). */
+  readonly killMap?: KillMap
+  /** The policy's mutation gate confirmed that this change, if it only removes tests, loses no kills (spec 0016). */
+  readonly pruningConfirmed?: boolean
 }
 
 export interface IntegrityResult {
@@ -164,6 +169,10 @@ const coreDetector = (input: IntegrityInput): { findings: IntegrityFinding[]; me
       }
     }
   }
+  // A change that only removes tests: what the kill map says about it (spec 0016). Unless a mutation run
+  // confirmed it (see runIntegrity), the removal stays forbidden above.
+  const pruned = removedTests(facts, input.isTestPath, input.baseTestIds, input.headTests?.ids)
+  if (pruned && !input.pruningConfirmed) findings.push({ check: "deleted-tests", kind: "flag", message: describePruning(pruningVerdict(pruned, input.killMap)), detector: "core" })
   covered.push("deleted-tests")
 
   // Main code that names test files, test classes or test paths.
@@ -286,6 +295,17 @@ export const runIntegrity = (input: IntegrityInput, detectors: ReadonlyArray<Int
       for (const c of detector.checks) covered.add(c)
     }
 
+    // Spec 0016: a change that only removes tests, which the mutation gate confirmed loses no kills, is
+    // reviewed rather than forbidden. The diff is read here, never taken from the evidence job.
+    const pruning = input.pruningConfirmed === true && input.facts.files.length > 0 && input.facts.files.every((f) => input.isTestPath(f.path) && (f.oldPath === undefined || input.isTestPath(f.oldPath)))
+    if (pruning) {
+      // A holdout never runs where the mutation gate does, so nothing confirms its removal (spec 0003, spec 0016 §4).
+      const holdouts = input.ir.suites.flatMap((s) => (s.kind === "holdout" ? s.globs ?? [] : []))
+      for (const [i, f] of findings.entries()) {
+        if (f.check === "deleted-tests" && f.kind === "forbid" && !(f.path !== undefined && holdouts.some((g) => globMatches(g, f.path!)))) findings[i] = { ...f, kind: "flag", message: `${f.message} The mutation gate confirmed the tests that stay still kill every mutant the removed tests killed (spec 0016).` }
+      }
+    }
+
     const notExecuted = new Set<IntegrityCheck>()
     for (const check of input.ir.integrity.ratchet) {
       const key = metricKey(check)
@@ -296,6 +316,8 @@ export const runIntegrity = (input: IntegrityInput, detectors: ReadonlyArray<Int
       }
       const recorded = input.baselineMetrics[key]
       if (!recorded) continue
+      // A confirmed pruning removes tests, and their assertions, on purpose.
+      if (pruning && (check === "executed-tests" || check === "assertions-per-test")) continue
       // Tests removed along with the code they tested don't count against the executed-tests ratchet.
       const base = check === "executed-tests" && core.removedWithCode > 0 ? { ...recorded, value: recorded.value - core.removedWithCode } : recorded
       for (const r of compareMetrics({ [key]: { ...base, higherIsBetter: RATCHET_DIRECTION[check] } }, { [key]: head }).regressions) {
