@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:18  error[advise-blocks-nothing]  'mutation advise' blocks nothing, so it can't also take '>= 60%'.
+  4 | gates { verify { mutation advise >= 60% on changed } }
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  expected: 'mutation advise' or 'mutation >= 60%'
+  fix: Keep `advise` to report findings without blocking, or remove it to block on '>= 60%'.

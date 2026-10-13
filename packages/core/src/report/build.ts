@@ -48,6 +48,8 @@ export interface ReportInput {
   readonly ratchets: ReadonlyArray<MetricDelta>
   readonly integrity: IntegrityResult
   readonly violations: ReadonlyArray<NewViolation>
+  /** Findings that don't block on their own (spec 0011). */
+  readonly advice?: ReadonlyArray<NewViolation>
   readonly imports: ReadonlyArray<ImportRecord>
   readonly decision: Decision
   /** Set for `check --protect-only` (spec 0001). */
@@ -62,6 +64,11 @@ const by = <A>(key: (a: A) => string) => (a: A, b: A) => {
 }
 const pad = (n: number | undefined) => String(n ?? 0).padStart(9, "0")
 const opt = <K extends string, V>(key: K, value: V | undefined) => (value === undefined ? {} : { [key]: value } as { [P in K]: V })
+
+const findings = (vs: ReadonlyArray<NewViolation>) =>
+  [...vs]
+    .sort(by((v) => `${v.check}\0${v.path ?? ""}\0${pad(v.line)}\0${v.ruleId}\0${v.message}`))
+    .map((v) => ({ check: v.check, ruleId: v.ruleId, message: v.message, ...opt("path", v.path), ...opt("line", v.line) }))
 
 /** Builds the report. Every list is put in a fixed order so equal inputs give equal bytes. */
 export const buildReport = (input: ReportInput): Report => {
@@ -138,9 +145,8 @@ export const buildReport = (input: ReportInput): Report => {
         .map((f) => ({ check: f.check, kind: f.kind, message: f.message, ...opt("path", f.path), ...opt("line", f.line), detector: f.detector })),
       notExecuted: [...input.integrity.notExecuted].sort(),
     },
-    violations: [...input.violations]
-      .sort(by((v) => `${v.check}\0${v.path ?? ""}\0${pad(v.line)}\0${v.ruleId}\0${v.message}`))
-      .map((v) => ({ check: v.check, ruleId: v.ruleId, message: v.message, ...opt("path", v.path), ...opt("line", v.line) })),
+    violations: findings(input.violations),
+    ...(input.advice && input.advice.length > 0 ? { advice: findings(input.advice) } : {}),
     imports: [...input.imports].sort(by((i) => i.source)).map((i) => ({
       source: i.source,
       trust: i.trust,

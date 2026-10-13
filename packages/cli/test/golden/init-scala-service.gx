@@ -24,9 +24,10 @@ suites {
 }
 
 // Ratchets keep each file from getting worse; the floors apply to new and changed lines only, so old code doesn't block a change.
+// `mutation advise` reports mutants on the changed lines that no test kills, and blocks nothing.
 gates {
   fast   { build, lint ratchet }
-  verify { unit, coverage ratchet >= 80% on changed, mutation ratchet >= 60% on changed }
+  verify { unit, coverage ratchet >= 80% on changed, mutation advise on changed }
 }
 
 predicate small = diff < 150 lines and no zone touched

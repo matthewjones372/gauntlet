@@ -14,6 +14,8 @@ const reduceCheck = (c: Check): Check | undefined => {
     case "gate":
       // Mutation always needs a baseline-scale run and is left out entirely.
       if (c.name === "mutation") return undefined
+      // An advise gate blocks nothing, so it has no part in a pass or fail.
+      if (c.advise) return undefined
       // Zone-scoped checks go with the zones.
       if (c.zone !== undefined) return undefined
       // A ratchet compares with the baseline: a check that is only a ratchet is

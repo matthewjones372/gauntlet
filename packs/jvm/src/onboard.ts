@@ -8,7 +8,7 @@ import { directoriesNamed, type Onboarding, type RepoView } from "@gauntlet/core
 
 const PLUGINS = {
   detekt: { id: "dev.detekt", line: `id("dev.detekt") version "2.0.0-alpha.6"`, gate: "lint ratchet", tier: "fast" },
-  pitest: { id: "info.solidsoft.pitest", line: `id("info.solidsoft.pitest") version "1.19.0"`, gate: "mutation ratchet on changed", tier: "verify" },
+  pitest: { id: "info.solidsoft.pitest", line: `id("info.solidsoft.pitest") version "1.19.0"`, gate: "mutation advise on changed", tier: "verify" },
 } as const
 
 const applies = (scripts: ReadonlyArray<string>, id: string) =>

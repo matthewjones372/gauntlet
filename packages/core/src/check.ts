@@ -89,6 +89,8 @@ const iso = (ms: number) => new Date(ms).toISOString()
 interface Executed {
   readonly checks: ReadonlyArray<CheckRecord>
   readonly newViolations: ReadonlyArray<NewViolation>
+  /** Findings that don't block on their own (spec 0011), reported and annotated. */
+  readonly advice: ReadonlyArray<NewViolation>
   readonly regressions: ReadonlyArray<Regression>
   readonly ratchets: ReadonlyArray<MetricDelta>
   readonly runs: ReadonlyArray<Run>
@@ -284,6 +286,7 @@ const judge = (
       ratchets: executed.ratchets,
       integrity: counted,
       violations: executed.newViolations,
+      advice: executed.advice,
       imports: executed.imports,
       decision,
       ...(request.protectOnly ? { scope: "protect-only" as const } : {}),
@@ -340,7 +343,7 @@ export const runCheck = (request: CheckRequest) =>
       const today = yield* git.commitDate(request.repo, p.head)
       const selections = yield* selectionsFor(request.repo, p)
       const gates: GateRunnerOutput = request.skipGates
-        ? { checks: [], newViolations: [], regressions: [], ratchets: [], runs: [], metrics: {}, durationsMs: {} }
+        ? { checks: [], newViolations: [], advice: [], regressions: [], ratchets: [], runs: [], metrics: {}, durationsMs: {} }
         : yield* runGates({
           ir: p.ir, facts: p.facts, workspace, packs: p.used, baseline: p.baseline, renames: p.renames, files, today,
           ...(request.holdouts ? { holdouts: true } : {}),
@@ -355,6 +358,7 @@ export const runCheck = (request: CheckRequest) =>
       const executed: Executed = {
         checks: [...gates.checks, ...imports.checks],
         newViolations: [...gates.newViolations, ...imports.newViolations],
+        advice: gates.advice,
         regressions: gates.regressions,
         ratchets: gates.ratchets,
         runs: [...gates.runs, ...imports.runs],
@@ -403,7 +407,8 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
     const checks: CheckRecord[] = []
     p.ir.gates.forEach((t, ti) => t.checks.forEach((c, ci) => {
       const name = c.kind === "budget" ? `budget ${c.budget}` : c.kind === "llm-review" ? "llm review" : c.name
-      const base = { tier: t.name, check: name, pointer: `/gates/${ti}/checks/${ci}`, advisory: t.advisory }
+      // The base policy says which gates only advise (spec 0011), never the evidence.
+      const base = { tier: t.name, check: name, pointer: `/gates/${ti}/checks/${ci}`, advisory: t.advisory || (c.kind === "gate" && c.advise === true) }
       const got = claimed(t.name, name)
       checks.push(got
         ? { ...base, status: got.status, ...(got.reason !== undefined ? { reason: got.reason } : {}), ...(got.proof ? { proof: got.proof } : {}), ...(got.tests ? { tests: got.tests } : {}), ...(got.failures ? { failures: got.failures } : {}), ...(got.flaky ? { flaky: got.flaky } : {}), ...(got.quarantined ? { quarantined: got.quarantined } : {}), ...(got.holdoutGap ? { holdoutGap: true as const } : {}), ...(got.failingOnBase ? { failingOnBase: got.failingOnBase } : {}), ...(got.failedBefore ? { failedBefore: true as const } : {}), ...(got.selection ? { selection: got.selection } : {}), ...(got.pruning ? { pruning: got.pruning } : {}) }
@@ -421,6 +426,8 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
     const executed: Executed = {
       checks,
       newViolations: ev.violations.map((v) => ({ check: v.check, ruleId: v.ruleId, message: v.message, ...(v.path ? { path: v.path } : {}), ...(v.line ? { line: v.line } : {}) })),
+      // Never part of the decision, so the evidence's word is enough: it's reported and annotated.
+      advice: (ev.advice ?? []).map((v) => ({ check: v.check, ruleId: v.ruleId, message: v.message, ...(v.path ? { path: v.path } : {}), ...(v.line ? { line: v.line } : {}) })),
       regressions: ev.ratchets.filter((r) => r.regressed).map((r) => ({ metric: r.metric, ...(r.file ? { file: r.file } : {}), base: r.base, head: r.head })),
       ratchets: ev.ratchets.map((r) => ({ metric: r.metric, ...(r.file ? { file: r.file } : {}), base: r.base, head: r.head, delta: r.delta, regressed: r.regressed })),
       runs: [],

@@ -57,6 +57,7 @@ describe("looseningsBetween", () => {
     ["threshold", (t) => t.replace("coverage >= 90%", "coverage >= 80%"), "gate coverage threshold changes from >= 90% to >= 80%"],
     ["threshold removed", (t) => t.replace("coverage >= 90%", "coverage"), "gate coverage loses its threshold (>= 90%)"],
     ["scope", (t) => t.replace("coverage >= 90%", "coverage >= 90% on changed"), "gate coverage now only measures changed code"],
+    ["advise", (t) => t.replace("mutation ratchet >= 80% on changed", "mutation advise on changed"), "gate mutation only advises: its findings no longer block"],
     ["review rule", (t) => t.replace("  review when protected changed\n", ""), "review rule removed: review when protected-changed"],
     ["lenient rule", (t) => t.replace("  auto   when small", "  skim   when diff < 20 lines\n  auto   when small"), "new lenient review rule: skim when diff < 20 lines"],
     ["suite", (t) => t.replace(`suites { unit "src/test/**" }`, `suites { unit "src/test/unit/**" }`), "suite unit removed or changed"],

@@ -33,6 +33,7 @@ export type GauntletKeywordNames =
     | ">"
     | ">="
     | "added"
+    | "advise"
     | "affected"
     | "all"
     | "and"
@@ -519,10 +520,10 @@ export function isLayerProp(item: unknown): item is LayerProp {
     return reflection.isInstance(item, LayerProp.$type);
 }
 
-export type LayerWord = 'added' | 'affected' | 'all' | 'arch' | 'auto' | 'baseline' | 'budget' | 'caution' | 'changed' | 'ci' | 'cumulative' | 'depend' | 'diff' | 'env' | 'fail' | 'fix' | 'flag' | 'forbid' | 'from' | 'gates' | 'in' | 'integrity' | 'layer' | 'llm' | 'max' | 'missing' | 'module' | 'must' | 'no' | 'not' | 'on' | 'only' | 'owner' | 'pass' | 'paths' | 'protect' | 'ratchet' | 'reads' | 'review' | 'rule' | 'skim' | 'split' | 'stack' | 'suites' | 'touched' | 'vs' | 'zone' | string;
+export type LayerWord = 'added' | 'advise' | 'affected' | 'all' | 'arch' | 'auto' | 'baseline' | 'budget' | 'caution' | 'changed' | 'ci' | 'cumulative' | 'depend' | 'diff' | 'env' | 'fail' | 'fix' | 'flag' | 'forbid' | 'from' | 'gates' | 'in' | 'integrity' | 'layer' | 'llm' | 'max' | 'missing' | 'module' | 'must' | 'no' | 'not' | 'on' | 'only' | 'owner' | 'pass' | 'paths' | 'protect' | 'ratchet' | 'reads' | 'review' | 'rule' | 'skim' | 'split' | 'stack' | 'suites' | 'touched' | 'vs' | 'zone' | string;
 
 export function isLayerWord(item: unknown): item is LayerWord {
-    return item === 'split' || item === 'reads' || item === 'affected' || item === 'zone' || item === 'budget' || item === 'gates' || item === 'paths' || item === 'rule' || item === 'module' || item === 'must' || item === 'not' || item === 'depend' || item === 'on' || item === 'from' || item === 'env' || item === 'vs' || item === 'baseline' || item === 'ratchet' || item === 'in' || item === 'layer' || item === 'max' || item === 'diff' || item === 'cumulative' || item === 'ci' || item === 'only' || item === 'caution' || item === 'fix' || item === 'fail' || item === 'flag' || item === 'forbid' || item === 'review' || item === 'owner' || item === 'skim' || item === 'auto' || item === 'llm' || item === 'protect' || item === 'suites' || item === 'integrity' || item === 'arch' || item === 'stack' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'split' || item === 'reads' || item === 'affected' || item === 'zone' || item === 'budget' || item === 'gates' || item === 'paths' || item === 'rule' || item === 'module' || item === 'must' || item === 'not' || item === 'depend' || item === 'on' || item === 'from' || item === 'env' || item === 'vs' || item === 'baseline' || item === 'ratchet' || item === 'advise' || item === 'in' || item === 'layer' || item === 'max' || item === 'diff' || item === 'cumulative' || item === 'ci' || item === 'only' || item === 'caution' || item === 'fix' || item === 'fail' || item === 'flag' || item === 'forbid' || item === 'review' || item === 'owner' || item === 'skim' || item === 'auto' || item === 'llm' || item === 'protect' || item === 'suites' || item === 'integrity' || item === 'arch' || item === 'stack' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface LlmReviewCheck extends langium.AstNode {
@@ -560,6 +561,7 @@ export function isMetric(item: unknown): item is Metric {
 export interface MetricCheck extends langium.AstNode {
     readonly $container: GateTier;
     readonly $type: 'MetricCheck';
+    advise: boolean;
     name: CheckName;
     op?: Cmp;
     ratchet: boolean;
@@ -570,6 +572,7 @@ export interface MetricCheck extends langium.AstNode {
 
 export const MetricCheck = {
     $type: 'MetricCheck',
+    advise: 'advise',
     name: 'name',
     op: 'op',
     ratchet: 'ratchet',
@@ -1467,6 +1470,11 @@ export class GauntletAstReflection extends langium.AbstractAstReflection {
         MetricCheck: {
             name: MetricCheck.$type,
             properties: {
+                advise: {
+                    name: MetricCheck.advise,
+                    defaultValue: false,
+                    optional: true
+                },
                 name: {
                     name: MetricCheck.name
                 },

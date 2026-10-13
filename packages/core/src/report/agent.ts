@@ -21,8 +21,13 @@ export interface AgentSummary {
   readonly stack?: ReadonlyArray<{ readonly title: string; readonly files: ReadonlyArray<string>; readonly lines: number }>
   /** Protected files the change edits that ran as the base has them; `(left out)` marks one the change adds. */
   readonly ranAsBase: ReadonlyArray<string>
+  /** Findings that don't block on their own, such as surviving mutants on the changed lines (spec 0011): "path:line: message". */
+  readonly advice: ReadonlyArray<string>
   readonly report: string
 }
+
+/** How many advisory findings the summary names; the report has the rest. */
+const ADVICE_LIMIT = 10
 
 export const agentSummary = (report: Report, reportDir: string): AgentSummary => ({
   tier: report.decision.tier,
@@ -36,6 +41,7 @@ export const agentSummary = (report: Report, reportDir: string): AgentSummary =>
   suggestions: report.policy.notes.filter((n) => n.includes("/gauntlet-setup")),
   ...(report.stack ? { stack: report.stack.steps.map((s) => ({ title: s.title, files: s.files, lines: s.lines })) } : {}),
   ranAsBase: ranAsBase(report).map((f) => `${f.path}${f.leftOut ? " (left out)" : ""}`),
+  advice: (report.advice ?? []).map((v) => `${v.path ? `${v.path}${v.line ? `:${v.line}` : ""}: ` : ""}${v.message} (${v.check})`),
   report: `${reportDir}/gauntlet-report.md`,
 })
 
@@ -45,6 +51,16 @@ export const NOT_THE_CHECK = "Fix the cause, not the check. If it can't be done 
 const ranAsBaseLines = (s: AgentSummary) =>
   s.ranAsBase.length > 0
     ? [`These protected files ran as the base has them, not as you changed them: ${s.ranAsBase.join(", ")}. Your version takes effect once the change merges, so this check can't see what it adds (a build plugin, a policy budget); don't keep editing them to make it pass.`]
+    : []
+
+// Survivors are findings first (spec 0011): the agent sees where a test runs a line without checking it.
+const adviceLines = (s: AgentSummary) =>
+  s.advice.length > 0
+    ? [
+      "These findings don't block on their own. Where a mutant survives, a test runs that line but doesn't check what it does: strengthen that test.",
+      ...s.advice.slice(0, ADVICE_LIMIT).map((a) => `- ${a}`),
+      ...(s.advice.length > ADVICE_LIMIT ? [`- ... ${s.advice.length - ADVICE_LIMIT} more in the report`] : []),
+    ]
     : []
 
 /** Passed on to the person rather than acted on: the agent can't change the policy. */
@@ -68,6 +84,7 @@ export const renderAgentSummary = (s: AgentSummary): string =>
       ...s.failedChecks.flatMap((c) => (c.failures ? [`Failing in ${c.check}:`, ...c.failures.map((f) => `  - ${f}`)] : [])),
       ...(s.fixes.length > 0 ? ["How to fix:", ...s.fixes.map((f) => `- ${f.check}: ${f.fix}`)] : []),
       ...ranAsBaseLines(s),
+      ...adviceLines(s),
       ...suggestionLines(s),
       NOT_THE_CHECK,
       `Full report: ${s.report}`,
@@ -80,6 +97,7 @@ export const renderAgentSummary = (s: AgentSummary): string =>
       ...s.zones.map((z) => `- Zone ${z.zone}${z.owners.length > 0 ? ` (owner ${z.owners.join(", ")})` : ""}: ${z.files.slice(0, 5).join(", ")}${z.files.length > 5 ? ` and ${z.files.length - 5} more` : ""}`),
       `On GitHub they approve the pull request (Files changed, Review changes, Approve), or, if they opened it, comment \`/gauntlet approve ${s.head.slice(0, 12)}\`.`,
       ...ranAsBaseLines(s),
+      ...adviceLines(s),
       ...suggestionLines(s),
       `Full report: ${s.report}`,
     ].join("\n")
@@ -87,6 +105,7 @@ export const renderAgentSummary = (s: AgentSummary): string =>
       `Gauntlet passes this change (tier ${s.tier}).`,
       ...(s.review.length > 0 ? ["It still needs a person's review because:", ...s.review.map((r) => `- ${r}`)] : []),
       ...ranAsBaseLines(s),
+      ...adviceLines(s),
       ...suggestionLines(s),
       `Full report: ${s.report}`,
     ].join("\n")

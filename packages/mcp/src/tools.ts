@@ -35,6 +35,8 @@ const Check = Tool.make("check", {
     review: Schema.Array(Schema.String),
     failedChecks: Schema.Array(Schema.Struct({ check: Schema.String, status: Schema.String, reason: Schema.optionalKey(Schema.String) })),
     fixes: Schema.Array(Schema.Struct({ check: Schema.String, fix: Schema.String })),
+    /** Findings that don't block, such as surviving mutants on the changed lines: "path:line: message (check)". */
+    advice: Schema.Array(Schema.String),
     report: Schema.String,
     blockedReported: Schema.Boolean,
   }),

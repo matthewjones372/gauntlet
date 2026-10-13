@@ -36,7 +36,7 @@ export const onboard = (repo: RepoView): Onboarding => {
     setup.push("Add coverage as a dev dependency to gate coverage.")
     missing.push("coverage")
   }
-  if (declared.has("mutmut")) verify.push("mutation ratchet on changed")
+  if (declared.has("mutmut")) verify.push("mutation advise on changed")
   else {
     setup.push("Add mutmut as a dev dependency to gate mutation.")
     missing.push("mutmut")

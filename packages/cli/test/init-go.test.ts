@@ -21,7 +21,7 @@ describe("gauntlet init on a Go module", () => {
     expectGolden(join(import.meta.dir, "golden", "init-go-service.gx"), policy)
     expect(policy).toContain("use go")
     expect(policy).toContain("fast   { build, lint ratchet, arch }")
-    expect(policy).toContain("verify { unit, coverage ratchet >= 80% on changed, mutation ratchet >= 60% on changed }")
+    expect(policy).toContain("verify { unit, coverage ratchet >= 80% on changed, mutation advise on changed }")
     expect((await cli(["validate", "--repo", r.dir], [...INSTALLED_PACKS])).code).toBe(0)
   })
 })

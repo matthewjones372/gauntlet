@@ -8,7 +8,7 @@ describe("jvm onboarding", () => {
   test("every gate whose plugin is applied", () => {
     const o = onboard(view({ "build.gradle.kts": PLUGINS, "settings.gradle.kts": "", "gradle/wrapper/gradle-wrapper.properties": "", "src/test/kotlin/ATest.kt": "", "src/main/kotlin/A.kt": "" }))
     expect(o.fast).toEqual(["build", "lint ratchet"])
-    expect(o.verify).toEqual(["coverage ratchet on changed", "mutation ratchet on changed"])
+    expect(o.verify).toEqual(["coverage ratchet on changed", "mutation advise on changed"])
     expect(o.setup).toEqual([])
     expect(o.protect).toEqual({ tests: ["src/test/**"], fixtures: [], config: ["*.gradle.kts", "gradle/**"] })
     expect(o.suites).toEqual([{ name: "unit", location: "src/test/**" }])

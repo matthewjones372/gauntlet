@@ -1,6 +1,6 @@
 import { type GateSpec, globMatches } from "@gauntlet/dsl"
 import { type Check, type PolicyIR, sha256 } from "@gauntlet/ir"
-import { type Baseline, compareMetrics, compareWithBaseline, convertJUnit, type Metric, type MetricDelta, type Proof, resultPath, resultRegion, type Run, type KillMap, mergeKillMaps, renameKillMap, type TestMap } from "@gauntlet/sarif"
+import { type Baseline, compareMetrics, compareWithBaseline, convertJUnit, type Metric, type MetricDelta, type Proof, type Result, resultPath, resultRegion, type Run, type KillMap, mergeKillMaps, renameKillMap, type TestMap } from "@gauntlet/sarif"
 import { Clock, Effect, FileSystem, Option, type Path } from "effect"
 import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy, runFromBuild, toBuild } from "./builds.ts"
 import { judgeBudget, parseBudgetResults } from "./budget.ts"
@@ -64,6 +64,11 @@ export interface GateRunnerOutput {
   readonly checks: ReadonlyArray<CheckRecord>
   readonly runs: ReadonlyArray<Run>
   readonly newViolations: ReadonlyArray<NewViolation>
+  /**
+   * Findings that don't block on their own (spec 0011): an `advise` gate's, and the
+   * survivors on the changed lines of a mutation gate that scores them against a threshold.
+   */
+  readonly advice: ReadonlyArray<NewViolation>
   readonly regressions: ReadonlyArray<Regression>
   readonly ratchets: ReadonlyArray<MetricDelta>
   /** Tests from every suite that ran, merged. */
@@ -115,6 +120,13 @@ const parentOf = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/")))
 const compareThreshold = (value: number, op: string, limit: number) =>
   op === "<" ? value < limit : op === "<=" ? value <= limit : op === ">" ? value > limit : op === ">=" ? value >= limit : op === "==" ? value === limit : value !== limit
 
+/** A gate's SARIF result as a finding on its file and line. */
+const finding = (check: string, v: Result): NewViolation => {
+  const path = resultPath(v)
+  const line = resultRegion(v)?.startLine
+  return { check, ruleId: v.ruleId, message: v.message.text, ...(path ? { path } : {}), ...(line ? { line } : {}) }
+}
+
 const isWarningsCheck = (check: Check) => check.kind === "gate" && check.name === "warnings"
 
 export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput, never, ProcessRunner | FileSystem.FileSystem | Path.Path> =>
@@ -123,6 +135,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     const checks: CheckRecord[] = []
     const runs: Run[] = []
     const newViolations: NewViolation[] = []
+    const advice: NewViolation[] = []
     const regressions: Regression[] = []
     const ratchets: MetricDelta[] = []
     const metrics: Record<string, Metric> = {}
@@ -231,7 +244,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       const order = tier.checks.map((c, i) => ({ c, i })).sort((a, b) => Number(b.c.kind === "suite") - Number(a.c.kind === "suite") || a.i - b.i)
       for (const { c: check, i } of order) {
         const pointer = `/gates/${t}/checks/${i}`
-        const base = { tier: tier.name, check: checkName(check), pointer, advisory: tier.advisory }
+        // An `advise` gate blocks nothing (spec 0011): advisory, like the advisory tier's checks.
+        const base = { tier: tier.name, check: checkName(check), pointer, advisory: tier.advisory || (check.kind === "gate" && check.advise === true) }
         const record = (r: Omit<CheckRecord, keyof typeof base>) => {
           recorded[i] = { ...base, ...r }
         }
@@ -309,7 +323,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     }
     const testMap: TestMap | undefined = testMaps.length === 0 ? undefined : Object.assign({}, ...testMaps)
     return {
-      checks, runs, newViolations, regressions, ratchets, ...(tests ? { tests } : {}), metrics, durationsMs,
+      checks, runs, newViolations, advice, regressions, ratchets, ...(tests ? { tests } : {}), metrics, durationsMs,
       ...(multi ? { testedBuilds: [...testedBuilds].sort() } : {}),
       ...(testMap ? { testMap } : {}),
       ...(testMapMissing.length > 0 ? { testMapMissing } : {}),
@@ -816,6 +830,11 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           case "violations": {
             if (files.length === 0) return { status: "failed", reason: "no report was produced (a silent green fails)", proof }
             const inScope = (p: string | undefined) => scope === undefined || (p !== undefined && scope.includes(p))
+            if (gate.advise) {
+              const found = tagged.flatMap((r) => r.results.filter((x) => inScope(resultPath(x))))
+              advice.push(...found.map((v) => finding(gate.name, v)))
+              return { status: "passed", ...(found.length > 0 ? { reason: `${found.length} finding${found.length === 1 ? "" : "s"}, reported without blocking` } : {}), proof }
+            }
             let found = 0
             for (const r of tagged) {
               const results = r.results.filter((x) => inScope(resultPath(x)))
@@ -824,11 +843,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
                 ? compareWithBaseline(grandfathered, results, { renames, unstableLocations: r.properties?.gauntlet?.unstableLocations ?? false }).results.filter((x) => x.baselineState === "new")
                 : results
               found += fresh.length
-              for (const v of fresh) {
-                const path = resultPath(v)
-                const line = resultRegion(v)?.startLine
-                newViolations.push({ check: gate.name, ruleId: v.ruleId, message: v.message.text, ...(path ? { path } : {}), ...(line ? { line } : {}) })
-              }
+              newViolations.push(...fresh.map((v) => finding(gate.name, v)))
             }
             if (found === 0) return { status: "passed", proof }
             const why = gate.ratchet
@@ -851,12 +866,19 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
                 const grandfathered = Option.match(baseline, { onNone: () => [], onSome: (b) => b.results[r.tool.driver.name] ?? [] })
                 for (const v of compareWithBaseline(grandfathered, r.results, { renames }).results.filter((x) => x.baselineState === "new")) {
                   fresh++
-                  const path = resultPath(v)
-                  const line = resultRegion(v)?.startLine
-                  newViolations.push({ check: gate.name, ruleId: v.ruleId, message: v.message.text, ...(path ? { path } : {}), ...(line ? { line } : {}) })
+                  newViolations.push(finding(gate.name, v))
                 }
               }
               if (fresh > 0) reasons.push(`${fresh} mutant${fresh === 1 ? "" : "s"} on the changed lines survive${fresh === 1 ? "s" : ""}`)
+            } else if (gate.advise || run.lineScoped) {
+              // Spec 0011: survivors are findings first. Under `advise` they block nothing; under a
+              // threshold the score blocks, and each survivor on a changed line says where to look.
+              const survivors = tagged.flatMap((r) => r.results)
+              advice.push(...survivors.map((v) => finding(gate.name, v)))
+              if (gate.advise) {
+                const where = run.lineScoped ? " on the changed lines" : ""
+                return { status: "passed", ...(survivors.length > 0 ? { reason: `${survivors.length} mutant${survivors.length === 1 ? "" : "s"}${where} survive${survivors.length === 1 ? "s" : ""}, reported without blocking` } : {}), proof }
+              }
             } else if (gate.ratchet && Option.isSome(baseline)) {
               const recorded = baseline.value.metrics[gate.name]
               if (recorded) {

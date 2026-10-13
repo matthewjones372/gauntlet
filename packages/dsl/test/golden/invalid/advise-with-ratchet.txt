@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:18  error[advise-blocks-nothing]  'mutation advise' blocks nothing, so it can't also take 'ratchet'.
+  4 | gates { verify { mutation ratchet advise on changed } }
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  expected: 'mutation advise' or 'mutation ratchet'
+  fix: Keep `advise` to report findings without blocking, or remove it to block on 'ratchet'.

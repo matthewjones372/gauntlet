@@ -6,6 +6,9 @@ import type { GateContext } from "./gate.ts"
 // tools mutate whole classes or files, and a change shouldn't answer for the
 // rest of them.
 
+/** The rule of a surviving mutant's finding. */
+export const SURVIVED_RULE = "mutation/survived"
+
 /** One mutant, as a pack read it from its tool's report. */
 export interface Mutant {
   /** Repository-relative, or undefined when the tool's report can't be traced to a file. */
@@ -62,7 +65,7 @@ export const mutationResult = (tool: string, mutants: ReadonlyArray<Mutant>, at:
     results: counted.filter((x) => !x.killed)
       .sort((a, b) => ((a.path ?? "") < (b.path ?? "") ? -1 : (a.path ?? "") > (b.path ?? "") ? 1 : a.line - b.line))
       .map((x) => ({
-        ruleId: "mutation/survived",
+        ruleId: SURVIVED_RULE,
         level: "warning" as const,
         message: { text: x.message },
         ...(x.path ? { locations: [{ physicalLocation: { artifactLocation: { uri: x.path }, region: { startLine: x.line } } }] } : {}),

@@ -7,7 +7,7 @@ import { directoriesNamed, type Onboarding, type RepoView } from "@gauntlet/core
 const PLUGINS = [
   { id: "sbt-scalafix", line: `addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.14.9") (and a .scalafix.conf)`, gate: "lint ratchet", tier: "fast" },
   { id: "sbt-scoverage", line: `addSbtPlugin("org.scoverage" % "sbt-scoverage" % "2.4.4")`, gate: "coverage ratchet on changed", tier: "verify" },
-  { id: "sbt-stryker4s", line: `addSbtPlugin("io.stryker-mutator" % "sbt-stryker4s" % "1.1.1")`, gate: "mutation ratchet on changed", tier: "verify" },
+  { id: "sbt-stryker4s", line: `addSbtPlugin("io.stryker-mutator" % "sbt-stryker4s" % "1.1.1")`, gate: "mutation advise on changed", tier: "verify" },
 ] as const
 
 export const onboard = (repo: RepoView): Onboarding => {

@@ -1,0 +1,5 @@
+.gauntlet/policy.gx:4:16  error[cannot-advise]  'build' only passes or fails, so it has no findings to advise on.
+  4 | gates { fast { build advise } }
+    |                ^^^^^^^^^^^^
+  expected: 'build' without `advise`
+  fix: Remove `advise`.

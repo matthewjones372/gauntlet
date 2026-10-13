@@ -161,6 +161,8 @@ export const Report = Schema.Struct({
   ratchets: Schema.Array(ReportRatchet),
   integrity: Schema.Struct({ findings: Schema.Array(ReportFinding), notExecuted: Schema.Array(Schema.String) }),
   violations: Schema.Array(ReportViolation),
+  /** Findings that don't block on their own (spec 0011): an `advise` gate's, and surviving mutants on changed lines. Absent when there are none. */
+  advice: Schema.optionalKey(Schema.Array(ReportViolation)),
   imports: Schema.Array(ReportImport),
   notExecuted: Schema.Array(ReportNotExecuted),
   remediation: Schema.Array(Schema.Struct({ check: Schema.String, fix: Schema.String })),

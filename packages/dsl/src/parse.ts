@@ -188,7 +188,7 @@ const RULE_CONTEXT: Record<string, string> = {
 
 const KEYWORDS = new Set([
   "gauntlet", "harness", "use", "mode", "owners", "protect", "zone", "paths", "owner", "rule", "arch", "module",
-  "must", "not", "depend", "on", "suites", "holdout", "ci", "only", "from", "env", "integrity", "ratchet", "forbid",
+  "must", "not", "depend", "on", "suites", "holdout", "ci", "only", "from", "env", "integrity", "ratchet", "advise", "forbid",
   "flag", "import", "caution", "budget", "command", "vs", "baseline", "gates", "llm", "review", "in", "fail", "fix",
   "predicate", "when", "and", "skim", "auto", "require", "raise", "no", "all", "touched", "changed", "added",
   "missing", "pass", "diff", "stack", "layer", "max", "cumulative", "quarantine", "until", "split", "attempts", "reads", "affected",
