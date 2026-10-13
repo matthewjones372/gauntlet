@@ -1,9 +1,9 @@
 # Spec 0016: tests that add no value
 
 Status: stage 1 implemented (`gauntlet prune tests` with the signals that need no mutation
-run, for every pack). Stage 2 in progress: the baseline records a kill map and `prune tests`
-reads it; Pitest reports killers (recording turns on its full mutation matrix); Stryker
-and Stryker4s come next. Stages 3 and 4
+run, for every pack). Stage 2 implemented for Pitest and StrykerJS (Vitest, Jest): the baseline records a kill
+map and `prune tests` reads it. Stryker4s isn't read yet: it isn't known to name every
+killer rather than the first. Stages 3 and 4
 proposed. Uses spec 0011's mutant helper and spec
 0013's map of what each test exercises; shares the killer recording of spec 0012 §6.
 

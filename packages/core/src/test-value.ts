@@ -176,7 +176,7 @@ export const mutationCandidates = (map: KillMap, commit: string, keep: (test: st
 /** Whether a test the mutation tool names is one of the property tests the survey found (by its name, at the end of the tool's). */
 const namedAmong = (names: ReadonlyArray<string>) => (test: string) => names.some((n) => test === n || test.endsWith(`.${n}`) || test.endsWith(` ${n}`) || test.endsWith(`/${n}`))
 
-const NO_KILL_MAP = "the baseline records no kill map: record one with `gauntlet baseline` and a mutation gate whose tool reports which tests kill each mutant (Pitest, Stryker, Stryker4s)"
+const NO_KILL_MAP = "the baseline records no kill map: record one with `gauntlet baseline` and a mutation gate whose tool reports which tests kill each mutant (Pitest, or StrykerJS with Vitest or Jest)"
 
 /**
  * Surveys every test file in the working copy with the policy's packs, and

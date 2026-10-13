@@ -323,7 +323,7 @@ When the baseline at HEAD recorded which tests kill which mutants (a mutation ga
 - **Tests that kill no mutant:** they run mutated code and never notice.
 - **Tests whose every kill another test makes:** chosen together, keeping the tests that kill most first, so removing every listed test still kills every mutant the suite killed.
 
-`gauntlet baseline` records that kill map whenever the mutation tool reports which tests killed each mutant.
+`gauntlet baseline` records that kill map when the mutation tool reports which tests killed each mutant: Pitest (recording turns on its full mutation matrix) and StrykerJS with Vitest or Jest (recording turns off its bail, so every killer is named). Bun's command runner, Stryker4s, mutmut, cargo-mutants and Gremlins don't report killers.
 
 Property tests are never listed, and holdouts aren't read. It's a list: it changes nothing, and removing one of these tests is still a deleted-tests forbid. `--json` prints the same list as JSON.
 

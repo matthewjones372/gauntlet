@@ -1,7 +1,7 @@
 // Which tests killed which mutants (spec 0016), as the mutation tools report
-// it: Pitest's full mutation matrix, Stryker's and Stryker4s's killedBy and
-// coveredBy. Recorded in the baseline so `gauntlet prune tests` can list tests
-// that kill nothing, and tests whose every kill another test also makes.
+// it: Pitest's full mutation matrix, StrykerJS's killedBy and coveredBy.
+// Recorded in the baseline so `gauntlet prune tests` can list tests that kill
+// nothing, and tests whose every kill another test also makes.
 
 export interface KillMap {
   /** Each mutant once, where it is (repository paths in a baseline). */
