@@ -1,7 +1,7 @@
-import type { DetectorInput, DetectorOutput, IntegrityDetector, IntegrityFinding } from "@gauntlet/core"
+import { type DetectorInput, type DetectorOutput, type IntegrityDetector, type IntegrityFinding, normalisedBody, type TestSurveyor } from "@gauntlet/core"
 import type { Metric } from "@gauntlet/sarif"
 import { Effect, FileSystem, Option, Path } from "effect"
-import { near } from "@gauntlet/syntax"
+import { near, span } from "@gauntlet/syntax"
 import { annotations, calleeName, calleeText, isKotlin, line, type Node, ofType, parseKotlin } from "./syntax.ts"
 
 // Kotlin integrity detectors (ADR 0013). Whole-project ratchet values are
@@ -182,4 +182,44 @@ export const kotlinDetector: IntegrityDetector = {
       const findings = yield* compare(input)
       return { findings, metrics } satisfies DetectorOutput
     }),
+}
+
+const isPropertyTest = (fn: TestFn) => annotations(fn.node).some((a) => a.name === "Property") || ofType(fn.node, "call_expression").some((c) => PROPERTY_CALLS.has(calleeName(c) ?? ""))
+
+/** The class or object a test is declared in. */
+const enclosingClass = (n: Node) => {
+  const names: string[] = []
+  for (let p: Node | null = n.parent; p; p = p.parent) {
+    if (p.type === "class_declaration" || p.type === "object_declaration") names.unshift(p.namedChildren.find((c) => c?.type === "identifier" || c?.type === "type_identifier")?.text ?? "")
+  }
+  return names.join(".")
+}
+
+/** Kotlin test files for `gauntlet prune tests` (spec 0016). */
+export const kotlinSurveyor: TestSurveyor = {
+  reads: (path, isTestPath) => isKotlin(path) && isTestPath,
+  survey: (_path, text) => {
+    const root = parseKotlin(text).rootNode
+    const comments = ofType(root, "line_comment", "block_comment").map(span)
+    const tests = testFunctions(root)
+    const isTest = new Set(tests.map((t) => t.node.startIndex))
+    return {
+      tests: tests.map((t) => {
+        const name = t.node.namedChildren.find((c) => c?.type === "identifier")
+        return {
+          name: t.name,
+          line: line(t.node),
+          assertions: t.assertions,
+          tautologies: ofType(t.node, "call_expression").filter(tautology).length,
+          property: isPropertyTest(t),
+          calls: ofType(t.node, "call_expression").flatMap((c) => calleeName(c) ?? []),
+          scope: enclosingClass(t.node),
+          body: normalisedBody(text, span(t.node), [...comments, ...(name ? [span(name)] : [])]),
+        }
+      }),
+      assertingHelpers: ofType(root, "function_declaration")
+        .filter((f) => !isTest.has(f.startIndex) && assertionCount(f) > 0)
+        .flatMap((f) => f.namedChildren.find((c) => c?.type === "identifier")?.text ?? []),
+    }
+  },
 }

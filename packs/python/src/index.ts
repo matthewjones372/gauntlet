@@ -3,7 +3,7 @@ import { spec } from "./catalog.ts"
 import { doctor } from "./doctor.ts"
 import { onboard } from "./onboard.ts"
 import { parseDependencies } from "./dependencies.ts"
-import { pythonDetector } from "./detectors.ts"
+import { pythonDetector, pythonSurveyor } from "./detectors.ts"
 import { arch, build, coverage, lint, mutation, runSuite } from "./gates.ts"
 import { enclosingSymbol, parsePython, stripLineComment } from "./syntax.ts"
 import { tamper } from "./tamper.ts"
@@ -24,6 +24,7 @@ export const pythonPack: Pack = {
   manifests: ["pyproject.toml", "**/pyproject.toml", "requirements*.txt", "**/requirements*.txt"],
   dependencies: parseDependencies,
   detectors: [pythonDetector],
+  surveyTests: pythonSurveyor,
   gates: { build, lint, arch, mutation, coverage },
   runSuite,
   reruns: true,
