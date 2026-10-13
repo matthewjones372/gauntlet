@@ -1,7 +1,7 @@
 import type { Pack } from "@gauntlet/core"
 import { spec } from "./catalog.ts"
 import { parseDependencies } from "./dependencies.ts"
-import { goDetector } from "./detectors.ts"
+import { goDetector, goSurveyor } from "./detectors.ts"
 import { doctor } from "./doctor.ts"
 import { arch, build, coverage, lint, mutation, runSuite } from "./gates.ts"
 import { onboard } from "./onboard.ts"
@@ -22,6 +22,7 @@ export const goPack: Pack = {
   manifests: ["go.mod", "**/go.mod"],
   dependencies: parseDependencies,
   detectors: [goDetector],
+  surveyTests: goSurveyor,
   gates: { build, lint, arch, mutation, coverage },
   runSuite,
   reruns: true,

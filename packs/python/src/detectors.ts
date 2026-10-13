@@ -1,9 +1,9 @@
-import type { DetectorInput, DetectorOutput, IntegrityDetector, IntegrityFinding } from "@gauntlet/core"
+import { type DetectorInput, type DetectorOutput, type IntegrityDetector, type IntegrityFinding, normalisedBody, type TestSurveyor } from "@gauntlet/core"
 import type { Metric } from "@gauntlet/sarif"
-import { near } from "@gauntlet/syntax"
+import { near, span } from "@gauntlet/syntax"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { exceptTypes } from "./rules.ts"
-import { args, calleeText, decorators, line, nameOf, type Node, ofType, parsePython } from "./syntax.ts"
+import { args, calleeName, calleeText, decorators, line, nameOf, type Node, ofType, parsePython } from "./syntax.ts"
 import { isPython, isTestFile } from "./toolchain.ts"
 
 // Python integrity detectors (ADR 0013), for pytest and unittest, with
@@ -203,3 +203,37 @@ export const pythonDetector: IntegrityDetector = {
     }),
 }
 
+/** The class a test method is in. */
+const enclosingClass = (n: Node) => {
+  for (let p: Node | null = n.parent; p; p = p.parent) if (p.type === "class_definition") return nameOf(p)
+  return ""
+}
+
+/** Python test files for `gauntlet prune tests` (spec 0016). */
+export const pythonSurveyor: TestSurveyor = {
+  reads: (path, isTestPath) => isPython(path) && (isTestPath || isTestFile(path)),
+  survey: (_path, text) => {
+    const root = parsePython(text).rootNode
+    const comments = ofType(root, "comment").map(span)
+    const tests = testFunctions(root)
+    const isTest = new Set(tests.map((t) => t.node.startIndex))
+    return {
+      tests: tests.map((t) => {
+        // Decorators carry pytest's parameters, so they're part of what the test checks.
+        const whole = t.node.parent?.type === "decorated_definition" ? t.node.parent : t.node
+        const name = t.node.childForFieldName("name")
+        return {
+          name: t.name,
+          line: line(whole),
+          assertions: t.assertions,
+          tautologies: ofType(t.node, "assert_statement", "call").filter(tautology).length,
+          property: decorators(t.node).some((d) => PROPERTY.test(d)),
+          calls: ofType(t.node, "call").map(calleeName).filter((c) => c !== ""),
+          scope: enclosingClass(t.node),
+          body: normalisedBody(text, span(whole), [...comments, ...(name ? [span(name)] : [])]),
+        }
+      }),
+      assertingHelpers: ofType(root, "function_definition").filter((f) => !isTest.has(f.startIndex) && assertionCount(f) > 0).map(nameOf),
+    }
+  },
+}

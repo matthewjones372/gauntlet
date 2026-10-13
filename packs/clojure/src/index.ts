@@ -1,7 +1,7 @@
 import type { Pack } from "@gauntlet/core"
 import { spec } from "./catalog.ts"
 import { parseDependencies } from "./dependencies.ts"
-import { clojureDetector } from "./detectors.ts"
+import { clojureDetector, clojureSurveyor } from "./detectors.ts"
 import { doctor } from "./doctor.ts"
 import { arch, build, coverage, lint, runSuite } from "./gates.ts"
 import { onboard } from "./onboard.ts"
@@ -22,6 +22,7 @@ export const clojurePack: Pack = {
   manifests: ["deps.edn", "project.clj"],
   dependencies: parseDependencies,
   detectors: [clojureDetector],
+  surveyTests: clojureSurveyor,
   // No mutation: listed in the spec, reported not executed (catalog.ts).
   gates: { build, lint, arch, coverage },
   runSuite,

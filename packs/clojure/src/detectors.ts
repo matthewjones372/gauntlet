@@ -1,4 +1,4 @@
-import type { DetectorInput, DetectorOutput, IntegrityDetector, IntegrityFinding } from "@gauntlet/core"
+import { type DetectorInput, type DetectorOutput, type IntegrityDetector, type IntegrityFinding, normalisedBody, type TestSurveyor } from "@gauntlet/core"
 import type { Metric } from "@gauntlet/sarif"
 import { near } from "@gauntlet/syntax"
 import { Effect, FileSystem, Option, Path } from "effect"
@@ -195,4 +195,29 @@ export const clojureDetector: IntegrityDetector = {
     Effect.gen(function*() {
       return { findings: yield* compare(input), metrics: yield* measure(input) } satisfies DetectorOutput
     }),
+}
+
+/** Clojure test namespaces for `gauntlet prune tests` (spec 0016). */
+export const clojureSurveyor: TestSurveyor = {
+  reads: (path, isTestPath) => isClojure(path) && (isTestPath || isTestFile(path)),
+  survey: (_path, text) => {
+    const forms = read(text)
+    return {
+      tests: testDefinitions(forms).map((t) => {
+        const name = t.form.children[1]
+        return {
+          name: t.name,
+          line: t.form.line,
+          assertions: t.assertions,
+          tautologies: [...walk([t.form])].filter(tautology).length,
+          property: t.property,
+          calls: [...walk([t.form])].map((f) => local(head(f))).filter((h) => h !== ""),
+          scope: "",
+          // The reader drops comments, so a comment inside a test keeps it from matching another; that only misses a duplicate.
+          body: normalisedBody(text, { start: t.form.start, end: t.form.end }, name ? [{ start: name.start, end: name.end }] : []),
+        }
+      }),
+      assertingHelpers: [...live(forms)].filter((f) => local(head(f)) === "defn" && f.children[1]?.type === "symbol" && assertionsIn(f) > 0).map((f) => f.children[1]!.text),
+    }
+  },
 }

@@ -1,7 +1,8 @@
 # Spec 0016: tests that add no value
 
-Status: proposed. Uses spec 0011's mutant helper and spec 0013's map of what each test
-exercises; shares the killer recording of spec 0012 §6.
+Status: stage 1 implemented (`gauntlet prune tests` with the signals that need no mutation
+run, for every pack); stages 2 to 4 proposed. Uses spec 0011's mutant helper and spec
+0013's map of what each test exercises; shares the killer recording of spec 0012 §6.
 
 ## Problem
 
@@ -41,9 +42,10 @@ A test **tests nothing** when, at base:
 A test is **already covered** when:
 
 - every mutant it kills is killed by another test that stays, or
-- its body is the same as another test's once names and literals in test-data
-  position are set aside (a fingerprint of the body from the pack's tree-sitter
-  grammar).
+- its source is the same as another test's in the same file and the same class,
+  module or `describe`, once its name, comments and layout are set aside. Literals
+  count, and so do the parameters in its annotations or decorators: two tests that
+  check different examples aren't duplicates.
 
 Mutant kills per test come from the mutation tools' killer reports: Pitest's
 `killingTests` with the full mutation matrix, and Stryker's and Stryker4s's

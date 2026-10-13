@@ -1,6 +1,6 @@
-import type { DetectorInput, DetectorOutput, IntegrityDetector, IntegrityFinding } from "@gauntlet/core"
+import { type DetectorInput, type DetectorOutput, type IntegrityDetector, type IntegrityFinding, normalisedBody, type TestSurveyor } from "@gauntlet/core"
 import type { Metric } from "@gauntlet/sarif"
-import { near } from "@gauntlet/syntax"
+import { near, span } from "@gauntlet/syntax"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { attributesOf, calleeText, inTestModule, line, macroName, nameOf, type Node, ofType, parseRust } from "./syntax.ts"
 import { isRust, isTestFile } from "./toolchain.ts"
@@ -230,4 +230,41 @@ export const rustDetector: IntegrityDetector = {
     Effect.gen(function*() {
       return { findings: yield* compare(input), metrics: yield* measure(input) } satisfies DetectorOutput
     }),
+}
+
+/** Where a test starts: its first attribute, which may carry its cases (`#[test_case(1)]`). */
+const startOf = (f: Node) => {
+  let start = f
+  for (let p = f.previousNamedSibling; p && (p.type === "attribute_item" || p.type === "line_comment" || p.type === "block_comment"); p = p.previousNamedSibling) {
+    if (p.type === "attribute_item") start = p
+  }
+  return start
+}
+
+/** Rust files with tests, in tests/ or #[cfg(test)] modules, for `gauntlet prune tests` (spec 0016). */
+export const rustSurveyor: TestSurveyor = {
+  reads: (path) => isRust(path),
+  survey: (_path, text) => {
+    const root = parseRust(text).rootNode
+    const comments = ofType(root, "line_comment", "block_comment").map(span)
+    const tests = testFunctions(root)
+    const isTest = new Set(tests.map((t) => t.node.startIndex))
+    return {
+      tests: tests.map((t) => {
+        const start = startOf(t.node)
+        const name = t.node.childForFieldName("name")
+        return {
+          name: t.name,
+          line: line(start),
+          assertions: t.assertions,
+          tautologies: ofType(t.node, "macro_invocation").filter(tautology).length,
+          property: t.attributes.some((a) => /^(quickcheck|proptest)/.test(a)),
+          calls: ofType(t.node, "call_expression").map((c) => calleeText(c).split("::").pop() ?? "").filter((c) => c !== ""),
+          scope: modulePath(t.node).join("::"),
+          body: normalisedBody(text, { start: start.startIndex, end: t.node.endIndex }, [...comments, ...(name ? [span(name)] : [])]),
+        }
+      }),
+      assertingHelpers: ofType(root, "function_item").filter((f) => !isTest.has(f.startIndex) && assertionCount(f, []) > 0).map(nameOf),
+    }
+  },
 }

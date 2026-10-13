@@ -1,6 +1,6 @@
-import type { DetectorInput, DetectorOutput, IntegrityDetector, IntegrityFinding } from "@gauntlet/core"
+import { type DetectorInput, type DetectorOutput, type IntegrityDetector, type IntegrityFinding, normalisedBody, type TestSurveyor } from "@gauntlet/core"
 import type { Metric } from "@gauntlet/sarif"
-import { near } from "@gauntlet/syntax"
+import { near, span } from "@gauntlet/syntax"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { args, calleeName, calleeText, line, nameOf, type Node, ofType, operatorOf, parseScala, unquote } from "./syntax.ts"
 import { isScala, isTestFile } from "./toolchain.ts"
@@ -241,4 +241,33 @@ export const scalaDetector: IntegrityDetector = {
     Effect.gen(function*() {
       return { findings: yield* compare(input), metrics: yield* measure(input) } satisfies DetectorOutput
     }),
+}
+
+/** The name a test is written with: the string in `test("x")`, or everything left of `in` in `"x" should "y" in`. */
+const nameNode = (t: TestDef): Node | undefined =>
+  t.node.type === "infix_expression" ? t.node.namedChild(0) ?? undefined : ofType(t.node, "string")[0]
+
+/** Scala test files for `gauntlet prune tests` (spec 0016). */
+export const scalaSurveyor: TestSurveyor = {
+  reads: (path, isTestPath) => isScala(path) && (isTestPath || isTestFile(path)),
+  survey: (_path, text) => {
+    const root = parseScala(text).rootNode
+    const comments = ofType(root, "comment", "block_comment").map(span)
+    return {
+      tests: testDefinitions(root).map((t) => {
+        const name = nameNode(t)
+        return {
+          name: t.name,
+          line: line(t.node),
+          assertions: t.assertions,
+          tautologies: t.body === undefined ? 0 : ofType(t.body, "call_expression").filter(tautology).length,
+          property: t.property,
+          calls: t.body === undefined ? [] : ofType(t.body, "call_expression").map(calleeName).filter((c) => c !== ""),
+          scope: owner(t.node),
+          body: normalisedBody(text, span(t.node), [...comments, ...(name ? [span(name)] : [])]),
+        }
+      }),
+      assertingHelpers: ofType(root, "function_definition").filter((f) => assertionsIn(f) > 0).map(nameOf),
+    }
+  },
 }

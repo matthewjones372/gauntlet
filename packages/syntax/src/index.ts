@@ -40,3 +40,6 @@ export const near = (lines: ReadonlySet<number>, at: number, distance: number) =
   for (let d = -distance; d <= distance; d++) if (lines.has(at + d)) return true
   return false
 }
+
+/** Where a node sits in the source, as offsets into the parsed text. */
+export const span = (n: Node) => ({ start: n.startIndex, end: n.endIndex })

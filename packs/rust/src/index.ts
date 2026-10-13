@@ -1,7 +1,7 @@
 import type { Pack } from "@gauntlet/core"
 import { spec } from "./catalog.ts"
 import { parseDependencies } from "./dependencies.ts"
-import { rustDetector } from "./detectors.ts"
+import { rustDetector, rustSurveyor } from "./detectors.ts"
 import { doctor } from "./doctor.ts"
 import { arch, build, coverage, lint, mutation, runSuite } from "./gates.ts"
 import { onboard } from "./onboard.ts"
@@ -22,6 +22,7 @@ export const rustPack: Pack = {
   manifests: ["Cargo.toml", "**/Cargo.toml"],
   dependencies: parseDependencies,
   detectors: [rustDetector],
+  surveyTests: rustSurveyor,
   gates: { build, lint, arch, mutation, coverage },
   runSuite,
   reruns: true,

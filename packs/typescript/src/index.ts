@@ -3,7 +3,7 @@ import { spec } from "./catalog.ts"
 import { doctor } from "./doctor.ts"
 import { onboard } from "./onboard.ts"
 import { parseDependencies } from "./dependencies.ts"
-import { typescriptDetector } from "./detectors.ts"
+import { typescriptDetector, typescriptSurveyor } from "./detectors.ts"
 import { arch, build, coverage, lint, mutation, runSuite } from "./gates.ts"
 import { enclosingSymbol, parseTs, stripLineComment } from "./syntax.ts"
 import { tamper } from "./tamper.ts"
@@ -25,6 +25,7 @@ export const typescriptPack: Pack = {
   manifests: ["package.json", "**/package.json"],
   dependencies: parseDependencies,
   detectors: [typescriptDetector],
+  surveyTests: typescriptSurveyor,
   gates: { build, lint, arch, mutation, coverage },
   runSuite,
   reruns: true,

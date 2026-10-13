@@ -284,6 +284,15 @@ test.
 
 Deleting a test is forbidden: it's the oldest way to make a check pass. But removing a feature removes its tests too. When a change deletes a test file together with the source file it's named after (`FxTest.kt` with `Fx.kt`, `fx.test.ts` with `fx.ts`, `fx_test.go` with `fx.go`, `test_fx.py` with `fx.py`), it's flagged instead: the change needs a person's review, not a fix. Those tests don't count against the executed-tests ratchet either. A test deleted while its code stays is still forbidden.
 
+## Tests that add no value
+
+`gauntlet prune tests` lists tests that can't catch anything ([spec 0016](specs/0016-tests-that-add-no-value.md)):
+
+- **Tests that test nothing:** no assertions, or only ones that can't fail (`assertTrue(true)`, `expect(x).toBe(x)`). An assertion in a helper function in the same file counts.
+- **Tests that repeat another word for word:** the same source as another test in the same file and the same class, module or `describe`, apart from the name, comments and layout. Different literals or parameters make them different tests.
+
+Property tests are never listed, and holdouts aren't read. It's a list: it changes nothing, and removing one of these tests is still a deleted-tests forbid. `--json` prints the same list as JSON.
+
 ## Review levels
 
 | Level | What it means |
