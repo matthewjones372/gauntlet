@@ -1,6 +1,6 @@
 import { type GateSpec, globMatches } from "@gauntlet/dsl"
 import { type Check, type PolicyIR, sha256 } from "@gauntlet/ir"
-import { type Baseline, compareMetrics, compareWithBaseline, type Metric, type MetricDelta, type Proof, resultPath, resultRegion, type Run, type TestMap } from "@gauntlet/sarif"
+import { type Baseline, compareMetrics, compareWithBaseline, convertJUnit, type Metric, type MetricDelta, type Proof, resultPath, resultRegion, type Run, type TestMap } from "@gauntlet/sarif"
 import { Clock, Effect, FileSystem, Option, type Path } from "effect"
 import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy, runFromBuild, toBuild } from "./builds.ts"
 import { judgeBudget, parseBudgetResults } from "./budget.ts"
@@ -163,14 +163,47 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     const ciFiles = (dir: string) => (input.fromCi?.files ?? []).filter((f) => ownedBy(buildDirs, dir, [f.path]).length > 0).map((f) => ({ ...f, path: toBuild(dir, f.path) }))
     /** Checks the CI's reports can stand in for: the test suites, coverage and (since the tests compiled) the build. */
     const ciCovers = (check: Check) => check.kind === "suite" || (check.kind === "gate" && (check.name === "coverage" || check.name === "build"))
+    /** The base's test ids of a build, as the build's own run names them (without its folder). */
+    const baseIdsOf = (dir: string): ReadonlyArray<string> => {
+      const ids = Option.match(baseline, { onNone: () => [], onSome: (b) => b.testIds })
+      if (!multi) return ids
+      if (dir !== ".") return ids.filter((id) => id.startsWith(`${dir}:`)).map((id) => id.slice(dir.length + 1))
+      return ids.filter((id) => !buildDirs.some((d) => d !== "." && id.startsWith(`${d}:`)))
+    }
+    // Whether each build's reports from the CI or a local run hold every test the base ran, worked out once.
+    const ciWhole = new Map<string, boolean>()
+    /**
+     * Reports that leave out a test the base ran aren't the suite's run: a narrow
+     * run (one module, one class) wrote them, or some are older than the change.
+     * The tests left out didn't stop running, so the build's checks run here as
+     * before rather than read them. A test whose source the change deleted is
+     * missing from that run too, and is reported as no longer running.
+     */
+    function ciHoldsBase(dir: string, files: ReadonlyArray<{ readonly path: string; readonly content: string }>) {
+      return Effect.gen(function*() {
+        const known = ciWhole.get(dir)
+        if (known !== undefined) return known
+        const expected = baseIdsOf(dir)
+        const ran = new Set<string>()
+        // Only files that read as JUnit name tests; coverage reports don't.
+        for (const f of expected.length > 0 ? files : []) {
+          const junit = yield* Effect.exit(convertJUnit("ci", [f]))
+          if (junit._tag === "Success") for (const t of junit.value.tests) ran.add(t.id)
+        }
+        const whole = expected.every((id) => ran.has(id))
+        ciWhole.set(dir, whole)
+        return whole
+      })
+    }
     /**
      * Runs a check for one build, reading the CI's reports when its pack can and
-     * the CI wrote some for the build: they go into the check's output directory.
+     * the CI wrote some for the build that hold every test the base ran: they go
+     * into the check's output directory.
      */
     function withCi(check: Check, pack: Pack | undefined, dir: string, ctx: GateContext, run: (ctx: GateContext) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) {
       return Effect.gen(function*() {
         const files = pack?.readsCi && ciCovers(check) ? ciFiles(dir) : []
-        if (files.length === 0) return yield* onceForCoverage(check, pack, dir, ctx, run)
+        if (files.length === 0 || !(yield* ciHoldsBase(dir, files))) return yield* onceForCoverage(check, pack, dir, ctx, run)
         for (const f of files) {
           const target = `${ctx.outputDir}/${f.path}`
           yield* fsys.makeDirectory(target.slice(0, target.lastIndexOf("/")), { recursive: true }).pipe(Effect.ignore)

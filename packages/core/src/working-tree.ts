@@ -1,3 +1,4 @@
+import { sha256 } from "@gauntlet/ir"
 import { Effect, FileSystem, Option, Path, Schema } from "effect"
 import { BASELINE_PATH } from "./baseline-store.ts"
 import { blockedFor } from "./blocked.ts"
@@ -44,7 +45,11 @@ export const checkWorkingTree = (request: { readonly repo: string; readonly outD
         if (Option.isSome(since)) baseRef = since.value
       }
     }
-    const key = `${snapshot.tree} ${baseRef ?? base} ${request.gauntletVersion}${request.adoption ? " adoption" : ""}`
+    // Tests already run here since the last edit aren't run again (ADR 0024). A new run on the same tree
+    // (the whole suite after a narrow one, say) is judged again, so the reports it read are part of the key.
+    const local = base === "" ? [] : yield* localReports(request.repo, baseRef ?? base, snapshot.commit)
+    const reports = local.length > 0 ? ` ${sha256(local.map((f) => `${f.path}\0${sha256(f.content)}`).join("\n"))}` : ""
+    const key = `${snapshot.tree} ${baseRef ?? base} ${request.gauntletVersion}${request.adoption ? " adoption" : ""}${reports}`
     const keyFile = path.join(request.outDir, CACHE_KEY_FILE)
     const previous = yield* fs.readFileString(keyFile).pipe(Effect.option)
     if (Option.isSome(previous) && previous.value === key && Option.isNone(blocked)) {
@@ -55,8 +60,6 @@ export const checkWorkingTree = (request: { readonly repo: string; readonly outD
       }
     }
     yield* fs.remove(keyFile, { force: true }).pipe(Effect.orElseSucceed(() => undefined))
-    // Tests already run here since the last edit aren't run again (ADR 0024).
-    const local = base === "" ? [] : yield* localReports(request.repo, baseRef ?? base, snapshot.commit)
     const result = yield* runCheck({
       repo: request.repo,
       head: snapshot.commit,
