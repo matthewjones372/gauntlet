@@ -1,4 +1,4 @@
-# Spec 0016: removing code, and the tests only it needed
+# Spec 0017: removing code, and the tests only it needed
 
 Status: proposed. Builds on spec 0013 (the map of what each test exercises).
 
@@ -108,8 +108,8 @@ judged by §1 to §3. `/gauntlet-setup` mentions it once the map is recorded.
 
 ## Not covered
 
-- Removing a test whose code stays: still forbidden. That's what this spec mustn't
-  open up.
+- Removing a test whose code stays: still forbidden here. Spec 0016 covers tests
+  that add no value, proven by mutation.
 - Code reached only by reflection, dependency injection, serialisation or an outside
   caller (a public library API, an HTTP route nobody tests): tools miss these, which
   is why `prune` lists and never deletes.
