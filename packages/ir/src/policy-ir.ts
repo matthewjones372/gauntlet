@@ -246,8 +246,19 @@ export const PolicyIR = Schema.Struct({
   builds: Schema.optionalKey(Schema.Array(Build)),
   /** How many changed lines over several parts suggest stacked pull requests (\`split when diff > 600 lines\`). Omitted for the default. */
   split: Schema.optionalKey(Schema.Struct({ lines: Schema.Number })),
+  /** How many blocked stops the agent hooks allow before an exhausted exit (ADR 0026). Only the limits the policy states; omitted when none. */
+  attempts: Schema.optionalKey(Schema.Struct({ unchanged: Schema.optionalKey(Schema.Number), total: Schema.optionalKey(Schema.Number) })),
 })
 export type PolicyIR = typeof PolicyIR.Type
+
+/** The attempt limits when a policy doesn't state them (ADR 0026). */
+export const DEFAULT_ATTEMPTS = { unchanged: 3, total: 8 } as const
+
+/** The limits in force: the policy's, else the defaults. */
+export const attemptLimits = (ir: Pick<PolicyIR, "attempts">): { readonly unchanged: number; readonly total: number } => ({
+  unchanged: ir.attempts?.unchanged ?? DEFAULT_ATTEMPTS.unchanged,
+  total: ir.attempts?.total ?? DEFAULT_ATTEMPTS.total,
+})
 
 /** Everything the integrity checks cover when a policy says nothing (ADR 0013). */
 export const DEFAULT_INTEGRITY: Integrity = {

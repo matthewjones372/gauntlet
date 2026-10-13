@@ -1,4 +1,5 @@
 import {
+  attemptLimits,
   type Check,
   type Comparator,
   type Condition,
@@ -24,6 +25,7 @@ import { didYouMean, quoteList } from "./suggest.ts"
 import {
   ADVISORY_TIER,
   AGGREGATES,
+  ATTEMPT_LIMITS,
   BUDGET_METRICS,
   FACT_CONDITIONS,
   INTEGRITY_PHRASES,
@@ -247,6 +249,9 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
         ir.split = { lines: c.op === ">" ? c.value.value + 1 : c.value.value }
         break
       }
+      case "Attempts":
+        if (once("attempts", block)) attempts(block)
+        break
       case "Owners":
         if (!once("owners", block)) break
         spans.owners = nodeSpan(block)
@@ -690,6 +695,35 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       return undefined
     }
     return at({ kind }, span)
+  }
+
+  // `attempts { unchanged 3, total 8 }` (ADR 0026): whole numbers from 1, each limit once.
+  function attempts(block: Ast.Attempts) {
+    const limits: { unchanged?: number; total?: number } = {}
+    for (const limit of block.limits) {
+      if (!isOneOf(ATTEMPT_LIMITS, limit.kind)) {
+        error("unknown-attempt-limit", propertySpan(limit, "kind"), `Unknown attempt limit '${limit.kind}'.`, `one of ${quoteList(ATTEMPT_LIMITS)}`,
+          didYouMean(limit.kind, ATTEMPT_LIMITS, "Write `unchanged <n>` (blocks in a row on the same findings) or `total <n>` (blocks on the branch)."), ATTEMPT_LIMITS)
+        continue
+      }
+      if (!Number.isInteger(limit.value) || limit.value < 1) {
+        error("wrong-attempt-limit", propertySpan(limit, "value"), `The ${limit.kind} limit must be a whole number from 1.`, "a whole number such as 3",
+          `Write: ${limit.kind} ${Math.max(1, Math.round(limit.value))}`)
+        continue
+      }
+      if (limits[limit.kind] !== undefined) {
+        error("duplicate-attempt-limit", nodeSpan(limit), `\`${limit.kind}\` appears more than once.`, `a single \`${limit.kind}\``, `Keep one \`${limit.kind}\` limit.`)
+        continue
+      }
+      limits[limit.kind] = limit.value
+    }
+    const effective = attemptLimits({ attempts: limits })
+    if (effective.unchanged > effective.total) {
+      error("unreachable-attempt-limit", headSpan(block, "attempts"), `The unchanged limit (${effective.unchanged}) is above the total (${effective.total}), so it could never be reached.`,
+        "unchanged no higher than total", `Lower unchanged to at most ${effective.total}, or raise total.`)
+      return
+    }
+    if (limits.unchanged !== undefined || limits.total !== undefined) ir.attempts = limits
   }
 
   function quarantine(q: Ast.Quarantine) {

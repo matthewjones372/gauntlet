@@ -180,6 +180,8 @@ const RULE_CONTEXT: Record<string, string> = {
   StackLimit: "in `max layer diff`",
   StackReview: "in `review stack when cumulative <comparison> <tier>`",
   Quarantine: "in the `quarantine` block",
+  Attempts: "in the `attempts` block (attempts { unchanged <n>, total <n> })",
+  AttemptLimit: "in an attempt limit (unchanged <n> or total <n>)",
   QuarantineEntry: "in a quarantine entry (\"<test id>\" until <YYYY-MM-DD> owner @team)",
   Quantity: "in an amount",
 }
@@ -189,7 +191,7 @@ const KEYWORDS = new Set([
   "must", "not", "depend", "on", "suites", "holdout", "ci", "only", "from", "env", "integrity", "ratchet", "forbid",
   "flag", "import", "caution", "budget", "command", "vs", "baseline", "gates", "llm", "review", "in", "fail", "fix",
   "predicate", "when", "and", "skim", "auto", "require", "raise", "no", "all", "touched", "changed", "added",
-  "missing", "pass", "diff", "stack", "layer", "max", "cumulative", "quarantine", "until", "split", "reads", "affected",
+  "missing", "pass", "diff", "stack", "layer", "max", "cumulative", "quarantine", "until", "split", "attempts", "reads", "affected",
 ])
 
 const RETIRED = new Set(["harness", "require", "raise"])
@@ -197,7 +199,7 @@ const RETIRED = new Set(["harness", "require", "raise"])
 /** Keywords the grammar also accepts as names (the `Name` rule). */
 const NAME_KEYWORDS = new Set([
   "baseline", "env", "command", "cumulative", "caution", "ci", "only", "fix", "fail", "changed", "all", "touched",
-  "added", "missing", "pass", "until", "split", "reads", "affected",
+  "added", "missing", "pass", "until", "split", "attempts", "reads", "affected",
 ])
 
 /** What may start a line inside each block, for "unexpected line" hints. */

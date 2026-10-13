@@ -1,0 +1,4 @@
+{
+  "tamper": "delete-witness",
+  "expect": "exhausted"
+}

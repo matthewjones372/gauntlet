@@ -1,4 +1,4 @@
-import type { Check, Condition, PolicyIR } from "@gauntlet/ir"
+import { attemptLimits, type Check, type Condition, type PolicyIR } from "@gauntlet/ir"
 
 // `gauntlet explain [block]`: what the policy enforces, in plain language.
 // Deterministic, from the IR; the authoring agent's explanations come later.
@@ -64,6 +64,12 @@ export const explainPolicy = (ir: PolicyIR, block?: string): string => {
         ? ["No quarantines."]
         : (ir.quarantine ?? []).map((q) => `- ${q.test} is quarantined until ${q.until} (inclusive, by the judged commit's date) by ${q.owners.join(", ")}: it runs, and its failure doesn't fail the suite until then.`)),
     ],
+    attempts: (() => {
+      const limits = attemptLimits(ir)
+      return [
+        `The Stop and SubagentStop hooks block an agent at most ${limits.unchanged} times in a row on the same findings, and at most ${limits.total} times on a branch${ir.attempts ? "" : " (the defaults)"}. The next blocking stop lets the agent stop as exhausted, which is still a failure: the change is judged as before everywhere else.`,
+      ]
+    })(),
   }
   const aliases: Record<string, string> = { zone: "zones", gate: "gates", predicate: "review", predicates: "review", suites: "gates", quarantine: "flaky" }
   const wanted = block === undefined ? Object.keys(sections) : [aliases[block] ?? block]

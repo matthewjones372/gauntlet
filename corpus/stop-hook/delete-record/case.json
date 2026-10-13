@@ -1,0 +1,4 @@
+{
+  "tamper": "delete-record",
+  "expect": "exhausted"
+}

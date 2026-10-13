@@ -1,0 +1,4 @@
+{
+  "tamper": "corrupt-record",
+  "expect": "exhausted"
+}
