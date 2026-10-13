@@ -129,7 +129,9 @@ jobs:
           clj-kondo: "2026.08.04"
       - run: bun install --frozen-lockfile
       - name: End-to-end suite against real ${{ matrix.pack }} projects
-        run: bun test packs/${{ matrix.pack }} ${{ matrix.filter && format('-t "{0}"', matrix.filter) || '' }}
+        # The e2e files are named *.e2e.ts so a plain `bun test` doesn't collect them (and count them as skipped):
+        # they run here, named one by one.
+        run: bun test $(ls packs/${{ matrix.pack }}/test/*.e2e.ts | sed 's#^#./#') ${{ matrix.filter && format('-t "{0}"', matrix.filter) || '' }}
         env:
           CI: "true"
           GAUNTLET_E2E: "1"
