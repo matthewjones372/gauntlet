@@ -74,6 +74,8 @@ export const selectTests = (input: SelectionInput): Selection => {
     const known = paths(c).flatMap((p) => users.get(p) ?? [])
     if (known.length > 0) {
       known.forEach((n) => selected.add(n))
+      // A renamed test file runs by its new path too: the map knows it by its old one.
+      if (c.status === "renamed" && input.isTestPath(c.path) && globMatches(input.location, c.path)) files.push(c.path)
       continue
     }
     if (input.isTestPath(c.path)) {
@@ -96,13 +98,19 @@ export const selectTests = (input: SelectionInput): Selection => {
   }
 }
 
-/** The base's test ids that belong to classes selection left out (a nested class's tests, `Outer$Inner.x`, belong to `Outer`). */
+/**
+ * The base's test ids that belong to classes selection left out (a nested
+ * class's tests, `Outer$Inner.x`, belong to `Outer`). A class is whatever the
+ * map names: a JVM class, or a test file whose tests are `<file>.<name>`
+ * (Vitest's JUnit XML) or `<file> > <name>` (Jest).
+ */
 export const excusedBySelection = (baseIds: ReadonlyArray<string>, deselected: ReadonlyArray<string>): string[] => {
   if (deselected.length === 0) return []
   const left = new Set(deselected)
   return baseIds.filter((id) => {
     for (let i = id.indexOf("."); i >= 0; i = id.indexOf(".", i + 1)) if (left.has(id.slice(0, i).replace(/\$.*$/, ""))) return true
-    return false
+    const named = id.indexOf(" > ")
+    return named > 0 && left.has(id.slice(0, named))
   })
 }
 

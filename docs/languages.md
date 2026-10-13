@@ -13,7 +13,9 @@ Back to the [README](../README.md).
 | Clojure | Clojure CLI, Leiningen | clojure.test (run by kaocha) | clj-kondo | cloverage | none yet (reported as not executed) |
 
 Each language pack brings its own zone rules, integrity detectors and tamper
-fixtures. .NET, Ruby, PHP, Maven and frontend packs are planned.
+fixtures. A suite marked `affected` runs only the tests a change affects with
+the Kotlin and Java pack and with TypeScript on Vitest or Jest; elsewhere it
+runs every test ([policy](policy.md#running-the-tests-a-change-affects)). .NET, Ruby, PHP, Maven and frontend packs are planned.
 
 On Gradle, the gates of one check share one warm daemon that only that check
 can use, and it's shut down when the check ends

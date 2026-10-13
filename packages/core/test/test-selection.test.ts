@@ -51,6 +51,11 @@ describe("selecting the tests a change affects", () => {
       .toMatchObject({ kind: "some", classes: ["svc.FxTest"] })
   })
 
+  test("a renamed test file runs by its new path too", () => {
+    expect(selectTests(input({ changes: [{ path: "src/test/kotlin/svc/RatesTest.kt", oldPath: "src/test/kotlin/svc/FxTest.kt", status: "renamed" }] })))
+      .toEqual({ kind: "some", classes: ["svc.FxTest"], files: ["src/test/kotlin/svc/RatesTest.kt"], deselected: ["svc.ClusterSpec", "svc.MoneyTest"] })
+  })
+
   test("everything runs without a map, or for a build the map has nothing of", () => {
     expect(selectTests(input({ map: undefined }))).toMatchObject({ kind: "all", reason: expect.stringContaining("no map") })
     expect(selectTests(input({ dir: "lark-bank", buildDirs: ["lark-bank", "events"], prefixed: true, changes: [modified("lark-bank/src/main/kotlin/A.kt")] })))
@@ -104,6 +109,12 @@ describe("what selection excuses", () => {
     const base = ["svc.FxTest.converts", "svc.MoneyTest.adds", "svc.MoneyTest.subtracts", "svc.Outer$Inner.x", "svc.MoneyTestable.y"]
     expect(excusedBySelection(base, ["svc.MoneyTest", "svc.Outer"])).toEqual(["svc.MoneyTest.adds", "svc.MoneyTest.subtracts", "svc.Outer$Inner.x"])
     expect(excusedBySelection(base, [])).toEqual([])
+  })
+
+  test("a test file's tests, as Vitest's JUnit XML and Jest name them, belong to the file", () => {
+    const base = ["test/a.test.ts.money > adds", "test/a.test.ts > money > adds", "test/ab.test.ts > x", "test/b.test.ts.converts", "web:test/a.test.ts.y"]
+    expect(excusedBySelection(base, ["test/a.test.ts"])).toEqual(["test/a.test.ts.money > adds", "test/a.test.ts > money > adds"])
+    expect(excusedBySelection(base, ["web:test/a.test.ts"])).toEqual(["web:test/a.test.ts.y"])
   })
 })
 

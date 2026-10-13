@@ -1,6 +1,6 @@
 # Spec 0013: run the tests a change affects
 
-Status: implemented for the JVM pack; other packs record no map yet, so their affected suites run every test.
+Status: implemented for the JVM pack and the TypeScript pack on Vitest and Jest; Bun's test runner and the other packs record no map yet, so their affected suites run every test.
 
 ## Problem
 
@@ -27,6 +27,26 @@ spot flaky tests), so packs can run what's chosen. Two things stop it choosing t
 the baseline next to `testIds`. The JVM pack takes it from Pitest's coverage step
 (which runs each test and records what it covers) or Kover's per-test data; other
 packs from their coverage tools where they can, and record nothing where they can't.
+
+The TypeScript pack's "test class" is a test file. It runs each test file the
+suite ran on its own with the runner's coverage (Vitest or Jest), and maps it to
+itself and every file that run loaded. That's a run per test file, once per
+baseline: dearer than one run, but it sees setup files, dynamic imports and
+path aliases as they really load, which a static import graph would have to
+guess at. What coverage can't see is another process: a test file that starts
+processes or workers, imports a computed path, or reaches a test-side helper
+that does (or a relative import Gauntlet can't resolve) maps to every file any
+test loaded, as does a test file whose own run failed. A global setup runs
+outside every test file's process, so a runner configuration with one records
+no map.
+
+Bun's test runner records no map. Integrity has to tell a test that selection
+left out from one that was deleted, which needs each test id to name its test
+file; Vitest's (`<file>.<name>`) and Jest's (`<file> > <name>`) do, but Bun's
+JUnit report names a test by its `describe` blocks alone (`money.adds`, or
+`.adds` at the top level). Selection for Bun needs its test ids to carry the
+file, a change of id that every Bun project's baseline would have to be
+re-recorded for.
 
 ### 2. A check runs the tests that exercise what changed
 

@@ -8,6 +8,7 @@ import { Effect, FileSystem, Option, Path } from "effect"
 import { convertEslintJson, convertJestJson, DETECTED, type Mutant, parseLcov, parseStryker, UNDETECTED } from "./reports.ts"
 import { runRules } from "./rules.ts"
 import { line, ofType, parseTs } from "./syntax.ts"
+import { GLOBAL_SETUP, reachesUnseen, RUNNER_CONFIG, testFileOf, testMapOf } from "./test-map.ts"
 import { bun, ensureInstalled, isMainSource, isTsSource, tool, type ToolRun, type Toolchain, toolchain } from "./toolchain.ts"
 
 // The TypeScript pack's gates. Each installs dependencies once per check,
@@ -65,20 +66,33 @@ export const build: GateImpl = (_check, ctx) =>
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-/** Runs the suite, or with `subset` only those test files, shuffled by its seed. */
+/**
+ * The test files an affected suite runs (spec 0013): those that loaded what the
+ * change touches, and those it adds. One the change deletes has nothing to run.
+ */
+const selectedFiles = (ctx: GateContext, subset: TestSubset) => [...new Set([...(subset.classes ?? []), ...subset.files])].filter((f) => ctx.files.includes(f))
+
+/** Jest's pattern for exactly these files (its patterns match absolute paths). */
+const exactly = (paths: ReadonlyArray<string>) => paths.map((p) => `(^|/)${escape(p)}$`).join("|")
+
+/**
+ * Runs the suite, or with `subset` only those test files, shuffled by its seed.
+ * The tests a change affects (spec 0013) are the selected test files, run in the usual order.
+ */
 const runTests = (ctx: GateContext, chain: Toolchain, filter: string, subset?: TestSubset) =>
   Effect.gen(function*() {
     const runner = Option.getOrUndefined(chain.runner)
     const out = ctx.outputDir
-    const paths = subset ? [...subset.files] : filter ? [filter] : []
+    const paths = subset ? (subset.affected ? selectedFiles(ctx, subset) : [...subset.files]) : filter ? [filter] : []
+    const shuffled = subset !== undefined && !subset.affected
     switch (runner) {
       case "vitest":
-        return yield* tool(ctx, "vitest", ["run", ...paths, ...(subset ? ["--sequence.shuffle", `--sequence.seed=${subset.seed}`] : []), "--reporter=junit", `--outputFile.junit=${out}/junit.xml`])
+        return yield* tool(ctx, "vitest", ["run", ...paths, ...(shuffled ? ["--sequence.shuffle", `--sequence.seed=${subset.seed}`] : []), "--reporter=junit", `--outputFile.junit=${out}/junit.xml`])
       case "jest":
-        return yield* tool(ctx, "jest", ["--ci", "--json", `--outputFile=${out}/jest/results.json`, ...(paths.length > 0 ? ["--testPathPatterns", paths.map(escape).join("|")] : []),
-          ...(subset ? ["--randomize", `--seed=${subset.seed}`] : [])])
+        return yield* tool(ctx, "jest", ["--ci", "--json", `--outputFile=${out}/jest/results.json`, ...(paths.length > 0 ? ["--testPathPatterns", subset?.affected ? exactly(paths) : paths.map(escape).join("|")] : []),
+          ...(shuffled ? ["--randomize", `--seed=${subset.seed}`] : [])])
       case "bun":
-        return yield* bun(ctx, ["test", ...paths, ...(subset ? ["--randomize", `--seed=${subset.seed}`] : []), "--reporter=junit", // bun silently skips the report if its directory is missing, so write at the top level.
+        return yield* bun(ctx, ["test", ...paths, ...(shuffled ? ["--randomize", `--seed=${subset.seed}`] : []), "--reporter=junit", // bun silently skips the report if its directory is missing, so write at the top level.
           `--reporter-outfile=${out}/junit.xml`])
       default:
         return { command: ["test"], exitCode: -1, stdout: "", stderr: "", error: "no test runner found: add vitest or jest, or use bun" } satisfies ToolRun
@@ -89,23 +103,76 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
   Effect.gen(function*() {
     const { chain, blocked } = yield* prepared(ctx, "test")
     if (blocked) return blocked
-    if (subset && subset.files.length === 0) return failed(["test"], "no test files to run again")
-    const r = yield* runTests(ctx, chain, literalPrefix(suite.location), subset)
+    if (subset && !subset.affected && subset.files.length === 0) return failed(["test"], "no test files to run again")
+    // Selected test files the change all deleted leave nothing to run: then the whole suite runs, which only ever runs more.
+    const narrowed = subset?.affected && selectedFiles(ctx, subset).length === 0 ? undefined : subset
+    const r = yield* runTests(ctx, chain, literalPrefix(suite.location), narrowed)
     if (r.error) return base(r)
     const files = yield* reports(ctx, (p) => p.endsWith(".xml") || p === "jest/results.json")
     const jest = files.find((f) => f.path === "jest/results.json")
+    let ran: GateRun
     if (jest) {
       const converted = convertJestJson(suite.name, jest.content, ctx.dir)
-      return Option.match(converted, {
-        onNone: () => ({ ...base(r), error: "jest's JSON results couldn't be read" }),
-        onSome: (c) => ({ ...base(r), runs: [c.run], tests: { counts: c.counts, ids: c.ids } }),
-      })
+      if (Option.isNone(converted)) return { ...base(r), error: "jest's JSON results couldn't be read" }
+      ran = { ...base(r), runs: [converted.value.run], tests: { counts: converted.value.counts, ids: converted.value.ids } }
+    } else {
+      const xml = files.filter((f) => f.path.endsWith(".xml"))
+      if (xml.length === 0) return base(r)
+      const junit = yield* Effect.exit(convertJUnit(suite.name, xml.map((f) => ({ path: f.path, content: f.content }))))
+      if (junit._tag === "Failure") return { ...base(r), error: "the JUnit XML couldn't be read" }
+      ran = { ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids: junit.value.tests.map((t) => t.id) } }
     }
-    const xml = files.filter((f) => f.path.endsWith(".xml"))
-    if (xml.length === 0) return base(r)
-    const junit = yield* Effect.exit(convertJUnit(suite.name, xml.map((f) => ({ path: f.path, content: f.content }))))
-    if (junit._tag === "Failure") return { ...base(r), error: "the JUnit XML couldn't be read" }
-    return { ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids: junit.value.tests.map((t) => t.id) } }
+    if (!ctx.recordTestMap || subset || ctx.fromCi) return ran
+    const mapped = yield* mapTests(ctx, chain, ran.tests?.ids ?? [])
+    return { ...ran, ...("map" in mapped ? { testMap: mapped.map } : { testMapMissing: mapped.why }) }
+  })
+
+/**
+ * A baseline's map of what each test file loads (spec 0013): each test file
+ * the suite ran runs again on its own with coverage, into a directory beside
+ * the suite's so the suite's proof stays its own. When the map can't be
+ * trusted it says why instead.
+ */
+const mapTests = (ctx: GateContext, chain: Toolchain, ids: ReadonlyArray<string>) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const missing = (why: string): { readonly why: string } => ({ why })
+    const runner = Option.getOrUndefined(chain.runner)
+    if (runner === "bun") return missing("bun test's JUnit XML doesn't name each test's file, so a test selection left out couldn't be told from a deleted one")
+    if (runner !== "vitest" && runner !== "jest") return missing("no test runner that can run one test file with coverage")
+    if (ids.length === 0) return missing("the suite ran no tests")
+    const configs = yield* readFiles(ctx, ctx.files.filter((f) => RUNNER_CONFIG.test(f)))
+    const global = configs.find((c) => GLOBAL_SETUP.test(c.text))
+    if (global) return missing(`${global.path} sets a global setup, which runs outside every test file's process, so what it loads can't be mapped`)
+    const all = new Set(ctx.files)
+    const unmapped = ids.filter((id) => testFileOf(id, all) === undefined)
+    if (unmapped.length > 0) return missing(`${unmapped.length} ${unmapped.length === 1 ? "test the suite ran isn't" : "tests the suite ran aren't"} named after a test file, such as ${unmapped[0]}`)
+    const tests = [...new Set(ids.map((id) => testFileOf(id, all)!))].sort()
+    const out = `${ctx.outputDir}-testmap`
+    const coverageRun = (file: string, i: number) => {
+      const dir = path.join(out, String(i))
+      return (runner === "vitest"
+        ? tool(ctx, "vitest", ["run", file, "--coverage.enabled=true", "--coverage.reporter=lcov", `--coverage.reportsDirectory=${dir}`])
+        : tool(ctx, "jest", ["--ci", "--coverage", "--coverageReporters=lcov", `--coverageDirectory=${dir}`, "--testPathPatterns", exactly([file])])).pipe(
+          Effect.flatMap((r) => r.error || r.exitCode !== 0 ? Effect.succeed(undefined) : fs.readFileString(path.join(dir, "lcov.info")).pipe(Effect.option, Effect.map(Option.getOrUndefined))),
+        )
+    }
+    // Each runner has its own workers: half the machine's cores keeps them from crowding each other.
+    const lcovs = yield* Effect.forEach(tests, coverageRun, { concurrency: Math.max(1, Math.floor(availableParallelism() / 2)) })
+    if (lcovs.every((l) => l === undefined)) {
+      return missing(runner === "vitest" ? "no test file's run wrote coverage: add @vitest/coverage-v8 (or -istanbul)" : "no test file's run wrote coverage")
+    }
+    const texts = new Map((yield* readFiles(ctx, ctx.files.filter((f) => isTsSource(f) && !isMainSource(f)))).map((t) => [t.path, t.text]))
+    const map = testMapOf(tests.map((testFile, i) => {
+      const lcov = lcovs[i]
+      return {
+        testFile,
+        loaded: lcov === undefined ? undefined : parseLcov(lcov, ctx.dir).filter((f) => all.has(f.path) && [...f.lines.values()].some(Boolean)).map((f) => f.path),
+        unseen: reachesUnseen(testFile, (p) => texts.get(p), isMainSource, all),
+      }
+    }))
+    return { map }
   })
 
 // ---------- lint: Biome or eslint, plus the zones' TypeScript rules ----------
