@@ -1,15 +1,15 @@
 # Spec 0016: tests that add no value
 
 Status: stage 1 implemented (`gauntlet prune tests` with the signals that need no mutation
-run, for every pack). Stage 2 implemented for Pitest and StrykerJS (Vitest, Jest): the baseline records a kill
-map and `prune tests` reads it. Stryker4s isn't read, and won't be until it names every
-killer: it names only the first failing suite's (see Not covered). Stage 3 implemented: a change that only removes tests is
-checked against the baseline's kill map first (every mutant a removed test killed must
-still be killed by a test that stays), then the policy's mutation gate confirms it on
-those files; a confirmed removal is flagged for review instead of forbidden. Stage 4
-proposed. Stages 3 and 4
-proposed. Uses spec 0011's mutant helper and spec
-0013's map of what each test exercises; shares the killer recording of spec 0012 §6.
+run, for every pack). Stage 2 implemented for Pitest and StrykerJS (Vitest, Jest): the
+baseline records a kill map and `prune tests` reads it. Stryker4s isn't read, and won't be
+until it names every killer: it names only the first failing suite's (see Not covered).
+Stage 3 implemented: a change that only removes tests is checked against the baseline's
+kill map first (every mutant a removed test killed must still be killed by a test that
+stays), then the policy's mutation gate confirms it on those files; a confirmed removal is
+flagged for review instead of forbidden. Stage 4 proposed. Stages 3 and 4 proposed. Uses
+spec 0011's mutant helper and spec 0013's map of what each test exercises; shares the
+killer recording of spec 0012 §6.
 
 ## Problem
 
