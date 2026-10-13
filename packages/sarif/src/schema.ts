@@ -108,6 +108,11 @@ export const RunProperties = Schema.Struct({
     testIds: Schema.optionalKey(Schema.Array(Schema.String)),
     /** What each test class executed when the baseline was recorded (spec 0013): each path once, classes by index. */
     testMap: Schema.optionalKey(Schema.Struct({ files: Schema.Array(Schema.String), tests: Schema.Record(Schema.String, Schema.Array(Schema.Number)) })),
+    /** Which tests killed which mutants when the baseline was recorded (spec 0016): mutants once, tests' kills by index. */
+    killMap: Schema.optionalKey(Schema.Struct({
+      mutants: Schema.Array(Schema.Struct({ path: Schema.String, line: Schema.Number })),
+      tests: Schema.Record(Schema.String, Schema.Struct({ killed: Schema.Array(Schema.Number), reached: Schema.Number })),
+    })),
     /** Present on the `gauntlet` run of a baseline file. */
     baseline: Schema.optionalKey(Schema.Struct({ commit: Schema.String, irHash: Schema.String, gauntletVersion: Schema.String })),
   })),

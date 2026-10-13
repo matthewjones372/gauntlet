@@ -1,5 +1,6 @@
 import { globMatches } from "@gauntlet/dsl"
 import type { PolicyIR } from "@gauntlet/ir"
+import type { KillMap } from "@gauntlet/sarif"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { Git } from "./git.ts"
 import { testPathMatcher } from "./integrity.ts"
@@ -8,8 +9,9 @@ import { holdoutsOf } from "./workspace.ts"
 
 // `gauntlet prune tests` (spec 0016): tests that add no value. It reads the
 // test sources the packs know how to parse and lists tests that can't fail
-// and tests that repeat another word for word. It's a list for the owner: it
-// never deletes anything and never affects a check.
+// and tests that repeat another word for word; from the baseline's kill map,
+// tests that kill no mutant and tests whose every kill another test makes.
+// It's a list for the owner: it never deletes anything and never affects a check.
 
 /** One test as a pack reads it from its source. */
 export interface SurveyedTest {
@@ -83,6 +85,23 @@ export interface PruneReport {
   readonly testsNothing: ReadonlyArray<PruneCandidate>
   /** Tests whose source is the same as another's in the same file and scope. */
   readonly duplicates: ReadonlyArray<DuplicateSet>
+  /** What the baseline's kill map says, or why there's none to read. */
+  readonly mutation?: MutationFindings | { readonly missing: string }
+}
+
+/** Tests named as the mutation tool names them. */
+export interface MutationFindings {
+  /** The commit the kill map was recorded at. */
+  readonly commit: string
+  readonly mutants: number
+  readonly tests: number
+  /** Tests that reach mutants and kill none of them. */
+  readonly killsNothing: ReadonlyArray<{ readonly test: string; readonly reached: number }>
+  /**
+   * Tests whose every kill a kept test also makes. Taken together: removing
+   * all of them leaves every mutant the suite killed still killed.
+   */
+  readonly alreadyKilled: ReadonlyArray<{ readonly test: string; readonly killed: number; readonly by: ReadonlyArray<string> }>
 }
 
 const testsNothingWhy = (t: SurveyedTest, helpers: ReadonlySet<string>): string | undefined => {
@@ -125,8 +144,45 @@ export const pruneCandidates = (files: ReadonlyArray<{ readonly path: string; re
   }
 }
 
-/** Surveys every test file in the working copy with the policy's packs. Holdouts are left out (spec 0016 §4). */
-export const surveyTests = (repo: string, ir: PolicyIR) =>
+const BY_SHOWN = 3
+
+/**
+ * What the kill map says. Tests are kept greedily, the ones that kill most
+ * first, and a test is listed when the tests kept before it already kill all
+ * it kills, so the listed tests can go together. \`keep\` names tests never
+ * listed (property tests): they're kept first, and their kills count.
+ */
+export const mutationCandidates = (map: KillMap, commit: string, keep: (test: string) => boolean = () => false): MutationFindings => {
+  const entries = Object.entries(map.tests)
+  const killsNothing = entries
+    .filter(([name, t]) => t.killed.length === 0 && t.reached > 0 && !keep(name))
+    .map(([test, t]) => ({ test, reached: t.reached }))
+    .sort((a, b) => a.test.localeCompare(b.test))
+  const order = entries
+    .filter(([, t]) => t.killed.length > 0)
+    .sort(([a, x], [b, y]) => Number(keep(b)) - Number(keep(a)) || y.killed.length - x.killed.length || a.localeCompare(b))
+  const keeper = new Map<number, string>()
+  const alreadyKilled: { test: string; killed: number; by: string[] }[] = []
+  for (const [name, t] of order) {
+    if (!keep(name) && t.killed.every((m) => keeper.has(m))) {
+      alreadyKilled.push({ test: name, killed: new Set(t.killed).size, by: [...new Set(t.killed.map((m) => keeper.get(m)!))].slice(0, BY_SHOWN) })
+      continue
+    }
+    for (const m of t.killed) if (!keeper.has(m)) keeper.set(m, name)
+  }
+  return { commit, mutants: map.mutants.length, tests: entries.length, killsNothing, alreadyKilled: alreadyKilled.sort((a, b) => a.test.localeCompare(b.test)) }
+}
+
+/** Whether a test the mutation tool names is one of the property tests the survey found (by its name, at the end of the tool's). */
+const namedAmong = (names: ReadonlyArray<string>) => (test: string) => names.some((n) => test === n || test.endsWith(`.${n}`) || test.endsWith(` ${n}`) || test.endsWith(`/${n}`))
+
+const NO_KILL_MAP = "the baseline records no kill map: record one with `gauntlet baseline` and a mutation gate whose tool reports which tests kill each mutant (Pitest, Stryker, Stryker4s)"
+
+/**
+ * Surveys every test file in the working copy with the policy's packs, and
+ * reads the baseline's kill map when there is one. Holdouts are left out (spec 0016 §4).
+ */
+export const surveyTests = (repo: string, ir: PolicyIR, recorded?: { readonly commit: string; readonly killMap?: KillMap }) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -141,10 +197,31 @@ export const surveyTests = (repo: string, ir: PolicyIR) =>
       const text = yield* fs.readFileString(path.join(repo, file)).pipe(Effect.option)
       if (Option.isSome(text)) files.push({ path: file, survey: surveyor.survey(file, text.value) })
     }
-    return pruneCandidates(files)
+    const properties = files.flatMap((f) => f.survey.tests.filter((t) => t.property).map((t) => t.name))
+    const mutation = recorded?.killMap
+      ? mutationCandidates(recorded.killMap, recorded.commit, namedAmong(properties))
+      : { missing: recorded ? NO_KILL_MAP : "there's no baseline at HEAD: record one with `gauntlet baseline`" }
+    return { ...pruneCandidates(files), mutation }
   })
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
+
+const renderMutation = (m: NonNullable<PruneReport["mutation"]>): string[] => {
+  if ("missing" in m) return [`No mutation results: ${m.missing}.`, ""]
+  const lines = [`From the mutation results recorded at ${m.commit.slice(0, 12)}: ${plural(m.mutants, "mutant")}, ${plural(m.tests, "test")}.`, ""]
+  if (m.killsNothing.length === 0 && m.alreadyKilled.length === 0) lines.push("Every test kills a mutant no other test kills.", "")
+  if (m.killsNothing.length > 0) {
+    lines.push(`Tests that kill no mutant (${m.killsNothing.length}):`)
+    for (const t of m.killsNothing) lines.push(`  ${t.test}: reaches ${plural(t.reached, "mutant")} and kills none.`)
+    lines.push("")
+  }
+  if (m.alreadyKilled.length > 0) {
+    lines.push(`Tests whose every kill another test makes (${m.alreadyKilled.length}; removing them all still kills every mutant):`)
+    for (const t of m.alreadyKilled) lines.push(`  ${t.test}: ${t.killed === 1 ? "its mutant is" : `its ${t.killed} mutants are`} also killed by ${t.by.join(", ")}.`)
+    lines.push("")
+  }
+  return lines
+}
 
 export const renderPruneTests = (r: PruneReport): string => {
   const lines = [`Read ${plural(r.tests, "test")} in ${plural(r.files, "file")}.`, ""]
@@ -162,6 +239,7 @@ export const renderPruneTests = (r: PruneReport): string => {
     }
     lines.push("")
   }
+  if (r.mutation) lines.push(...renderMutation(r.mutation))
   lines.push(
     "This is a list: Gauntlet hasn't changed anything. An assertion in a helper from another file isn't seen, so check each test before removing it.",
     "Removing a test is still a deleted-tests forbid until removals can be proven (spec 0016).",

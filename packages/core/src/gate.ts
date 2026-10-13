@@ -1,5 +1,5 @@
 import type { Check, PolicyIR } from "@gauntlet/ir"
-import type { LegacyEntry, Metric, Run, TestMap } from "@gauntlet/sarif"
+import type { KillMap, LegacyEntry, Metric, Run, TestMap } from "@gauntlet/sarif"
 import type { Effect, FileSystem, Path } from "effect"
 import type { DiffFacts } from "./diff-facts.ts"
 import type { TestRecord } from "./integrity.ts"
@@ -91,6 +91,8 @@ export interface GateRun {
   readonly testMap?: TestMap
   /** Why there's no \`testMap\` when \`recordTestMap\` asked for one, for the person recording the baseline. */
   readonly testMapMissing?: string
+  /** A mutation gate's record of which tests killed which mutants, when its tool reports killers (spec 0016). */
+  readonly killMap?: KillMap
 }
 
 type GateServices = ProcessRunner | FileSystem.FileSystem | Path.Path

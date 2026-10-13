@@ -1,4 +1,4 @@
-import type { Metric, Run } from "@gauntlet/sarif"
+import type { KillMap, KillMapTest, Metric, Run } from "@gauntlet/sarif"
 import type { GateContext } from "./gate.ts"
 
 // Spec 0011: every pack's mutation gate scores through this, so packs agree on
@@ -17,6 +17,10 @@ export interface Mutant {
   readonly killed: boolean
   /** Said for a survivor: "No test kills a conditional-boundary mutant". */
   readonly message: string
+  /** The tests that killed it, where the tool reports them (spec 0016). */
+  readonly killedBy?: ReadonlyArray<string>
+  /** Every test that ran it, killers included, where the tool reports them. */
+  readonly coveredBy?: ReadonlyArray<string>
 }
 
 export interface MutationScope {
@@ -67,6 +71,25 @@ export const mutationResult = (tool: string, mutants: ReadonlyArray<Mutant>, at:
   return { runs: [survivors], lineScoped, metrics: { mutation: { value: pct(counted), unit: "%", higherIsBetter: true, perFile } } }
 }
 
+/**
+ * Which tests killed which mutants, when the tool reported killers for any of
+ * them (spec 0016). Every mutant with a file counts, whatever the gate's scope:
+ * a test's value is what it kills anywhere.
+ */
+export const killMapOf = (mutants: ReadonlyArray<Mutant>): KillMap | undefined => {
+  if (!mutants.some((m) => m.killedBy !== undefined)) return undefined
+  const located = mutants.filter((m): m is Mutant & { readonly path: string } => m.path !== undefined)
+  const killed = new Map<string, number[]>()
+  const reached = new Map<string, number>()
+  located.forEach((m, i) => {
+    for (const t of new Set(m.killedBy ?? [])) killed.set(t, [...(killed.get(t) ?? []), i])
+    for (const t of new Set([...(m.coveredBy ?? []), ...(m.killedBy ?? [])])) reached.set(t, (reached.get(t) ?? 0) + 1)
+  })
+  const tests: Record<string, KillMapTest> = {}
+  for (const name of [...reached.keys()].sort()) tests[name] = { killed: killed.get(name) ?? [], reached: reached.get(name)! }
+  return { mutants: located.map((m) => ({ path: m.path, line: m.line })), tests }
+}
+
 /** What a gate's context limits mutants to: its files and, with `on changed`, the lines the change added or edited. */
 export const mutationScopeOf = (ctx: GateContext): MutationScope => ({
   ...(ctx.scope !== undefined ? { scope: ctx.scope } : {}),
@@ -78,8 +101,10 @@ export const mutationScopeOf = (ctx: GateContext): MutationScope => ({
 /** A pack's mutation gate result: its survivors and score, scoped as its context says. */
 export const mutationGateRun = (tool: string, mutants: ReadonlyArray<Mutant>, ctx: GateContext) => {
   const r = mutationResult(tool, mutants, mutationScopeOf(ctx))
+  const killMap = killMapOf(mutants)
   return {
     runs: r.runs,
+    ...(killMap ? { killMap } : {}),
     ...(r.metrics ? { metrics: r.metrics } : {}),
     ...(r.nothingInScope ? { nothingInScope: r.nothingInScope } : {}),
     ...(r.lineScoped ? { lineScoped: true as const } : {}),

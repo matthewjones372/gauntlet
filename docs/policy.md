@@ -318,6 +318,13 @@ it needs an owner. Lowering one tightens the policy.
 - **Tests that test nothing:** no assertions, or only ones that can't fail (`assertTrue(true)`, `expect(x).toBe(x)`). An assertion in a helper function in the same file counts.
 - **Tests that repeat another word for word:** the same source as another test in the same file and the same class, module or `describe`, apart from the name, comments and layout. Different literals or parameters make them different tests.
 
+When the baseline at HEAD recorded which tests kill which mutants (a mutation gate whose tool reports it), it also lists:
+
+- **Tests that kill no mutant:** they run mutated code and never notice.
+- **Tests whose every kill another test makes:** chosen together, keeping the tests that kill most first, so removing every listed test still kills every mutant the suite killed.
+
+`gauntlet baseline` records that kill map whenever the mutation tool reports which tests killed each mutant.
+
 Property tests are never listed, and holdouts aren't read. It's a list: it changes nothing, and removing one of these tests is still a deleted-tests forbid. `--json` prints the same list as JSON.
 
 ## Review levels

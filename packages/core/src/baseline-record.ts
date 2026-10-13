@@ -1,5 +1,5 @@
 import type { PolicyIR } from "@gauntlet/ir"
-import type { Metric, Result, TestMap } from "@gauntlet/sarif"
+import type { KillMap, Metric, Result, TestMap } from "@gauntlet/sarif"
 import { Effect, Option } from "effect"
 import { computeFacts } from "./diff-facts.ts"
 import { runGates } from "./gate-runner.ts"
@@ -22,6 +22,8 @@ export interface RecordedBaseline {
   readonly testMap?: TestMap
   /** Why a build recorded no map, when one couldn't. */
   readonly testMapMissing?: ReadonlyArray<string>
+  /** Which tests killed which mutants (spec 0016), when a mutation tool reported killers. */
+  readonly killMap?: KillMap
   /** Every check, so the user can see what wasn't recorded. */
   readonly checks: ReadonlyArray<CheckRecord>
 }
@@ -63,6 +65,6 @@ export const recordBaseline = (repo: string, commit: string, ir: PolicyIR, optio
       const budgets = new Set(ir.budgets.map((b) => `budget/${b.name}/`))
       for (const [name, value] of Object.entries(gates.metrics)) if (metricGates.has(name) || [...budgets].some((b) => name.startsWith(b))) metrics[name] = value
       Object.assign(metrics, integrity.metrics)
-      return { metrics, results, testIds: gates.tests?.ids ?? [], ...(gates.testMap ? { testMap: gates.testMap } : {}), ...(gates.testMapMissing ? { testMapMissing: gates.testMapMissing } : {}), checks: [...gates.checks, ...imports.checks] } satisfies RecordedBaseline
+      return { metrics, results, testIds: gates.tests?.ids ?? [], ...(gates.testMap ? { testMap: gates.testMap } : {}), ...(gates.testMapMissing ? { testMapMissing: gates.testMapMissing } : {}), ...(gates.killMap ? { killMap: gates.killMap } : {}), checks: [...gates.checks, ...imports.checks] } satisfies RecordedBaseline
     }))
   })
