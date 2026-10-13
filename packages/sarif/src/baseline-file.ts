@@ -1,5 +1,6 @@
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { Data, Effect, Schema } from "effect"
+import type { KillMap } from "./kill-map.ts"
 import { compareWithBaseline } from "./match.ts"
 import { type MetricDelta, updateMetrics } from "./metrics.ts"
 import { type LegacyEntry, Log, type Metric, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "./schema.ts"
@@ -26,6 +27,8 @@ export interface Baseline {
    * build could record one.
    */
   readonly testMap?: TestMap
+  /** Which tests killed which mutants at the recorded commit (spec 0016), when the mutation tool reports it. */
+  readonly killMap?: KillMap
 }
 
 /** Test class (with its build's \`<folder>:\` prefix, as test ids have it) to the files it executed. */
@@ -67,6 +70,7 @@ export const encodeBaseline = (b: Baseline): string => {
         legacy: [...b.legacy].sort((x, y) => (`${x.tool}\0${x.id}` < `${y.tool}\0${y.id}` ? -1 : 1)),
         testIds: [...new Set(b.testIds)].sort(),
         ...(b.testMap ? { testMap: packMap(b.testMap) } : {}),
+        ...(b.killMap ? { killMap: b.killMap } : {}),
       },
     },
   }
@@ -94,6 +98,7 @@ export const decodeBaseline = (json: string) =>
       testIds: info.testIds ?? [],
       results,
       ...(info.testMap ? { testMap: unpackMap(info.testMap) } : {}),
+      ...(info.killMap ? { killMap: info.killMap } : {}),
     } satisfies Baseline
   })
 
@@ -106,6 +111,8 @@ export interface UpdateRequest {
   readonly testIds: ReadonlyArray<string>
   /** The test map recorded in this run, if any. */
   readonly testMap?: TestMap
+  /** The kill map recorded in this run, if any. */
+  readonly killMap?: KillMap
   readonly allowLower: boolean
   /**
    * The policy gained gates: grandfather the findings of tools the old
@@ -168,6 +175,7 @@ export const updateBaseline = (old: Baseline, request: UpdateRequest): UpdateOut
       results,
       // A map describes the commit it was recorded at, so an older one never carries over.
       ...(request.testMap ? { testMap: request.testMap } : {}),
+      ...(request.killMap ? { killMap: request.killMap } : {}),
     },
     loweredMetrics: metricUpdate.lowered,
     newlyGrandfathered,

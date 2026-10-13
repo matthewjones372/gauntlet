@@ -401,9 +401,9 @@ const runBaseline = (args: BaselineArgs) =>
     const meta = { commit: head, irHash: loaded.compiled.hash, gauntletVersion: GAUNTLET_VERSION }
     let next: Baseline
     if (Option.isNone(existing)) {
-      next = { ...emptyBaseline(meta.commit, meta.irHash, meta.gauntletVersion), metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, legacy, ...(recorded.testMap ? { testMap: recorded.testMap } : {}) }
+      next = { ...emptyBaseline(meta.commit, meta.irHash, meta.gauntletVersion), metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, legacy, ...(recorded.testMap ? { testMap: recorded.testMap } : {}), ...(recorded.killMap ? { killMap: recorded.killMap } : {}) }
     } else {
-      const outcome = updateBaseline(existing.value, { ...meta, metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, ...(recorded.testMap ? { testMap: recorded.testMap } : {}), allowLower: args.allowLower, ...(args.adoptNewGates ? { adoptNewTools: true } : {}) })
+      const outcome = updateBaseline(existing.value, { ...meta, metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, ...(recorded.testMap ? { testMap: recorded.testMap } : {}), ...(recorded.killMap ? { killMap: recorded.killMap } : {}), allowLower: args.allowLower, ...(args.adoptNewGates ? { adoptNewTools: true } : {}) })
       if (outcome.lowers) {
         const lines = [
           ...outcome.loweredMetrics.map((m) => `- ${m.metric}${m.file ? ` (${m.file})` : ""}: ${m.base} -> ${m.head}`),
@@ -423,7 +423,7 @@ const runBaseline = (args: BaselineArgs) =>
     const findings = Object.values(next.results).reduce((n, rs) => n + rs.length, 0)
     const missing = recorded.checks.filter((c) => c.status === "not-executed" || c.status === "errored")
     yield* output.out([
-      `Wrote ${BASELINE_PATH}: ${Object.keys(next.metrics).length} metrics, ${findings} grandfathered findings, ${next.legacy.length} legacy entries, ${next.testIds.length} test ids${next.testMap ? `, a map of what ${Object.keys(next.testMap).length} test classes execute` : ""}.`,
+      `Wrote ${BASELINE_PATH}: ${Object.keys(next.metrics).length} metrics, ${findings} grandfathered findings, ${next.legacy.length} legacy entries, ${next.testIds.length} test ids${next.testMap ? `, a map of what ${Object.keys(next.testMap).length} test classes execute` : ""}${next.killMap ? `, which of ${next.killMap.mutants.length} mutants each of ${Object.keys(next.killMap.tests).length} tests kills` : ""}.`,
       ...(loaded.compiled.ir.suites.some((s) => s.kind === "suite" && s.affected === true) && !next.testMap ? ["No map of what the tests execute was recorded, so affected suites run every test."] : []),
       ...(recorded.testMapMissing ?? []).map((why) => `No test map: ${why}.`),
       ...missing.map((c) => `Not recorded: ${c.tier}: ${c.check} (${c.reason ?? c.status})`),
@@ -1949,7 +1949,8 @@ const pruneTests = Command.make("tests", { repo: repoFlag, json: jsonFlag }, ({ 
   Effect.gen(function*() {
     const root = yield* absolute(repo)
     const { ir } = (yield* (yield* PolicySource).load({ repo: root })).compiled
-    const found = yield* surveyTests(root, ir)
+    const recorded = yield* (yield* BaselineStore).at(root, "HEAD").pipe(Effect.orElseSucceed(() => Option.none()))
+    const found = yield* surveyTests(root, ir, Option.getOrUndefined(recorded))
     yield* (yield* Output).out(json ? prettyCanonicalJson(found) : renderPruneTests(found))
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("List tests that test nothing or repeat another (spec 0016). Changes nothing."))
 

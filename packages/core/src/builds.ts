@@ -1,5 +1,5 @@
 import { type Build, type PolicyIR, sha256 } from "@gauntlet/ir"
-import type { Metric, Run, TestMap } from "@gauntlet/sarif"
+import { mergeKillMaps, type Metric, renameKillMap, type Run, type TestMap } from "@gauntlet/sarif"
 import type { DiffFacts } from "./diff-facts.ts"
 import type { GateRun } from "./gate.ts"
 
@@ -80,7 +80,8 @@ export const runFromBuild = (run: GateRun, dir: string): GateRun => {
     m.perFile ? { ...m, perFile: Object.fromEntries(Object.entries(m.perFile).map(([p, v]) => [fromBuild(dir, p), v])) } : m,
   ]))
   const testMap = run.testMap === undefined ? undefined : Object.fromEntries(Object.entries(run.testMap).map(([name, files]) => [name, files.map((f) => fromBuild(dir, f))]))
-  return { ...run, runs, ...(metrics ? { metrics } : {}), ...(testMap ? { testMap } : {}) }
+  const killMap = run.killMap === undefined ? undefined : renameKillMap(run.killMap, { path: uri })
+  return { ...run, runs, ...(metrics ? { metrics } : {}), ...(testMap ? { testMap } : {}), ...(killMap ? { killMap } : {}) }
 }
 
 /**
@@ -130,8 +131,10 @@ export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; read
   const maps = ran.flatMap((p) => (p.run.testMap ? [p.run.testMap] : []))
   const unmapped = ran.flatMap((p) => (p.run.testMapMissing !== undefined ? [`${p.dir}: ${p.run.testMapMissing}`] : []))
   const testMap: TestMap | undefined = maps.length === 0 ? undefined : Object.assign({}, ...maps)
+  const killMaps = ran.flatMap((p) => (p.run.killMap ? [p.run.killMap] : []))
   return {
     command,
+    ...(killMaps.length > 0 ? { killMap: mergeKillMaps(killMaps) } : {}),
     exitCode,
     runs: ran.flatMap((p) => p.run.runs),
     ...(tests ? { tests } : {}),
