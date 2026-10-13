@@ -137,6 +137,42 @@ describe("Scala gates", () => {
     expect(res.runs[0]!.results[0]!.message.text).toBe("No test kills a ArithmeticOperator mutant")
   })
 
+  test("mutation records no kill map: Stryker4s names the killers in the first failing suite only", async () => {
+    // Captured from Stryker4s 1.1.1 (sbt, ScalaTest): `Calc.big(a) = a > 10`, and all
+    // three tests assert a big number, so all three kill the `<` and `==` mutants. Its
+    // test runner stops at the first suite that fails (BSpec), so `killedBy` is ["0"],
+    // `testsCompleted` is 1 and ASpec's two killers go unnamed. A map built from it
+    // would show ASpec killing nothing and prove its removal safe (spec 0016).
+    const killed = (id: string, replacement: string) => ({
+      id, mutatorName: "EqualityOperator", replacement, location: { start: { line: 4, column: 32 }, end: { line: 4, column: 33 } },
+      status: "Killed", statusReason: "b one: org.scalatest.exceptions.TestFailedException: k.Calc.big(40) was false", coveredBy: ["0", "1", "2"], killedBy: ["0"], testsCompleted: 1,
+    })
+    const report = (dir: string) => ({
+      $schema: "https://git.io/mutation-testing-schema", schemaVersion: "2", thresholds: { high: 80, low: 60 }, projectRoot: dir,
+      files: {
+        "src/main/scala/svc/domain/Money.scala": {
+          language: "scala",
+          mutants: [
+            { id: "0", mutatorName: "EqualityOperator", replacement: ">=", location: { start: { line: 4, column: 32 }, end: { line: 4, column: 33 } }, status: "Survived", coveredBy: ["0", "1", "2"], testsCompleted: 3 },
+            killed("1", "<"),
+            killed("2", "=="),
+          ],
+        },
+      },
+      testFiles: { "k/BSpec.scala": { tests: [{ id: "0", name: "b one" }] }, "k/ASpec.scala": { tests: [{ id: "1", name: "a one" }, { id: "2", name: "a two" }] } },
+      framework: { name: "Stryker4s", version: "1.1.1" },
+    })
+    const g = gate((_c, dir) => {
+      const runDir = join(dir, "target", "stryker4s-report", "1791925779021")
+      mkdirSync(runDir, { recursive: true })
+      writeFileSync(join(runDir, "report.json"), JSON.stringify(report(dir)))
+      return {}
+    })
+    const res = await g.run(mutation(GATE, { ...g.ctx, recordKillMap: true }))
+    expect(res.metrics?.mutation).toMatchObject({ value: 66.67 })
+    expect(res.killMap).toBeUndefined()
+  })
+
   test("mutation with nothing in scope runs nothing", async () => {
     const g = gate(() => ({}), ["src/test/scala/svc/domain/MoneySpec.scala"])
     expect((await g.run(mutation(GATE, g.ctx))).nothingInScope).toBe("no main Scala files in scope to mutate")

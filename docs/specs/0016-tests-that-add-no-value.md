@@ -1,15 +1,15 @@
 # Spec 0016: tests that add no value
 
 Status: stage 1 implemented (`gauntlet prune tests` with the signals that need no mutation
-run, for every pack). Stage 2 implemented for Pitest and StrykerJS (Vitest, Jest): the baseline records a kill
-map and `prune tests` reads it. Stryker4s isn't read yet: it isn't known to name every
-killer rather than the first. Stage 3 implemented: a change that only removes tests is
-checked against the baseline's kill map first (every mutant a removed test killed must
-still be killed by a test that stays), then the policy's mutation gate confirms it on
-those files; a confirmed removal is flagged for review instead of forbidden. Stage 4
-proposed. Stages 3 and 4
-proposed. Uses spec 0011's mutant helper and spec
-0013's map of what each test exercises; shares the killer recording of spec 0012 §6.
+run, for every pack). Stage 2 implemented for Pitest and StrykerJS (Vitest, Jest): the
+baseline records a kill map and `prune tests` reads it. Stryker4s isn't read, and won't be
+until it names every killer: it names only the first failing suite's (see Not covered).
+Stage 3 implemented: a change that only removes tests is checked against the baseline's
+kill map first (every mutant a removed test killed must still be killed by a test that
+stays), then the policy's mutation gate confirms it on those files; a confirmed removal is
+flagged for review instead of forbidden. Stage 4 proposed. Stages 3 and 4 proposed. Uses
+spec 0011's mutant helper and spec 0013's map of what each test exercises; shares the
+killer recording of spec 0012 §6.
 
 ## Problem
 
@@ -110,8 +110,8 @@ asks for, not a way out of a check.
 
 1. Run the tautology and no-assertion detectors over the whole test tree, plus the
    duplicate fingerprint, and `gauntlet prune tests` with those signals.
-2. Record killers in the baseline (Pitest, then Stryker and Stryker4s), and the
-   mutation signals from §1.
+2. Record killers in the baseline (Pitest, then Stryker; Stryker4s doesn't name them
+   all, see Not covered), and the mutation signals from §1.
 3. The proven removal from §3, and the ratchet adjustment.
 4. `prunable` suites and the exclusions from §4.
 
@@ -121,5 +121,19 @@ asks for, not a way out of a check.
 - Flaky tests: ADR 0017.
 - Merging near-duplicate tests into one parameterised test. Each removal is judged
   as above, but writing the merged test is the agent's job.
+- Stryker4s's killers. Stryker4s 1.1.1 (the version the Scala pack onboards) names
+  the killers in the first suite that fails and no others: its sbt test runner
+  (`SbtTestInterfaceRunner.runTests`) skips the remaining test classes once the status
+  is `Failure` or `Error`, and its config has no option to keep going (no `disableBail`
+  as StrykerJS has). Run for real on sbt 1.13 and ScalaTest 3.2.20, with
+  `big(a) = a > 10`, a suite `ASpec` of two tests and a suite `BSpec` of one, all three
+  asserting a big number: the `<` and `==` mutants were reported `killedBy: ["0"]`
+  (`BSpec`'s test), `coveredBy` all three, `testsCompleted: 1`. When `BSpec` didn't kill
+  the `==` mutant, `ASpec` ran and both its tests were named. So killers in one suite
+  are all named, killers in later suites never are. A kill map from that would show
+  `ASpec` killing nothing and prove its removal safe, so the Scala pack records none
+  (`packs/scala/test/gates.test.ts` holds it to that): `prune tests` offers Scala only
+  the signals that need no killers, and a Scala test removal stays forbidden. Reading
+  it is worth doing once Stryker4s runs every covering suite.
 - Value that mutants can't measure: concurrency, performance, and tests that pin
   down a public API's shape. That's why a pruning is reviewed, not automatic.

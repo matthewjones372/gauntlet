@@ -50,7 +50,12 @@ export interface Mutant {
 export const DETECTED = new Set(["Killed", "Timeout"])
 export const UNDETECTED = new Set(["Survived", "NoCoverage"])
 
-/** Stryker4s' mutation-testing-report JSON (the same schema as StrykerJS). */
+/**
+ * Stryker4s' mutation-testing-report JSON (the same schema as StrykerJS). Its
+ * `killedBy` isn't read: Stryker4s 1.1.1's test runner stops at the first suite
+ * that fails, so it names that suite's killers only, and a kill map built from
+ * it would prove removing the other suites' killers safe (spec 0016).
+ */
 export const parseStryker = (json: string, repoRoot: string): Option.Option<Mutant[]> =>
   Option.map(Schema.decodeUnknownOption(Schema.fromJsonString(StrykerReport))(json), (r) =>
     Object.entries(r.files).flatMap(([file, f]) =>
