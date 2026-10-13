@@ -27,3 +27,4 @@
 | 0023 | A change to comments or documentation only runs no checks | accepted |
 | 0024 | What the project's CI, or a local run, already ran isn't run again | accepted |
 | 0025 | A test already failing before the change doesn't block it | accepted |
+| 0026 | The Stop hook has a bounded exit, and running out of attempts is a failure | accepted |

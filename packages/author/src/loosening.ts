@@ -1,5 +1,5 @@
 import type { Check, Comparator, Condition, PolicyIR, ReviewRule, Threshold } from "@gauntlet/ir"
-import { canonicalJson } from "@gauntlet/ir"
+import { attemptLimits, canonicalJson } from "@gauntlet/ir"
 
 // What counts as loosening a policy, decided by comparing compiled IR, never
 // by the model (ADR 0009). Anything that removes a protection, an owner, a
@@ -110,6 +110,12 @@ export const looseningsBetween = (before: PolicyIR, after: PolicyIR): Loosening[
     const was = (before.quarantine ?? []).find((b) => b.test === q.test)
     if (!was) out.push({ what: `${q.test} is quarantined until ${q.until}` })
     else if (q.until > was.until) out.push({ what: `the quarantine of ${q.test} is extended from ${was.until} to ${q.until}` })
+  }
+  // More blocked stops before an exhausted exit (ADR 0026): compared as they take effect, defaults included.
+  const limitsBefore = attemptLimits(before)
+  const limitsAfter = attemptLimits(after)
+  for (const limit of ["unchanged", "total"] as const) {
+    if (limitsAfter[limit] > limitsBefore[limit]) out.push({ what: `the ${limit} attempts limit rises from ${limitsBefore[limit]} to ${limitsAfter[limit]}` })
   }
   out.push(...gateLoosenings(before, after), ...reviewLoosenings(before, after))
   return out

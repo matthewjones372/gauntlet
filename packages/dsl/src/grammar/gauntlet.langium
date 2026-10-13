@@ -15,7 +15,15 @@ entry Policy:
 
 Block:
     Use | Mode | Owners | Protect | Zone | Arch | Suites | Integrity | Import
-    | Budget | Gates | OnFail | Predicate | Review | Stack | Quarantine | Split;
+    | Budget | Gates | OnFail | Predicate | Review | Stack | Quarantine | Split | Attempts;
+
+// \`attempts { unchanged 3, total 8 }\`: how many blocked stops the agent hooks allow
+// before letting the agent stop as exhausted (ADR 0026). Limits left out keep their defaults.
+Attempts:
+    'attempts' '{' (limits+=AttemptLimit (','? limits+=AttemptLimit)*)? '}';
+
+AttemptLimit:
+    kind=Name value=NUMBER;
 
 // \`split when diff > 600 lines\`: how big a change spread over several parts
 // must be before the report suggests stacked pull requests (400 lines unless set).
@@ -224,7 +232,7 @@ QName returns string:
 
 // User-chosen names. A few keywords that read naturally as names are allowed.
 Name returns string:
-    ID | 'split' | 'reads' | 'affected' | 'baseline' | 'env' | 'command' | 'cumulative' | 'caution' | 'ci' | 'only' | 'fix' | 'fail' | 'until'
+    ID | 'split' | 'attempts' | 'reads' | 'affected' | 'baseline' | 'env' | 'command' | 'cumulative' | 'caution' | 'ci' | 'only' | 'fix' | 'fail' | 'until'
     | 'changed' | 'all' | 'touched' | 'added' | 'missing' | 'pass';
 
 // Words inside an integrity list. The three list keywords are left out so a

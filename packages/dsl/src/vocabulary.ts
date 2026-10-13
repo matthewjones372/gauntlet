@@ -69,8 +69,11 @@ export const AGGREGATES = ["avg", "min", "max", "sum"] as const
 
 export const TOP_LEVEL_BLOCKS = [
   "use", "mode", "owners", "protect", "zone", "arch", "suites", "integrity", "import", "budget",
-  "gates", "on fail", "predicate", "review", "stack", "quarantine", "split",
+  "gates", "on fail", "predicate", "review", "stack", "quarantine", "split", "attempts",
 ] as const
+
+/** The limits an `attempts` block can set (ADR 0026). */
+export const ATTEMPT_LIMITS = ["unchanged", "total"] as const
 
 export const ADVISORY_TIER = "advisory"
 

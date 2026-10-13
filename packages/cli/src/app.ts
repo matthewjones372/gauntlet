@@ -2,13 +2,14 @@ import {
   agentSummary, blockingSet, knownBlock, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, pullRequestBase, protectionFor,
   ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
+  attemptBranch, attemptNote, renderStopHookCorpus, runStopHookCorpus, clearAttempts, commonDir, exhaustedLine, fingerprintLines, fingerprintOf, listAttempts, nextAttempt, readAttempts, reportedBlocked, worktreeOf, writeAttempts,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
 import { CI_REPORTS_PREFIX, claudeCode, codeowners, draftCiConfig, keepCiReports, FIX_COMMAND, type GeneratedFile, github, PROPOSAL_FILE, render, renderCiConfig, requireCheckRuleset } from "@gauntlet/connect"
 import { defaultPackage, invalidVars, render as renderTemplate, TEMPLATES } from "@gauntlet/templates"
 import { type AuthorConfig, authorConfig, authorContext, draftProposals, explainInPlainLanguage, isolationProblem, runSession } from "@gauntlet/author"
 import { Compiler, DEFAULT_POLICY_FILE, type Diagnostic, formatDiagnostics, PolicyInvalid } from "@gauntlet/dsl"
-import { type PolicyIR, prettyCanonicalJson } from "@gauntlet/ir"
+import { attemptLimits, type PolicyIR, prettyCanonicalJson } from "@gauntlet/ir"
 import { BunStdio } from "@effect/platform-bun"
 import { GauntletTools, mcpServer } from "@gauntlet/mcp"
 import { Clock, Data, Effect, FileSystem, Layer, Option, Path, Ref, Schema } from "effect"
@@ -596,11 +597,18 @@ const corpus = Command.make("corpus", {
   fixtures: Flag.String("fixtures").pipe(Flag.withDefault("examples/fixtures"), Flag.withDescription("the fixtures the cases patch (default: examples/fixtures)")),
   json: jsonFlag,
   export: Flag.Boolean("export").pipe(Flag.withDefault(false), Flag.withDescription("rewrite the corpus from the fixtures and the packs' tamper generators, instead of running it")),
+  stopHook: Flag.Boolean("stop-hook").pipe(Flag.withDefault(false), Flag.withDescription("run the stop-hook corpus instead (corpus/stop-hook): tampering with the hooks' attempt record")),
 }, (args) =>
   Effect.gen(function*() {
     const output = yield* Output
     const path = yield* Path.Path
     const root = yield* absolute(args.repo)
+    if (args.stopHook) {
+      const result = yield* runStopHookCorpus(path.resolve(root, "corpus/stop-hook"), attemptLimits({}))
+      yield* output.out(args.json ? JSON.stringify(result, null, 2) : renderStopHookCorpus(result))
+      if (!result.passed) yield* exitWith(1)
+      return
+    }
     if (args.export) {
       const packs = yield* Effect.promise(() => exportCorpus(root))
       return yield* output.out(`Wrote corpus/tamper for ${packs.join(", ")}. Review the patches, then run gauntlet corpus.`)
@@ -1679,7 +1687,6 @@ const readStdin = Effect.gen(function*() {
 })
 const decodeHookInput = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({
   cwd: Schema.optionalKey(Schema.String),
-  stop_hook_active: Schema.optionalKey(Schema.Boolean),
   tool_name: Schema.optionalKey(Schema.String),
   tool_input: Schema.optionalKey(Schema.Struct({ file_path: Schema.optionalKey(Schema.String), notebook_path: Schema.optionalKey(Schema.String), command: Schema.optionalKey(Schema.String) })),
 })))
@@ -1729,13 +1736,20 @@ const ownerPaths = (root: string) =>
     }
   })
 
+/** The attempt limits of the policy that judges the change: the base's, as in CI, never the working copy's (ADR 0026). */
+const hookLimits = (root: string, baseSha: string) =>
+  Effect.gen(function*() {
+    return attemptLimits((yield* (yield* PolicySource).load({ repo: root, policyRef: baseSha })).compiled.ir)
+  }).pipe(Effect.orElseSucceed(() => attemptLimits({})))
+
+// Stop and SubagentStop. Blocking repeats while Gauntlet would block the change, up to the policy's attempt
+// limits; then the agent may stop as exhausted, which is reported and is never a pass (ADR 0026).
 const hookStop = Command.make("stop", {}, () =>
   Effect.gen(function*() {
     const output = yield* Output
-    const input = Option.getOrElse(decodeHookInput(yield* readStdin), () => ({}) as { cwd?: string; stop_hook_active?: boolean })
-    // Already blocked once in this stop: let the agent stop rather than loop.
-    if (input.stop_hook_active) return
-    const root = input.cwd ?? process.cwd()
+    const input = Option.getOrElse(decodeHookInput(yield* readStdin), () => ({}) as { cwd?: string })
+    // The worktree the agent works in: a subagent in its own worktree is judged on that worktree and its branch.
+    const root = yield* worktreeOf(input.cwd ?? process.cwd())
     // Nothing but Gauntlet's own setup files changed: no code to judge, and failures
     // already in the project aren't this agent's to fix (they'd trap it in a loop).
     if (yield* nothingToJudge(root)) return
@@ -1746,20 +1760,58 @@ const hookStop = Command.make("stop", {}, () =>
     const result = yield* Effect.exit(checkWorkingTree({ repo: root, outDir, gauntletVersion: GAUNTLET_VERSION, agent: agentFromEnv(process.env), ...(adoption ? { adoption: true } : {}) }))
     // If Gauntlet can't run here (no policy, no base), don't trap the agent; CI still decides.
     if (result._tag === "Failure") return
+    const report = result.value.report
+    const decision = report.decision
+    const branch = yield* attemptBranch(root).pipe(Effect.orElseSucceed(() => "detached:unknown"))
+    // A pass ends the branch's run of attempts.
+    if (!decision.wouldBlock) return yield* clearAttempts(root, branch).pipe(Effect.ignore)
+    const findings = fingerprintLines(report)
+    const attempt = { fingerprint: fingerprintOf(findings), findings, reasons: blockingSet(decision) }
+    const limits = yield* hookLimits(root, report.policy.baseSha)
+    const previous = yield* readAttempts(root, branch)
     // The agent reported it's blocked and nothing it could change has changed since: a person decides
-    // now, so the hook says so in a line instead of raising the same block on every turn.
-    const decision = result.value.report.decision
-    const known = yield* knownBlock(root, { tree: result.value.snapshot.tree, blocking: blockingSet(decision) }, yield* ownerPaths(root)).pipe(
+    // now, so the hook says so in a line instead of raising the same block on every turn. Not an attempt.
+    const known = yield* knownBlock(root, { tree: result.value.snapshot.tree, blocking: attempt.reasons }, yield* ownerPaths(root)).pipe(
       Effect.orElseSucceed(() => Option.none<{ readonly reason: string; readonly exact: boolean }>()),
     )
-    if (!decision.wouldBlock) return
     if (Option.isSome(known)) {
+      yield* writeAttempts(root, reportedBlocked(branch, previous, attempt, limits, known.value.reason)).pipe(Effect.ignore)
       if (!known.value.exact) yield* output.out(JSON.stringify({ systemMessage: `Gauntlet: still waiting on the owner: ${known.value.reason}` }))
       return
     }
-    const reason = renderAgentSummary(agentSummary(result.value.report, outDir))
+    const record = nextAttempt(branch, previous, attempt, limits)
+    // A record that can't be written reads back as untrusted next time: the bound holds either way.
+    yield* writeAttempts(root, record).pipe(Effect.ignore)
+    if (record.status === "exhausted") return yield* output.out(JSON.stringify({ systemMessage: exhaustedLine(record) }))
+    const reason = `${renderAgentSummary(agentSummary(report, outDir))}\n\n${attemptNote(record)}`
     yield* output.out(JSON.stringify({ decision: "block", reason }))
-  })).pipe(Command.withDescription("Claude Code Stop hook: block completion while Gauntlet would block the change."))
+  })).pipe(Command.withDescription("Claude Code Stop and SubagentStop hook: block completion while Gauntlet would block the change, up to the policy's attempt limits."))
+
+const branchFlag = Flag.optional(Flag.String("branch").pipe(Flag.withDescription("the branch (default: the current one)")))
+
+const hookStatus = Command.make("status", { repo: repoFlag, branch: branchFlag, json: jsonFlag }, (args) =>
+  Effect.gen(function*() {
+    const root = yield* worktreeOf(yield* absolute(args.repo))
+    const all = yield* listAttempts(root)
+    const wanted = Option.getOrUndefined(args.branch)
+    const views = wanted === undefined ? all : all.filter((v) => v.branch === wanted)
+    if (args.json) return yield* (yield* Output).out(JSON.stringify({ branches: views }, null, 2))
+    if (views.length === 0) return yield* (yield* Output).out("No blocked, exhausted or reported-blocked attempts recorded.")
+    yield* (yield* Output).out(views.map((v) => "status" in v
+      ? `${v.branch}: ${v.status}, ${v.attempts.unchanged}/${v.limits.unchanged} on the same findings, ${v.attempts.total}/${v.limits.total} on the branch${v.state === "ok" ? "" : ` (record was ${v.state})`}`
+      : `${v.branch}: record ${v.state}; the next blocked stop is exhausted`).join("\n"))
+  }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("The agent hooks' outcome per branch: blocked, exhausted or reported-blocked (ADR 0026)."))
+
+const hookReset = Command.make("reset", { repo: repoFlag, branch: branchFlag }, (args) =>
+  Effect.gen(function*() {
+    const root = yield* worktreeOf(yield* absolute(args.repo))
+    const branch = Option.isSome(args.branch) ? args.branch.value : yield* attemptBranch(root)
+    yield* clearAttempts(root, branch)
+    yield* (yield* Output).out(`Cleared the attempts recorded for ${branch}.`)
+  }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("People: clear a branch's recorded attempts, so the hooks block again from the first attempt."))
+
+/** Shell commands that name the attempt record, its witness ref or the reset command. */
+const ATTEMPT_STATE_COMMAND = /gauntlet\/attempts|refs\/gauntlet\/|\bgauntlet\s+hook\s+reset\b/
 
 const hookPreToolUse = Command.make("pre-tool-use", {}, () =>
   Effect.gen(function*() {
@@ -1777,6 +1829,17 @@ const hookPreToolUse = Command.make("pre-tool-use", {}, () =>
             hookEventName: "PreToolUse",
             permissionDecision: "deny",
             permissionDecisionReason: `This is ${decision}, which is the owner's decision, not the agent's. Tell the person what you'd like decided and why; they run \`gauntlet approve <pr>\` themselves.`,
+          },
+        }))
+        return
+      }
+      // The attempt record bounds the agent's own hooks (ADR 0026): never the agent's to edit, delete or reset.
+      if (ATTEMPT_STATE_COMMAND.test(input.tool_input.command)) {
+        yield* output.out(JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: "This touches Gauntlet's record of your blocked attempts, which is the person's, not the agent's. Fix the cause of the block, or call report_blocked with the reason.",
           },
         }))
         return
@@ -1805,7 +1868,14 @@ const hookPreToolUse = Command.make("pre-tool-use", {}, () =>
     // through its nearest existing ancestor, since the file and its directories may be new.
     const realTarget = (p: string): Effect.Effect<string> =>
       fs.realPath(p).pipe(Effect.catch(() => path.dirname(p) === p ? Effect.succeed(p) : realTarget(path.dirname(p)).pipe(Effect.map((d) => path.join(d, path.basename(p))))))
-    const relative = path.relative(top.value, yield* realTarget(path.resolve(cwd, target)))
+    const real = yield* realTarget(path.resolve(cwd, target))
+    // The git directory every worktree shares holds Gauntlet's state (attempts, ADR 0026), even when it's outside this worktree.
+    const common = yield* commonDir(top.value).pipe(Effect.flatMap((d) => fs.realPath(d)), Effect.option)
+    if (Option.isSome(common) && !path.relative(common.value, real).startsWith("..") && !path.isAbsolute(path.relative(common.value, real))) {
+      yield* output.out(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: `${real} is inside the repository's git directory, which the agent doesn't edit.` } }))
+      return
+    }
+    const relative = path.relative(top.value, real)
     if (relative.startsWith("..")) return
     // Gauntlet's own state (the adoption window, blocked reports) is the person's, never the agent's.
     if (relative.startsWith(".git/")) {
@@ -1836,7 +1906,7 @@ const hookPreToolUse = Command.make("pre-tool-use", {}, () =>
     }))
   })).pipe(Command.withDescription("Claude Code PreToolUse hook: deny edits to protected files."))
 
-const hook = Command.make("hook").pipe(Command.withDescription("Hooks for coding agents."), Command.withSubcommands([hookStop, hookPreToolUse]))
+const hook = Command.make("hook").pipe(Command.withDescription("Hooks for coding agents."), Command.withSubcommands([hookStop, hookPreToolUse, hookStatus, hookReset]))
 
 // ---------- report shadow ----------
 

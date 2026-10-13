@@ -37,6 +37,7 @@ export type GauntletKeywordNames =
     | "all"
     | "and"
     | "arch"
+    | "attempts"
     | "auto"
     | "baseline"
     | "budget"
@@ -137,7 +138,39 @@ export function isArchRule(item: unknown): item is ArchRule {
     return reflection.isInstance(item, ArchRule.$type);
 }
 
-export type Block = Arch | Budget | Gates | Import | Integrity | Mode | OnFail | Owners | Predicate | Protect | Quarantine | Review | Split | Stack | Suites | Use | Zone;
+export interface AttemptLimit extends langium.AstNode {
+    readonly $container: Attempts;
+    readonly $type: 'AttemptLimit';
+    kind: Name;
+    value: number;
+}
+
+export const AttemptLimit = {
+    $type: 'AttemptLimit',
+    kind: 'kind',
+    value: 'value'
+} as const;
+
+export function isAttemptLimit(item: unknown): item is AttemptLimit {
+    return reflection.isInstance(item, AttemptLimit.$type);
+}
+
+export interface Attempts extends langium.AstNode {
+    readonly $container: Policy;
+    readonly $type: 'Attempts';
+    limits: Array<AttemptLimit>;
+}
+
+export const Attempts = {
+    $type: 'Attempts',
+    limits: 'limits'
+} as const;
+
+export function isAttempts(item: unknown): item is Attempts {
+    return reflection.isInstance(item, Attempts.$type);
+}
+
+export type Block = Arch | Attempts | Budget | Gates | Import | Integrity | Mode | OnFail | Owners | Predicate | Protect | Quarantine | Review | Split | Stack | Suites | Use | Zone;
 
 export const Block = {
     $type: 'Block'
@@ -564,10 +597,10 @@ export function isMode(item: unknown): item is Mode {
     return reflection.isInstance(item, Mode.$type);
 }
 
-export type Name = 'added' | 'affected' | 'all' | 'baseline' | 'caution' | 'changed' | 'ci' | 'command' | 'cumulative' | 'env' | 'fail' | 'fix' | 'missing' | 'only' | 'pass' | 'reads' | 'split' | 'touched' | 'until' | string;
+export type Name = 'added' | 'affected' | 'all' | 'attempts' | 'baseline' | 'caution' | 'changed' | 'ci' | 'command' | 'cumulative' | 'env' | 'fail' | 'fix' | 'missing' | 'only' | 'pass' | 'reads' | 'split' | 'touched' | 'until' | string;
 
 export function isName(item: unknown): item is Name {
-    return item === 'split' || item === 'reads' || item === 'affected' || item === 'baseline' || item === 'env' || item === 'command' || item === 'cumulative' || item === 'caution' || item === 'ci' || item === 'only' || item === 'fix' || item === 'fail' || item === 'until' || item === 'changed' || item === 'all' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'split' || item === 'attempts' || item === 'reads' || item === 'affected' || item === 'baseline' || item === 'env' || item === 'command' || item === 'cumulative' || item === 'caution' || item === 'ci' || item === 'only' || item === 'fix' || item === 'fail' || item === 'until' || item === 'changed' || item === 'all' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface OnFail extends langium.AstNode {
@@ -1052,6 +1085,8 @@ export function isZoneRule(item: unknown): item is ZoneRule {
 export type GauntletAstType = {
     Arch: Arch
     ArchRule: ArchRule
+    AttemptLimit: AttemptLimit
+    Attempts: Attempts
     Block: Block
     Budget: Budget
     BudgetCheck: BudgetCheck
@@ -1133,6 +1168,29 @@ export class GauntletAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: []
+        },
+        AttemptLimit: {
+            name: AttemptLimit.$type,
+            properties: {
+                kind: {
+                    name: AttemptLimit.kind
+                },
+                value: {
+                    name: AttemptLimit.value
+                }
+            },
+            superTypes: []
+        },
+        Attempts: {
+            name: Attempts.$type,
+            properties: {
+                limits: {
+                    name: Attempts.limits,
+                    defaultValue: [],
+                    optional: true
+                }
+            },
+            superTypes: [Block.$type]
         },
         Block: {
             name: Block.$type,

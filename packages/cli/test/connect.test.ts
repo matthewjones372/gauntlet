@@ -83,11 +83,13 @@ describe("github-status recomputes what needs no execution", () => {
 })
 
 describe("gauntlet hook stop", () => {
-  test("stays quiet when it already blocked this stop", async () => {
+  test("blocks again when it already blocked this stop: the attempt limits bound it, not stop_hook_active (ADR 0026)", async () => {
     const { r } = setup()
     r.write({ "src/main/behaviour.txt": "broken add\n" })
     r.commit("breaks a test")
-    expect((await hookCli(["hook", "stop"], JSON.stringify({ cwd: r.dir, stop_hook_active: true }))).out).toBe("")
+    const out = JSON.parse((await hookCli(["hook", "stop"], JSON.stringify({ cwd: r.dir, stop_hook_active: true }))).out)
+    expect(out.decision).toBe("block")
+    expect(out.reason).toContain("Gauntlet attempt 1 of 3")
   })
 
   test("blocks with the reasons and a way out while the change would be blocked", async () => {

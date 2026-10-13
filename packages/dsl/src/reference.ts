@@ -28,6 +28,7 @@ on fail mutation { fix "Kill the surviving mutants listed in the report. Do not 
 quarantine {                         // a known flaky test, excused by an owner until a date
   "svc.FxTest.rounding" until 2026-11-01 owner @payments
 }
+attempts { unchanged 3, total 8 }    // agent hooks: blocked stops before an exhausted exit (defaults 3 and 8)
 predicate small = diff < 150 lines and no zone touched
 review {
   owner  when zone touched

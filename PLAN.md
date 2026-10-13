@@ -398,7 +398,7 @@ Merging stays with GitHub. Gauntlet never merges and never approves.
   - `validate`, `check`, `explain`, `get_grammar`, `get_examples`, `author_draft` (proposals only)
   - `report_blocked` (new): the legitimate exit for "this can't be done without changing protected tests or policy". It records the reason, ends the attempt and nominates `review`. Research shows an explicit abort option sharply reduces cheating.
 - **`connect claude-code`** generates:
-  - a Stop hook that runs `gauntlet check` and blocks completion on failure with actionable reasons and `on fail` text. It respects `stop_hook_active` so that it can't loop.
+  - Stop and SubagentStop hooks that run `gauntlet check` on the agent's worktree and block completion on failure with actionable reasons and `on fail` text. They are bounded by the policy's attempt limits, not `stop_hook_active`: past them the agent stops as exhausted, which is still a failure (ADR 0026).
   - PreToolUse deny rules for writes to protected paths, generated from the policy IR
   - the MCP config
   - a short section for CLAUDE.md and AGENTS.md

@@ -10,7 +10,7 @@ import type { GeneratedFile } from "./files.ts"
 // renderers (Codex, Cursor, Copilot) can follow; only Claude Code ships now.
 
 export interface HookSpec {
-  readonly event: "stop" | "before-write"
+  readonly event: "stop" | "subagent-stop" | "before-write"
   readonly command: string
   readonly toolMatcher?: string
 }
@@ -21,14 +21,18 @@ export const INSTALL_COMMAND = "curl -fsSL https://raw.githubusercontent.com/mat
 // The settings are committed, so a teammate's Claude Code runs these hooks before they may have installed
 // Gauntlet. Without it, the check says so (once, when Claude finishes) instead of failing unseen; the
 // pre-tool hook stays quiet rather than repeat it on every edit.
+const STOP_COMMAND = `if command -v gauntlet >/dev/null 2>&1; then exec gauntlet hook stop; fi; echo "Gauntlet isn't installed on this machine, so this work wasn't checked. Install it with: ${INSTALL_COMMAND}" >&2; exit 1`
+
+// Subagents finish with SubagentStop, not Stop: the same check, on the subagent's own worktree (ADR 0026).
 export const HOOKS: ReadonlyArray<HookSpec> = [
-  {
-    event: "stop",
-    command: `if command -v gauntlet >/dev/null 2>&1; then exec gauntlet hook stop; fi; echo "Gauntlet isn't installed on this machine, so this work wasn't checked. Install it with: ${INSTALL_COMMAND}" >&2; exit 1`,
-  },
+  { event: "stop", command: STOP_COMMAND },
   // Bash too: a push to the default branch is refused, so changes go through a pull request.
   { event: "before-write", command: "command -v gauntlet >/dev/null 2>&1 || exit 0; exec gauntlet hook pre-tool-use", toolMatcher: "Edit|Write|MultiEdit|NotebookEdit|Bash" },
+  { event: "subagent-stop", command: STOP_COMMAND },
 ]
+
+/** Gauntlet's state in the git directory (the attempt record, ADR 0026): in any repository, and from any worktree. */
+export const STATE_GLOB = "//**/.git/gauntlet/**"
 
 const WRITE_TOOLS = ["Edit", "Write", "MultiEdit", "NotebookEdit"] as const
 
@@ -39,7 +43,7 @@ export const denyRules = (ir: PolicyIR, runnerConfig: ReadonlyArray<string>): st
   // Holdouts (ADR 0019) are out of the agent's reach altogether: Read rules also cover Grep and Glob.
   const holdouts = ir.suites.flatMap((s) => (s.kind === "holdout" ? s.globs ?? [] : []))
   return [
-    ...[...new Set([...guarded, ...holdouts])].sort().flatMap((glob) => WRITE_TOOLS.map((tool) => `${tool}(${glob})`)),
+    ...[...new Set([...guarded, ...holdouts, STATE_GLOB])].sort().flatMap((glob) => WRITE_TOOLS.map((tool) => `${tool}(${glob})`)),
     ...[...new Set(holdouts)].sort().map((glob) => `Read(${glob})`),
   ]
 }
@@ -48,6 +52,7 @@ const claudeHooks = () => ({
   // The check runs the project's build and tests, so it says what it's doing and gets longer than the 10-minute default.
   Stop: [{ hooks: [{ type: "command", command: HOOKS[0]!.command, statusMessage: "Gauntlet is checking the change (build, tests, coverage)…", timeout: 1800 }] }],
   PreToolUse: [{ matcher: HOOKS[1]!.toolMatcher, hooks: [{ type: "command", command: HOOKS[1]!.command }] }],
+  SubagentStop: [{ hooks: [{ type: "command", command: HOOKS[2]!.command, statusMessage: "Gauntlet is checking the subagent's change (build, tests, coverage)…", timeout: 1800 }] }],
 })
 
 /** Merges Gauntlet's hooks, deny rules and nothing else into an existing settings object. */

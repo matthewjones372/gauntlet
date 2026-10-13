@@ -284,6 +284,33 @@ test.
 
 Deleting a test is forbidden: it's the oldest way to make a check pass. But removing a feature removes its tests too. When a change deletes a test file together with the source file it's named after (`FxTest.kt` with `Fx.kt`, `fx.test.ts` with `fx.ts`, `fx_test.go` with `fx.go`, `test_fx.py` with `fx.py`), it's flagged instead: the change needs a person's review, not a fix. Those tests don't count against the executed-tests ratchet either. A test deleted while its code stays is still forbidden.
 
+## Agent attempts
+
+Claude Code's Stop and SubagentStop hooks keep an agent working while
+Gauntlet would block its change, but not forever (see
+[integrations](integrations.md#the-hooks-and-their-bounded-exit)). Two limits
+bound them:
+
+```
+attempts { unchanged 3, total 8 }
+```
+
+- **`unchanged`** (default 3): how many times in a row the hook blocks on the
+  same findings. The next stop on those findings is **exhausted**.
+- **`total`** (default 8): how many times the hook blocks on one branch,
+  whatever the findings. The next blocking stop is exhausted.
+
+Both are whole numbers from 1. Either one may be left out, and a policy without
+the block uses the defaults. `unchanged` can't be above `total`. The hooks read
+the limits from the base branch's policy, as CI does.
+
+Exhausted lets the agent stop with an explicit result, and it is still a
+failure: it never passes `gauntlet check` or the GitHub check and never
+satisfies a review level. Raising either limit (above its default, or above
+what the policy said before) counts as **loosening** the policy and needs the
+same confirmation as other loosening changes. Like any change to `.gauntlet/`,
+it needs an owner. Lowering one tightens the policy.
+
 ## Review levels
 
 | Level | What it means |

@@ -1,6 +1,7 @@
-import type { PolicyIR } from "@gauntlet/ir"
+import { attemptLimits, type PolicyIR } from "@gauntlet/ir"
 import { Clock, Effect, FileSystem, Option, Path, Semaphore } from "effect"
 import { availableParallelism } from "node:os"
+import { runStateTampers, type StateTamperResult } from "./attempts-tamper.ts"
 import { BASELINE_PATH } from "./baseline-store.ts"
 import { runCheck } from "./check.ts"
 import { Git } from "./git.ts"
@@ -69,6 +70,8 @@ export interface SelftestResult {
   readonly fixtures: ReadonlyArray<FixtureResult>
   /** Built-in fixtures with nothing to apply them to in this project (no tests yet, no baseline...). */
   readonly notApplicable: ReadonlyArray<string>
+  /** Tampering with the agent hooks' attempt record (ADR 0026), under the policy's limits: not a commit, so not a fixture. */
+  readonly hookState?: ReadonlyArray<StateTamperResult>
   readonly passed: boolean
 }
 
@@ -342,12 +345,14 @@ export const runSelftest = (request: SelftestRequest) =>
 
     const control = (yield* controlRun).a
     const covered = new Set(tamperings.map((t) => t.fixture))
+    const hookState = wanted("hook-state") ? yield* runStateTampers(attemptLimits(ir)) : undefined
     return {
       base,
       control: { tier: control.decision.tier, wouldBlock: control.decision.wouldBlock, executed: executed(control), reasons: control.decision.nominations.filter((n) => n.blocking).map((n) => n.reason) },
       fixtures: results,
       notApplicable: BUILT_IN_FIXTURES.filter((f) => wanted(f) && !covered.has(f)),
-      passed: !control.decision.wouldBlock && results.every((r) => r.caught),
+      ...(hookState ? { hookState } : {}),
+      passed: !control.decision.wouldBlock && results.every((r) => r.caught) && (hookState ?? []).every((h) => h.caught),
     } satisfies SelftestResult
   })
 
@@ -366,6 +371,10 @@ export const renderSelftestText = (r: SelftestResult): string => {
     if (!f.caught) lines.push(`          ${" ".repeat(name)}  ${" ".repeat(tier)}  ${f.description}`)
   }
   if (r.notApplicable.length > 0) lines.push("", `Not applicable to this project: ${r.notApplicable.join(", ")}.`)
+  if (r.hookState) {
+    lines.push("", "The agent hooks' attempt record:")
+    for (const h of r.hookState) lines.push(`  ${h.caught ? "caught" : "MISSED"}  ${h.tamper.padEnd(14)}  ${h.status}  ${h.description}`)
+  }
   const caught = r.fixtures.filter((f) => f.caught).length
   lines.push("", r.passed
     ? `All ${caught} tamperings were caught.`
@@ -383,6 +392,10 @@ export const renderSelftest = (r: SelftestResult): string => {
   lines.push("| Fixture | Caught | Tier | Why |", "| --- | --- | --- | --- |")
   for (const f of r.fixtures) lines.push(`| ${f.fixture} | ${f.caught ? "yes" : "**no**"} | ${f.tier} | ${f.why}: ${f.description} |`)
   if (r.notApplicable.length > 0) lines.push("", `Not applicable to this project: ${r.notApplicable.join(", ")}.`)
+  if (r.hookState) {
+    lines.push("", "| Attempt record | Caught | Next stop | What |", "| --- | --- | --- | --- |")
+    for (const h of r.hookState) lines.push(`| ${h.tamper} | ${h.caught ? "yes" : "**no**"} | ${h.status} | ${h.description} |`)
+  }
   lines.push("", r.passed ? "Every tampering was caught." : "Some tampering got through. Each row marked **no** is a gap in this policy or its suites.", "")
   return lines.join("\n")
 }
