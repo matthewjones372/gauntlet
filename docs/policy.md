@@ -325,7 +325,9 @@ When the baseline at HEAD recorded which tests kill which mutants (a mutation ga
 
 `gauntlet baseline` records that kill map when the mutation tool reports which tests killed each mutant: Pitest (recording turns on its full mutation matrix) and StrykerJS with Vitest or Jest (recording turns off its bail, so every killer is named). Bun's command runner, Stryker4s, mutmut, cargo-mutants and Gremlins don't report killers.
 
-Property tests are never listed, and holdouts aren't read. It's a list: it changes nothing, and removing one of these tests is still a deleted-tests forbid. `--json` prints the same list as JSON.
+Property tests are never listed, and holdouts aren't read. It's a list: it changes nothing, and removing one of these tests is still a deleted-tests forbid.
+
+A change that only removes tests (it changes nothing but test files) is also checked against the baseline's kill map: the report says whether the tests that stay still kill every mutant the removed tests killed, and which mutants would be lost. The removal stays forbidden until a mutation run on the change confirms it (spec 0016). `--json` prints the same list as JSON.
 
 ## Review levels
 

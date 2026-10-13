@@ -1,8 +1,9 @@
 import { globMatches } from "@gauntlet/dsl"
 import type { FlagCheck, ForbidCheck, PolicyIR, RatchetCheck } from "@gauntlet/ir"
-import { compareMetrics, type Metric, type TestCounts } from "@gauntlet/sarif"
+import { compareMetrics, type KillMap, type Metric, type TestCounts } from "@gauntlet/sarif"
 import { Effect, type FileSystem, type Option, type Path } from "effect"
 import type { DiffFacts } from "./diff-facts.ts"
+import { describePruning, pruningVerdict, removedTests } from "./pruning.ts"
 
 // Integrity checks: is the verification itself intact? (ADR 0013)
 // Core implements what needs no language knowledge; packs supply detectors
@@ -60,6 +61,8 @@ export interface IntegrityInput extends DetectorInput {
   readonly headTests?: TestRecord
   /** Test ids recorded at base, when the baseline has them. */
   readonly baseTestIds?: ReadonlyArray<string>
+  /** Which tests killed which mutants at base, when the baseline recorded it (spec 0016). */
+  readonly killMap?: KillMap
 }
 
 export interface IntegrityResult {
@@ -164,6 +167,9 @@ const coreDetector = (input: IntegrityInput): { findings: IntegrityFinding[]; me
       }
     }
   }
+  // A change that only removes tests: what the kill map says about it (spec 0016). The removal stays forbidden above.
+  const pruned = removedTests(facts, input.isTestPath, input.baseTestIds, input.headTests?.ids)
+  if (pruned) findings.push({ check: "deleted-tests", kind: "flag", message: describePruning(pruningVerdict(pruned, input.killMap)), detector: "core" })
   covered.push("deleted-tests")
 
   // Main code that names test files, test classes or test paths.

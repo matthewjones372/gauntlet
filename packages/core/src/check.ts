@@ -238,6 +238,7 @@ const judge = (
       readHead: read(p.head),
       isTestPath: testPathMatcher(p.ir),
       ...compared,
+      ...Option.match(p.baseline, { onNone: () => ({}), onSome: (b) => (b.killMap ? { killMap: b.killMap } : {}) }),
       headFiles: yield* git.listTree(repo, p.head),
       dir,
     }, p.used.flatMap((pack) => pack.detectors))
