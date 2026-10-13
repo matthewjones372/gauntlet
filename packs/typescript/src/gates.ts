@@ -312,6 +312,8 @@ export const mutation: GateImpl = (check, ctx) =>
           ...(mutate ? { mutate } : {}),
           // bun test stops at the first failing test: a mutant is killed as soon as one test catches it.
           ...(commandRunner ? { commandRunner: { command: ["bun test --bail", ...(tests ?? []).map((t) => shellQuote(`./${t}`))].join(" ") } } : {}),
+          // Spec 0016: recording a baseline, every test that kills a mutant, not just the first.
+          ...(ctx.recordKillMap && !commandRunner ? { disableBail: true } : {}),
           reporters: ["json"],
           jsonReporter: { fileName: `${ctx.outputDir}/mutation/${name}.json` },
           incremental: false,
@@ -343,6 +345,8 @@ export const mutation: GateImpl = (check, ctx) =>
     const counted: Scored[] = mutants.filter((m) => DETECTED.has(m.status) || UNDETECTED.has(m.status)).map((m) => ({
       path: m.path, line: m.line, killed: DETECTED.has(m.status),
       message: `${m.status === "NoCoverage" ? "No test covers" : "No test kills"} a ${m.mutator} mutant`,
+      // Only a run that didn't stop at the first killer names them all; one killer would make every other test look redundant.
+      ...(ctx.recordKillMap && m.killedBy ? { killedBy: m.killedBy, coveredBy: m.coveredBy ?? [] } : {}),
     }))
     return { ...base(r), exitCode: 0, ...mutationGateRun("stryker", counted, ctx) }
   })

@@ -63,12 +63,18 @@ const StrykerReport = Schema.Struct({
     mutants: Schema.Array(Schema.Struct({
       status: Schema.String,
       mutatorName: Schema.optionalKey(Schema.String),
+      killedBy: Schema.optionalKey(Schema.Array(Schema.String)),
+      coveredBy: Schema.optionalKey(Schema.Array(Schema.String)),
       location: Schema.Struct({
         start: Schema.Struct({ line: Schema.Number, column: Schema.optionalKey(Schema.Number) }),
         end: Schema.optionalKey(Schema.Struct({ line: Schema.Number })),
       }),
     })),
   })),
+  /** The tests Stryker ran, by file, when its runner reports them (Vitest, Jest): ids to names. */
+  testFiles: Schema.optionalKey(Schema.Record(Schema.String, Schema.Struct({
+    tests: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  }))),
 })
 
 export interface Mutant {
@@ -80,6 +86,12 @@ export interface Mutant {
   readonly column?: number
   /** The line the mutant ends on, when it spans several. */
   readonly endLine?: number
+  /**
+   * The tests that killed it and every test that ran it, as \`<file> > <name>\`,
+   * when the runner reports tests (spec 0016). Absent with Bun's command runner.
+   */
+  readonly killedBy?: ReadonlyArray<string>
+  readonly coveredBy?: ReadonlyArray<string>
 }
 
 /** Statuses that count towards the score: detected over all that ran. */
@@ -88,8 +100,10 @@ export const UNDETECTED = new Set(["Survived", "NoCoverage"])
 
 /** Stryker's mutation-testing-report JSON. */
 export const parseStryker = (json: string, repoRoot: string): Option.Option<Mutant[]> =>
-  Option.map(Schema.decodeUnknownOption(Schema.fromJsonString(StrykerReport))(json), (r) =>
-    Object.entries(r.files).flatMap(([file, f]) =>
+  Option.map(Schema.decodeUnknownOption(Schema.fromJsonString(StrykerReport))(json), (r) => {
+    const named = new Map(Object.entries(r.testFiles ?? {}).flatMap(([file, f]) => f.tests.map((t) => [t.id, `${relativeUri(file, repoRoot)} > ${t.name}`] as const)))
+    const name = (id: string) => named.get(id) ?? id
+    return Object.entries(r.files).flatMap(([file, f]) =>
       f.mutants.map((m) => ({
         path: relativeUri(file, repoRoot),
         line: m.location.start.line,
@@ -97,8 +111,11 @@ export const parseStryker = (json: string, repoRoot: string): Option.Option<Muta
         mutator: m.mutatorName ?? "mutant",
         ...(m.location.start.column !== undefined ? { column: m.location.start.column } : {}),
         ...(m.location.end ? { endLine: m.location.end.line } : {}),
+        // Per-test results: a killed mutant names its killers, and every mutant the tests that ran it.
+        ...(r.testFiles ? { killedBy: (m.killedBy ?? []).map(name), coveredBy: (m.coveredBy ?? []).map(name) } : {}),
       }))
-    ))
+    )
+  })
 
 const EslintResults = Schema.Array(Schema.Struct({
   filePath: Schema.String,
