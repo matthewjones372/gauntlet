@@ -13,7 +13,32 @@ export interface MutationResult {
   readonly line: number
   readonly detected: boolean
   readonly status: string
+  /**
+   * With Pitest's full mutation matrix (spec 0016): every test that killed the
+   * mutant, and the tests that ran it and didn't, named as \`pitestTestName\` names them.
+   * Absent without the matrix, where Pitest names only the first killer.
+   */
+  readonly killingTests?: ReadonlyArray<string>
+  readonly succeedingTests?: ReadonlyArray<string>
 }
+
+/**
+ * A Pitest test name as a test id: \`svc.FxTest.converts\` for JUnit 5's
+ * \`svc.FxTest.[engine:junit-jupiter]/[class:svc.FxTest]/[method:converts()]\`,
+ * Kotest's \`[spec:svc.FxSpec]/[test:rounds]\` and JUnit 4's \`svc.FxTest.converts(svc.FxTest)\`.
+ */
+export const pitestTestName = (raw: string): string => {
+  const segments = [...raw.matchAll(/\[([\w-]+):([^\]]*)\]/g)].map((m) => ({ kind: m[1]!, value: m[2]! }))
+  if (segments.length > 0) {
+    const owner = segments.filter((s) => s.kind === "class" || s.kind === "spec").at(-1)?.value ?? raw.slice(0, raw.indexOf(".["))
+    const nested = segments.filter((s) => s.kind === "nested-class").map((s) => s.value)
+    const tests = segments.filter((s) => ["method", "test-template", "test-factory", "test"].includes(s.kind)).map((s) => s.value.replace(/\(.*\)$/, ""))
+    return [owner, ...nested, ...tests].filter((x) => x !== "").join(".")
+  }
+  return /^(.+)\([\w.$]+\)$/.exec(raw)?.[1] ?? raw
+}
+
+const testsIn = (node: unknown): string[] => (typeof node === "string" && node !== "" ? node.split("|").filter((t) => t !== "").map(pitestTestName) : [])
 
 /** Pitest `mutations.xml`. Surviving and uncovered mutants both count against the score. */
 export const parseMutations = (xml: string): MutationResult[] => {
@@ -24,6 +49,7 @@ export const parseMutations = (xml: string): MutationResult[] => {
     line: Number(m.lineNumber ?? 0),
     detected: String(m.detected) === "true",
     status: String(m.status ?? ""),
+    ...("killingTests" in m ? { killingTests: testsIn(m.killingTests), succeedingTests: testsIn(m.succeedingTests) } : {}),
   }))
 }
 

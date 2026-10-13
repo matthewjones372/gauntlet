@@ -682,6 +682,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           facts,
           ...(scope ? { scope } : {}),
           ...(changedLinesOnly ? { changedLinesOnly: true } : {}),
+          ...(input.recording && check.kind === "gate" && check.name === "mutation" ? { recordKillMap: true } : {}),
           files: input.files,
           legacy: Option.match(baseline, { onNone: () => [], onSome: (b) => b.legacy }),
           ...(!multi && isWarningsCheck(check) && compiledWarnings.has(".") ? { buildWarnings: compiledWarnings.get(".")! } : {}),

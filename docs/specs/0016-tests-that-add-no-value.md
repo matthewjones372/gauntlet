@@ -2,7 +2,8 @@
 
 Status: stage 1 implemented (`gauntlet prune tests` with the signals that need no mutation
 run, for every pack). Stage 2 in progress: the baseline records a kill map and `prune tests`
-reads it; reading killers from Pitest, Stryker and Stryker4s comes next. Stages 3 and 4
+reads it; Pitest reports killers (recording turns on its full mutation matrix); Stryker
+and Stryker4s come next. Stages 3 and 4
 proposed. Uses spec 0011's mutant helper and spec
 0013's map of what each test exercises; shares the killer recording of spec 0012 §6.
 
