@@ -1,7 +1,7 @@
 import {
   agentSummary, blockingSet, knownBlock, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, pullRequestBase, protectionFor,
   ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
-  renderFlaky, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow,
+  renderFlaky, renderPruneTests, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow, surveyTests,
   attemptBranch, attemptNote, renderStopHookCorpus, runStopHookCorpus, clearAttempts, commonDir, exhaustedLine, fingerprintLines, fingerprintOf, listAttempts, nextAttempt, readAttempts, reportedBlocked, worktreeOf, writeAttempts,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
@@ -1943,9 +1943,21 @@ const flaky = Command.make("flaky", { repo: repoFlag, json: jsonFlag }, ({ repo,
 
 const report = Command.make("report").pipe(Command.withDescription("Reports over recorded checks, and the agent's blocked report."), Command.withSubcommands([shadow, flaky, blockedCommand]))
 
+// ---------- prune ----------
+
+const pruneTests = Command.make("tests", { repo: repoFlag, json: jsonFlag }, ({ repo, json }) =>
+  Effect.gen(function*() {
+    const root = yield* absolute(repo)
+    const { ir } = (yield* (yield* PolicySource).load({ repo: root })).compiled
+    const found = yield* surveyTests(root, ir)
+    yield* (yield* Output).out(json ? prettyCanonicalJson(found) : renderPruneTests(found))
+  }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("List tests that test nothing or repeat another (spec 0016). Changes nothing."))
+
+const prune = Command.make("prune").pipe(Command.withDescription("List what could be removed without losing anything."), Command.withSubcommands([pruneTests]))
+
 export const root = Command.make("gauntlet").pipe(
   Command.withDescription("Gauntlet: verification integrity for agent-written code."),
-  Command.withSubcommands([setup, apply, adopt, validate, check, explain, init, newProject, author, baseline, selftest, corpus, override, approve, grantCommand, report, connect, githubStatusCommand, needsBuild, hook, mcp, doctor]),
+  Command.withSubcommands([setup, apply, adopt, validate, check, explain, init, newProject, author, baseline, selftest, corpus, override, approve, grantCommand, prune, report, connect, githubStatusCommand, needsBuild, hook, mcp, doctor]),
 )
 
 /** Runs the CLI on `args` (without the program name) and returns the exit code. */

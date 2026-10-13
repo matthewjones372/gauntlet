@@ -1,6 +1,6 @@
-import type { DetectorInput, DetectorOutput, IntegrityDetector, IntegrityFinding } from "@gauntlet/core"
+import { type DetectorInput, type DetectorOutput, type IntegrityDetector, type IntegrityFinding, normalisedBody, type TestSurveyor } from "@gauntlet/core"
 import type { Metric } from "@gauntlet/sarif"
-import { near } from "@gauntlet/syntax"
+import { near, span } from "@gauntlet/syntax"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { args, calleeName, calleeText, line, type Node, ofType, parseTs } from "./syntax.ts"
 import { isTestFile, isTsSource } from "./toolchain.ts"
@@ -202,4 +202,46 @@ export const typescriptDetector: IntegrityDetector = {
     Effect.gen(function*() {
       return { findings: yield* compare(input), metrics: yield* measure(input) } satisfies DetectorOutput
     }),
+}
+
+const isProperty = (test: Node) => /^(test|it)\.prop$/.test(calleeText(test)) || ofType(test, "call_expression").some((c) => /^fc\.(assert|property|asyncProperty)$/.test(calleeText(c)))
+
+/** The titles of the `describe` blocks around a test. */
+const describes = (n: Node) => {
+  const titles: string[] = []
+  for (let p: Node | null = n.parent; p; p = p.parent) {
+    if (p.type === "call_expression" && /^(describe|suite|context)(\.\w+)*$/.test(calleeText(p))) titles.unshift(args(p)[0]?.text ?? "")
+  }
+  return titles.join(" > ")
+}
+
+/** Functions declared in the file, by name: `function f() {}` and `const f = () => {}`. */
+const declaredFunctions = (root: Node): { name: string; node: Node }[] => [
+  ...ofType(root, "function_declaration").map((f) => ({ name: f.childForFieldName("name")?.text ?? "", node: f })),
+  ...ofType(root, "variable_declarator").filter((d) => ["arrow_function", "function_expression", "function"].includes(d.childForFieldName("value")?.type ?? "")).map((d) => ({ name: d.childForFieldName("name")?.text ?? "", node: d })),
+].filter((f) => f.name !== "")
+
+/** TypeScript and JavaScript test files for `gauntlet prune tests` (spec 0016). */
+export const typescriptSurveyor: TestSurveyor = {
+  reads: (path, isTestPath) => isTsSource(path) && (isTestPath || isTestFile(path)),
+  survey: (path, text) => {
+    const root = parseTs(path, text).rootNode
+    const comments = ofType(root, "comment").map(span)
+    return {
+      tests: testFunctions(root).map((t) => {
+        const title = args(t.node)[0]
+        return {
+          name: t.name,
+          line: line(t.node),
+          assertions: t.assertions,
+          tautologies: ofType(t.node, "call_expression").filter(tautology).length,
+          property: isProperty(t.node),
+          calls: ofType(t.node, "call_expression").map(calleeName).filter((c) => c !== ""),
+          scope: describes(t.node),
+          body: normalisedBody(text, span(t.node), [...comments, ...(title ? [span(title)] : [])]),
+        }
+      }),
+      assertingHelpers: declaredFunctions(root).filter((f) => assertions(f.node) > 0).map((f) => f.name),
+    }
+  },
 }

@@ -1,6 +1,6 @@
-import type { DetectorInput, DetectorOutput, IntegrityDetector, IntegrityFinding } from "@gauntlet/core"
+import { type DetectorInput, type DetectorOutput, type IntegrityDetector, type IntegrityFinding, normalisedBody, type TestSurveyor } from "@gauntlet/core"
 import type { Metric } from "@gauntlet/sarif"
-import { near } from "@gauntlet/syntax"
+import { near, span } from "@gauntlet/syntax"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { args, calleeName, calleeText, importPaths, line, nameOf, type Node, ofType, parseGo } from "./syntax.ts"
 import { isGo, isMainSource, isTestFile } from "./toolchain.ts"
@@ -210,4 +210,31 @@ export const goDetector: IntegrityDetector = {
     Effect.gen(function*() {
       return { findings: yield* compare(input), metrics: yield* measure(input) } satisfies DetectorOutput
     }),
+}
+
+/** Go test files for `gauntlet prune tests` (spec 0016). */
+export const goSurveyor: TestSurveyor = {
+  reads: (path) => isTestFile(path),
+  survey: (_path, text) => {
+    const root = parseGo(text).rootNode
+    const comments = ofType(root, "comment").map(span)
+    const tests = testFunctions(root)
+    const isTest = new Set(tests.map((t) => t.node.startIndex))
+    return {
+      tests: tests.map((t) => {
+        const name = t.node.childForFieldName("name")
+        return {
+          name: t.name,
+          line: line(t.node),
+          assertions: t.assertions,
+          tautologies: ofType(t.node, "call_expression").filter(tautology).length,
+          property: isProperty(t),
+          calls: ofType(t.node, "call_expression").map(calleeName).filter((c) => c !== ""),
+          scope: "",
+          body: normalisedBody(text, span(t.node), [...comments, ...(name ? [span(name)] : [])]),
+        }
+      }),
+      assertingHelpers: ofType(root, "function_declaration", "method_declaration").filter((f) => !isTest.has(f.startIndex) && assertionCount(f) > 0).map(nameOf),
+    }
+  },
 }

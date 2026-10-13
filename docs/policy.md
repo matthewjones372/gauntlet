@@ -311,6 +311,15 @@ what the policy said before) counts as **loosening** the policy and needs the
 same confirmation as other loosening changes. Like any change to `.gauntlet/`,
 it needs an owner. Lowering one tightens the policy.
 
+## Tests that add no value
+
+`gauntlet prune tests` lists tests that can't catch anything ([spec 0016](specs/0016-tests-that-add-no-value.md)):
+
+- **Tests that test nothing:** no assertions, or only ones that can't fail (`assertTrue(true)`, `expect(x).toBe(x)`). An assertion in a helper function in the same file counts.
+- **Tests that repeat another word for word:** the same source as another test in the same file and the same class, module or `describe`, apart from the name, comments and layout. Different literals or parameters make them different tests.
+
+Property tests are never listed, and holdouts aren't read. It's a list: it changes nothing, and removing one of these tests is still a deleted-tests forbid. `--json` prints the same list as JSON.
+
 ## Review levels
 
 | Level | What it means |
