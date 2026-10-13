@@ -36,10 +36,12 @@ bun run typecheck && bun test
 ```
 
 The end-to-end tests run real projects from `examples/fixtures` with their real
-tools. They're off by default locally:
+tools. They're named `*.e2e.ts`, so `bun test` doesn't collect them; name the
+files to run them (one pack, or all):
 
 ```bash
-GAUNTLET_E2E=1 bun test packs
+GAUNTLET_E2E=1 bun test ./packs/go/test/*.e2e.ts
+GAUNTLET_E2E=1 bun test $(ls packs/*/test/*.e2e.ts | sed 's#^#./#')
 ```
 
 Build the release binaries into `dist/`:

@@ -60,7 +60,7 @@ is shared across checks.
 
 ## Measured
 
-`packs/jvm/test/e2e.test.ts` on an M-series Mac, same machine, same fixture:
+`packs/jvm/test/project.e2e.ts` on an M-series Mac, same machine, same fixture:
 400.7 s before, 73.3 s after. An earlier Scala comparison (594.5 s against 652.9 s) is void: the second run
 overlapped the JVM run, which used two to three cores. Measured cleanly, one
 sbt start costs about 14 CPU seconds before any work, and a check made five;
