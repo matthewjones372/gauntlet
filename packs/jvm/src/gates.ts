@@ -250,7 +250,7 @@ export const mutation: GateImpl = (_check, ctx) =>
     if (inScope !== undefined && inScope.length === 0) {
       return { command: [], exitCode: 0, runs: [], nothingInScope: "no main classes in scope to mutate" }
     }
-    const env: Record<string, string> = { GAUNTLET_PITEST_THREADS: String(availableParallelism()) }
+    const env: Record<string, string> = { GAUNTLET_PITEST_THREADS: String(availableParallelism()), ...(ctx.recordKillMap ? { GAUNTLET_PITEST_MATRIX: "true" } : {}) }
     if (inScope) {
       const sources = yield* readFiles(ctx, inScope)
       env.GAUNTLET_PITEST_TARGETS = sources.flatMap((f) => pitestTargets(f.path, f.text)).join(",")
@@ -266,7 +266,10 @@ export const mutation: GateImpl = (_check, ctx) =>
     const locate = sourceIndex(ctx.files)
     const mutants = xml.flatMap((f) => parseMutations(f.content)).map((m): Mutant => {
       const pkg = m.className.includes(".") ? m.className.slice(0, m.className.lastIndexOf(".")).replace(/\./g, "/") : ""
-      return { path: locate(pkg, m.sourceFile), line: m.line, killed: m.detected, message: `${m.status === "NO_COVERAGE" ? "No test covers" : "No test kills"} a mutant in ${m.className}` }
+      return {
+        path: locate(pkg, m.sourceFile), line: m.line, killed: m.detected, message: `${m.status === "NO_COVERAGE" ? "No test covers" : "No test kills"} a mutant in ${m.className}`,
+        ...(m.killingTests ? { killedBy: m.killingTests, coveredBy: [...m.killingTests, ...(m.succeedingTests ?? [])] } : {}),
+      }
     })
     // Survivors, by line, so an agent knows exactly which assertions are missing.
     return { ...base(r), ...mutationGateRun("pitest", mutants, ctx) }

@@ -97,6 +97,10 @@ allprojects { p ->
         if (skipped != null && skipped != "") p.afterEvaluate {
             pitest.excludedMethods.set(pitest.excludedMethods.getOrElse([] as Set) + (skipped.split(",") as List))
         }
+        // Spec 0016: recording a baseline, every test that kills each mutant, not just the first.
+        if (System.getenv("GAUNTLET_PITEST_MATRIX") == "true") p.afterEvaluate {
+            if (pitest.hasProperty("fullMutationMatrix")) pitest.fullMutationMatrix.set(true)
+        }
         // Pitest runs one test JVM at a time unless told otherwise; a build that chose more keeps its choice.
         def threads = System.getenv("GAUNTLET_PITEST_THREADS")
         if (threads != null && threads != "") p.afterEvaluate {

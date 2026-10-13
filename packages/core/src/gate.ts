@@ -50,6 +50,11 @@ export interface GateContext {
    * also record which files each test class executes, as \`testMap\`.
    */
   readonly recordTestMap?: boolean
+  /**
+   * The mutation gate, while a baseline is recorded: also report every test
+   * that kills each mutant (spec 0016), even where that makes the tool slower.
+   */
+  readonly recordKillMap?: boolean
 }
 
 export interface GateRun {
