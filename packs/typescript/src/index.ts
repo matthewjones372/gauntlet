@@ -2,6 +2,7 @@ import type { Pack } from "@gauntlet/core"
 import { spec } from "./catalog.ts"
 import { doctor } from "./doctor.ts"
 import { onboard } from "./onboard.ts"
+import { typescriptCode } from "./prune.ts"
 import { parseDependencies } from "./dependencies.ts"
 import { typescriptDetector, typescriptSurveyor } from "./detectors.ts"
 import { arch, build, coverage, deadCode, lint, mutation, runSuite } from "./gates.ts"
@@ -27,6 +28,8 @@ export const typescriptPack: Pack = {
   dependencies: parseDependencies,
   detectors: [typescriptDetector],
   surveyTests: typescriptSurveyor,
+  // Main source no test ran and nothing names, for `gauntlet prune code` (spec 0017 §5).
+  surveyCode: typescriptCode,
   gates: { build, lint, "dead-code": deadCode, arch, mutation, coverage },
   runSuite,
   reruns: true,

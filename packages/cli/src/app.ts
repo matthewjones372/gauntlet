@@ -1,7 +1,7 @@
 import {
   agentSummary, blockingSet, knownBlock, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, sameCodeCommits, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, pullRequestBase, protectionFor,
   ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
-  renderFlaky, renderPruneTests, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow, surveyTests,
+  renderFlaky, renderPruneCode, renderPruneTests, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow, surveyCode, surveyTests,
   attemptBranch, attemptNote, renderStopHookCorpus, runStopHookCorpus, clearAttempts, commonDir, exhaustedLine, fingerprintLines, fingerprintOf, listAttempts, nextAttempt, readAttempts, reportedBlocked, worktreeOf, writeAttempts,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
@@ -1961,7 +1961,16 @@ const pruneTests = Command.make("tests", { repo: repoFlag, json: jsonFlag }, ({ 
     yield* (yield* Output).out(json ? prettyCanonicalJson(found) : renderPruneTests(found))
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("List tests that test nothing or repeat another (spec 0016). Changes nothing."))
 
-const prune = Command.make("prune").pipe(Command.withDescription("List what could be removed without losing anything."), Command.withSubcommands([pruneTests]))
+const pruneCode = Command.make("code", { repo: repoFlag, json: jsonFlag }, ({ repo, json }) =>
+  Effect.gen(function*() {
+    const root = yield* absolute(repo)
+    const { ir, hash } = (yield* (yield* PolicySource).load({ repo: root })).compiled
+    const recorded = yield* (yield* BaselineStore).at(root, "HEAD").pipe(Effect.orElseSucceed(() => Option.none()))
+    const found = yield* surveyCode(root, ir, hash, Option.getOrUndefined(recorded))
+    yield* (yield* Output).out(json ? prettyCanonicalJson(found) : renderPruneCode(found))
+  }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("List dead-code findings and code no test runs that nothing names (spec 0017). Changes nothing."))
+
+const prune = Command.make("prune").pipe(Command.withDescription("List what could be removed without losing anything."), Command.withSubcommands([pruneTests, pruneCode]))
 
 export const root = Command.make("gauntlet").pipe(
   Command.withDescription("Gauntlet: verification integrity for agent-written code."),

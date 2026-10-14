@@ -98,7 +98,7 @@ export const includesFor = (sources: ReadonlyArray<{ readonly text: string }>): 
  * inline function or a constant reaches tests that never execute its file.
  * Such files are left out of the map, so a change to one runs every test.
  */
-const COPIED_INTO_CALLERS = /\binline\s+(?:fun|val|var)\b|\bconst\s+val\b|\bstatic\s+final\s+[\w<>[\]]+\s+\w+\s*=\s*(?:"|'|-?\d|true\b|false\b)/
+export const COPIED_INTO_CALLERS = /\binline\s+(?:fun|val|var)\b|\bconst\s+val\b|\bstatic\s+final\s+[\w<>[\]]+\s+\w+\s*=\s*(?:"|'|-?\d|true\b|false\b)/
 
 /** The map from each test class's execution data. Undefined when any of it can't be read. */
 export const testMapOf = (

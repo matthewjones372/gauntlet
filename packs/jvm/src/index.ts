@@ -2,6 +2,7 @@ import type { Pack } from "@gauntlet/core"
 import { spec } from "./catalog.ts"
 import { doctor } from "./doctor.ts"
 import { onboard } from "./onboard.ts"
+import { jvmCode } from "./prune.ts"
 import { parseDependencies } from "./dependencies.ts"
 import { arch, build, coverage, deadCode, lint, mutation, runSuite, warnings } from "./gates.ts"
 import { stopDaemon } from "./gradle.ts"
@@ -31,6 +32,8 @@ export const jvmPack: Pack = {
   dependencies: parseDependencies,
   detectors: [kotlinDetector],
   surveyTests: kotlinSurveyor,
+  // Main source no test ran and nothing names, for `gauntlet prune code` (spec 0017 §5).
+  surveyCode: jvmCode,
   gates: { build, warnings, lint, "dead-code": deadCode, arch, mutation, coverage },
   runSuite,
   // The check's own Gradle daemon ends with the check (ADR 0020).

@@ -8,6 +8,7 @@ import type { IntegrityDetector } from "./integrity.ts"
 import type { Onboarding, RepoView } from "./onboard.ts"
 import type { ProcessRunner } from "./process-runner.ts"
 import type { TamperContext, Tampering } from "./selftest.ts"
+import type { CodeSurveyor } from "./prune-code.ts"
 import type { TestSurveyor } from "./test-value.ts"
 
 /** One `gauntlet doctor` finding. A failed required check means this build or machine can't run Gauntlet. */
@@ -72,6 +73,8 @@ export interface Pack {
   readonly tamper?: (ctx: TamperContext) => Effect.Effect<ReadonlyArray<Tampering>>
   /** Reads its test files for \`gauntlet prune tests\` (spec 0016). */
   readonly surveyTests?: TestSurveyor
+  /** Reads its main source files for \`gauntlet prune code\` (spec 0017 §5); only a pack with \`testMaps\` has one. */
+  readonly surveyCode?: CodeSurveyor
 }
 
 /** The packs compiled into this binary (ADR 0006). */
