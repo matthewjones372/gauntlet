@@ -1,6 +1,6 @@
 import { globMatches, type PolicyInvalid } from "@gauntlet/dsl"
 import type { PolicyIR } from "@gauntlet/ir"
-import type { Baseline, Metric, MetricDelta, Run } from "@gauntlet/sarif"
+import { type Baseline, type Metric, type MetricDelta, migrateTestIds, type Run } from "@gauntlet/sarif"
 import { Clock, Data, Effect, Option } from "effect"
 import { judgedBaseline, onlyBaseline } from "./baseline-pr.ts"
 import { BaselineStore, renamesOf } from "./baseline-store.ts"
@@ -185,14 +185,17 @@ const byBuild = (metrics: Readonly<Record<string, Metric>>, testIds: ReadonlyArr
  * The tests integrity compares: the baseline's ratchet values and test ids
  * against the tests that ran. With several builds, only the builds that ran
  * count (ADR 0022). Tests of the classes selection left out (spec 0013) didn't
- * run and aren't missing; then both sides are counted by name.
+ * run and aren't missing; then both sides are counted by name. A bun test the
+ * baseline names the way an older version did is compared by its new name (ADR 0027).
  */
 export const testsToCompare = (
   baseline: Option.Option<Baseline>,
   executed: { readonly tests?: TestRecord; readonly testedBuilds?: ReadonlyArray<string>; readonly deselected?: ReadonlyArray<string> },
 ): { readonly baselineMetrics: Readonly<Record<string, Metric>>; readonly headTests?: TestRecord; readonly baseTestIds?: ReadonlyArray<string> } => {
   const tested = executed.testedBuilds
-  const baseIds = Option.match(baseline, { onNone: () => [], onSome: (b) => (tested ? b.testIds.filter((id) => tested.some((d) => id.startsWith(`${d}:`))) : b.testIds) })
+  const recordedIds = Option.match(baseline, { onNone: () => [], onSome: (b) => (tested ? b.testIds.filter((id) => tested.some((d) => id.startsWith(`${d}:`))) : b.testIds) })
+  // A baseline recorded before bun's tests were named after their files holds their old ids (ADR 0027).
+  const baseIds = executed.tests ? migrateTestIds(recordedIds, executed.tests.ids) : recordedIds
   const excused = new Set(excusedBySelection(baseIds, executed.deselected ?? []))
   const recorded: Readonly<Record<string, Metric>> = Option.match(baseline, { onNone: () => ({}), onSome: (b) => byBuild(b.metrics, b.testIds, tested) })
   const key = "integrity/executed-tests"

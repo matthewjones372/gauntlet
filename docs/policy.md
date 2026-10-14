@@ -300,9 +300,9 @@ test's own process, so a test file that starts processes or workers, imports a
 computed path, or uses a test helper that does (or that Gauntlet can't find),
 maps to every file any test loaded, as does one whose own run failed. A runner
 configuration with a global setup records no map, since what the setup loads
-runs outside every test file. Bun's test runner records no map either: its
-JUnit report doesn't say which file a test is in, so a test left out couldn't
-be told apart from a deleted one.
+runs outside every test file. Bun's test runner records no map yet: its test
+ids name their file now (ADR 0027), which selection needs, but recording a map
+for it is still to do.
 
 Other packs record no map yet, so their `affected` suites run every test.
 

@@ -28,3 +28,4 @@
 | 0024 | What the project's CI, or a local run, already ran isn't run again | accepted |
 | 0025 | A test already failing before the change doesn't block it | accepted |
 | 0026 | The Stop hook has a bounded exit, and running out of attempts is a failure | accepted |
+| 0027 | Bun's tests are named after their files, and older baselines still match | accepted |
