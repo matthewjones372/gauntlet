@@ -5,6 +5,7 @@ import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, decodeLog, type Log, type Result, type Run, renderDetektBaseline, SARIF_SCHEMA, SARIF_VERSION, type TestMap } from "@gauntlet/sarif"
 import { Effect, FileSystem, Option, Path } from "effect"
+import { detektDeadCode, enabledDeadCodeRules } from "./deadcode.ts"
 import { gradle, type GradleRun, taskMissing } from "./gradle.ts"
 import { runRules } from "./kotlin/rules.ts"
 import { isKotlin, line, ofType, parseKotlin } from "./kotlin/syntax.ts"
@@ -169,7 +170,8 @@ const mapTests = (ctx: GateContext, sourceSet: string, ids: ReadonlyArray<string
 
 // ---------- lint: detekt plus the zones' Kotlin rules ----------
 
-export const lint: GateImpl = (_check, ctx) =>
+/** Runs detekt into the output directory and reads its SARIF; or the gate's error when it couldn't. */
+const runDetekt = (ctx: GateContext) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -182,18 +184,30 @@ export const lint: GateImpl = (_check, ctx) =>
       env.GAUNTLET_DETEKT_BASELINE = file
     }
     const r = yield* gradle(ctx, ["detekt"], env)
-    if (r.error) return base(r)
+    if (r.error) return { failed: base(r) } as const
     const sarif = yield* reports(ctx, (p) => p.startsWith("detekt/") && p.endsWith(".sarif"))
     if (sarif.length === 0) {
-      return taskMissing(r.stderr, "detekt")
-        ? { ...base(r), error: "detekt isn't applied; add the dev.detekt Gradle plugin", notSetUp: true }
-        : { ...base(r), error: "detekt wrote no report" }
+      return {
+        failed: taskMissing(r.stderr, "detekt")
+          ? { ...base(r), error: "detekt isn't applied; add the dev.detekt Gradle plugin", notSetUp: true as const }
+          : { ...base(r), error: "detekt wrote no report" },
+      } as const
     }
     const runs: Run[] = []
+    const unread: string[] = []
     for (const f of sarif) {
       const log = yield* Effect.option(decodeLog(f.content))
       if (Option.isSome(log)) runs.push(...log.value.runs.map((run) => ({ ...run, tool: { driver: { ...run.tool.driver, name: "detekt" } } })))
+      else unread.push(f.path)
     }
+    return { r, runs, reports: sarif.map((f) => f.content), unread } as const
+  })
+
+export const lint: GateImpl = (_check, ctx) =>
+  Effect.gen(function*() {
+    const detekt = yield* runDetekt(ctx)
+    if ("failed" in detekt) return detekt.failed
+    const { r, runs } = detekt
 
     const zonesWithRules = ctx.ir.zones.filter((z) => z.rules.length > 0)
     const results: Result[] = []
@@ -204,6 +218,25 @@ export const lint: GateImpl = (_check, ctx) =>
     const rulesRun: Run = { tool: { driver: { name: "kotlin-rules" } }, results }
     yield* writeSarif(ctx, "kotlin-rules.sarif", rulesRun)
     return { ...base(r), exitCode: 0, runs: [...runs, rulesRun] }
+  })
+
+// ---------- dead-code: detekt's unused rules ----------
+
+/**
+ * Unused private classes, functions and properties, parameters, variables
+ * and imports, and unreachable code, from detekt with the project's own
+ * configuration (spec 0017 §4): the run lint makes, kept to those rules.
+ */
+export const deadCode: GateImpl = (_check, ctx) =>
+  Effect.gen(function*() {
+    const detekt = yield* runDetekt(ctx)
+    if ("failed" in detekt) return detekt.failed
+    if (detekt.unread.length > 0) return { ...base(detekt.r), error: `detekt's SARIF report couldn't be read: ${detekt.unread[0]}` }
+    // A detekt that runs none of its unused rules can't find any: that's not a pass.
+    if (enabledDeadCodeRules(detekt.reports)?.length === 0) return { ...base(detekt.r), error: "detekt ran none of its unused rules: turn on UnusedPrivateClass, UnusedPrivateFunction, UnusedPrivateProperty, UnusedParameter, UnusedVariable or UnusedImport in its configuration", notSetUp: true }
+    const run = detektDeadCode(detekt.runs)
+    yield* writeSarif(ctx, "dead-code.sarif", run)
+    return { ...base(detekt.r), exitCode: 0, runs: [run] }
   })
 
 // ---------- arch: import analysis ----------

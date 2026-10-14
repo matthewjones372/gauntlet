@@ -1,0 +1,192 @@
+{
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "results": [
+        {
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/kotlin/svc/Money.kt",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 43,
+                  "endLine": 9,
+                  "startColumn": 40,
+                  "startLine": 9
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "This expression contains a magic number. Consider defining it to a well named constant."
+          },
+          "partialFingerprints": {
+            "signature/v1": "3f1e6a0c2b9d4e5f60718293a4b5c6d7e8f90123"
+          },
+          "ruleId": "detekt.style.MagicNumber"
+        },
+        {
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/kotlin/svc/Money.kt",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 33,
+                  "endLine": 12,
+                  "startColumn": 30,
+                  "startLine": 12
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Function parameter `ctx` is unused."
+          },
+          "partialFingerprints": {
+            "signature/v1": "8a2b7c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b"
+          },
+          "ruleId": "detekt.style.UnusedParameter"
+        },
+        {
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/kotlin/svc/Money.kt",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 21,
+                  "endLine": 16,
+                  "startColumn": 15,
+                  "startLine": 16
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Private class Ledger is unused."
+          },
+          "partialFingerprints": {
+            "signature/v1": "c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7"
+          },
+          "ruleId": "detekt.style.UnusedPrivateClass"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "guid": "022ca8c2-f6a2-4c95-b107-bb72c43263f3",
+          "informationUri": "https://detekt.dev",
+          "language": "en",
+          "name": "detekt",
+          "organization": "detekt",
+          "rules": [
+            {
+              "defaultConfiguration": {
+                "enabled": false,
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/docs/2.0.0-alpha.6/rules/potential-bugs#unreachablecode",
+              "id": "detekt.potential-bugs.UnreachableCode",
+              "name": "UnreachableCode",
+              "shortDescription": {
+                "text": "Unreachable code detected. This code should be removed."
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "enabled": true,
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/docs/2.0.0-alpha.6/rules/style#magicnumber",
+              "id": "detekt.style.MagicNumber",
+              "name": "MagicNumber",
+              "shortDescription": {
+                "text": "Report magic numbers. Magic number is a numeric literal that is not defined as a constant and hence it's unclear what the purpose of this number is. It's better to declare such numbers as constants and give them a proper name. By default, -1, 0, 1, and 2 are not considered to be magic numbers."
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "enabled": false,
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/docs/2.0.0-alpha.6/rules/style#unusedimport",
+              "id": "detekt.style.UnusedImport",
+              "name": "UnusedImport",
+              "shortDescription": {
+                "text": "Unused Imports are dead code and should be removed."
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "enabled": true,
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/docs/2.0.0-alpha.6/rules/style#unusedparameter",
+              "id": "detekt.style.UnusedParameter",
+              "name": "UnusedParameter",
+              "shortDescription": {
+                "text": "Function parameter is unused and should be removed."
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "enabled": true,
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/docs/2.0.0-alpha.6/rules/style#unusedprivateclass",
+              "id": "detekt.style.UnusedPrivateClass",
+              "name": "UnusedPrivateClass",
+              "shortDescription": {
+                "text": "Private class is unused and should be removed."
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "enabled": false,
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/docs/2.0.0-alpha.6/rules/style#unusedprivatefunction",
+              "id": "detekt.style.UnusedPrivateFunction",
+              "name": "UnusedPrivateFunction",
+              "shortDescription": {
+                "text": "Private function is unused and should be removed."
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "enabled": false,
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/docs/2.0.0-alpha.6/rules/style#unusedprivateproperty",
+              "id": "detekt.style.UnusedPrivateProperty",
+              "name": "UnusedPrivateProperty",
+              "shortDescription": {
+                "text": "Property is unused and should be removed."
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "enabled": false,
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/docs/2.0.0-alpha.6/rules/style#unusedvariable",
+              "id": "detekt.style.UnusedVariable",
+              "name": "UnusedVariable",
+              "shortDescription": {
+                "text": "Variable is unused and should be removed."
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
