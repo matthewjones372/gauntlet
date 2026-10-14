@@ -1,1 +1,5 @@
-
+.gauntlet/policy.gx:13:6  warning[zone-only-review]  Zone 'money' only gets an owner's review; add checks or zone defaults.
+  13 | zone money {
+     |      ^^^^^
+  expected: a gate `in zone money`, a `rule` in the zone, or a `zones { … }` block
+  fix: Add checks every zone gets, for example: zones { coverage >= 90% on changed }, or a gate for this zone alone, such as: coverage >= 90% on changed in zone money

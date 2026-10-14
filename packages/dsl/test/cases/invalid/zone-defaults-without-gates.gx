@@ -1,0 +1,5 @@
+gauntlet "x"
+use jvm
+owners @platform
+zone money { paths "m/**" owner @m }
+zones { coverage >= 90% on changed, arch }

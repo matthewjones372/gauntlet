@@ -97,6 +97,7 @@ export type GauntletKeywordNames =
     | "vs"
     | "when"
     | "zone"
+    | "zones"
     | "{"
     | "}";
 
@@ -172,7 +173,7 @@ export function isAttempts(item: unknown): item is Attempts {
     return reflection.isInstance(item, Attempts.$type);
 }
 
-export type Block = Arch | Attempts | Budget | Gates | Import | Integrity | Mode | OnFail | Owners | Predicate | Protect | Quarantine | Review | Split | Stack | Suites | Use | Zone;
+export type Block = Arch | Attempts | Budget | Gates | Import | Integrity | Mode | OnFail | Owners | Predicate | Protect | Quarantine | Review | Split | Stack | Suites | Use | Zone | ZoneDefaults;
 
 export const Block = {
     $type: 'Block'
@@ -498,10 +499,10 @@ export function isIntegrityPhrase(item: unknown): item is IntegrityPhrase {
     return reflection.isInstance(item, IntegrityPhrase.$type);
 }
 
-export type IntegrityWord = 'added' | 'affected' | 'all' | 'baseline' | 'changed' | 'diff' | 'env' | 'fail' | 'fix' | 'from' | 'in' | 'missing' | 'module' | 'no' | 'not' | 'on' | 'only' | 'pass' | 'reads' | 'split' | 'touched' | string;
+export type IntegrityWord = 'added' | 'affected' | 'all' | 'baseline' | 'changed' | 'diff' | 'env' | 'fail' | 'fix' | 'from' | 'in' | 'missing' | 'module' | 'no' | 'not' | 'on' | 'only' | 'pass' | 'reads' | 'split' | 'touched' | 'zones' | string;
 
 export function isIntegrityWord(item: unknown): item is IntegrityWord {
-    return item === 'split' || item === 'reads' || item === 'affected' || item === 'in' || item === 'on' || item === 'not' || item === 'env' || item === 'from' || item === 'only' || item === 'module' || item === 'baseline' || item === 'diff' || item === 'fail' || item === 'fix' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'zones' || item === 'split' || item === 'reads' || item === 'affected' || item === 'in' || item === 'on' || item === 'not' || item === 'env' || item === 'from' || item === 'only' || item === 'module' || item === 'baseline' || item === 'diff' || item === 'fail' || item === 'fix' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface LayerProp extends langium.AstNode {
@@ -521,10 +522,10 @@ export function isLayerProp(item: unknown): item is LayerProp {
     return reflection.isInstance(item, LayerProp.$type);
 }
 
-export type LayerWord = 'added' | 'advise' | 'affected' | 'all' | 'arch' | 'auto' | 'baseline' | 'budget' | 'caution' | 'changed' | 'ci' | 'cumulative' | 'depend' | 'diff' | 'env' | 'fail' | 'fix' | 'flag' | 'forbid' | 'from' | 'gates' | 'in' | 'integrity' | 'layer' | 'llm' | 'max' | 'missing' | 'module' | 'must' | 'no' | 'not' | 'on' | 'only' | 'owner' | 'pass' | 'paths' | 'protect' | 'ratchet' | 'reads' | 'review' | 'rule' | 'skim' | 'split' | 'stack' | 'suites' | 'touched' | 'vs' | 'zone' | string;
+export type LayerWord = 'added' | 'advise' | 'affected' | 'all' | 'arch' | 'auto' | 'baseline' | 'budget' | 'caution' | 'changed' | 'ci' | 'cumulative' | 'depend' | 'diff' | 'env' | 'fail' | 'fix' | 'flag' | 'forbid' | 'from' | 'gates' | 'in' | 'integrity' | 'layer' | 'llm' | 'max' | 'missing' | 'module' | 'must' | 'no' | 'not' | 'on' | 'only' | 'owner' | 'pass' | 'paths' | 'protect' | 'ratchet' | 'reads' | 'review' | 'rule' | 'skim' | 'split' | 'stack' | 'suites' | 'touched' | 'vs' | 'zone' | 'zones' | string;
 
 export function isLayerWord(item: unknown): item is LayerWord {
-    return item === 'split' || item === 'reads' || item === 'affected' || item === 'zone' || item === 'budget' || item === 'gates' || item === 'paths' || item === 'rule' || item === 'module' || item === 'must' || item === 'not' || item === 'depend' || item === 'on' || item === 'from' || item === 'env' || item === 'vs' || item === 'baseline' || item === 'ratchet' || item === 'advise' || item === 'in' || item === 'layer' || item === 'max' || item === 'diff' || item === 'cumulative' || item === 'ci' || item === 'only' || item === 'caution' || item === 'fix' || item === 'fail' || item === 'flag' || item === 'forbid' || item === 'review' || item === 'owner' || item === 'skim' || item === 'auto' || item === 'llm' || item === 'protect' || item === 'suites' || item === 'integrity' || item === 'arch' || item === 'stack' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'zones' || item === 'split' || item === 'reads' || item === 'affected' || item === 'zone' || item === 'budget' || item === 'gates' || item === 'paths' || item === 'rule' || item === 'module' || item === 'must' || item === 'not' || item === 'depend' || item === 'on' || item === 'from' || item === 'env' || item === 'vs' || item === 'baseline' || item === 'ratchet' || item === 'advise' || item === 'in' || item === 'layer' || item === 'max' || item === 'diff' || item === 'cumulative' || item === 'ci' || item === 'only' || item === 'caution' || item === 'fix' || item === 'fail' || item === 'flag' || item === 'forbid' || item === 'review' || item === 'owner' || item === 'skim' || item === 'auto' || item === 'llm' || item === 'protect' || item === 'suites' || item === 'integrity' || item === 'arch' || item === 'stack' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface LlmReviewCheck extends langium.AstNode {
@@ -560,7 +561,7 @@ export function isMetric(item: unknown): item is Metric {
 }
 
 export interface MetricCheck extends langium.AstNode {
-    readonly $container: GateTier;
+    readonly $container: GateTier | ZoneDefaults;
     readonly $type: 'MetricCheck';
     advise: boolean;
     name: CheckName;
@@ -1031,6 +1032,21 @@ export function isZone(item: unknown): item is Zone {
     return reflection.isInstance(item, Zone.$type);
 }
 
+export interface ZoneDefaults extends langium.AstNode {
+    readonly $container: Policy;
+    readonly $type: 'ZoneDefaults';
+    checks: Array<MetricCheck>;
+}
+
+export const ZoneDefaults = {
+    $type: 'ZoneDefaults',
+    checks: 'checks'
+} as const;
+
+export function isZoneDefaults(item: unknown): item is ZoneDefaults {
+    return reflection.isInstance(item, ZoneDefaults.$type);
+}
+
 export type ZoneItem = ZoneOwner | ZonePaths | ZoneRule;
 
 export const ZoneItem = {
@@ -1141,6 +1157,7 @@ export type GauntletAstType = {
     Use: Use
     UsePack: UsePack
     Zone: Zone
+    ZoneDefaults: ZoneDefaults
     ZoneItem: ZoneItem
     ZoneOwner: ZoneOwner
     ZonePaths: ZonePaths
@@ -1813,6 +1830,17 @@ export class GauntletAstReflection extends langium.AbstractAstReflection {
                 },
                 name: {
                     name: Zone.name
+                }
+            },
+            superTypes: [Block.$type]
+        },
+        ZoneDefaults: {
+            name: ZoneDefaults.$type,
+            properties: {
+                checks: {
+                    name: ZoneDefaults.checks,
+                    defaultValue: [],
+                    optional: true
                 }
             },
             superTypes: [Block.$type]

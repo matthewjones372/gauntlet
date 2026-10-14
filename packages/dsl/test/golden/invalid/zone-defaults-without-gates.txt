@@ -1,0 +1,17 @@
+.gauntlet/policy.gx:1:10  warning[no-gates]  The policy has no `gates` block, so no evidence is collected and every change is missing evidence.
+  1 | gauntlet "x"
+    |          ^^^
+  expected: a `gates` block
+  fix: Add gates, for example: gates { fast { build }, verify { unit } }
+
+.gauntlet/policy.gx:5:1  error[zone-defaults-without-gates]  Zone defaults are added to the policy's gate tiers, and it has none to add them to.
+  5 | zones { coverage >= 90% on changed, arch }
+    | ^^^^^
+  expected: a `gates` block with a required tier
+  fix: Add gates, for example: gates { verify { unit, coverage ratchet } }
+
+.gauntlet/policy.gx:5:37  error[not-zone-scopable]  'arch' can't be limited to a zone, so it can't be a zone default.
+  5 | zones { coverage >= 90% on changed, arch }
+    |                                     ^^^^
+  expected: a gate that can be limited to a zone, such as `coverage` or `mutation`
+  fix: Move 'arch' to a gate tier.

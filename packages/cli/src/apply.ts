@@ -10,7 +10,7 @@ const quantity = (q: { readonly value: number; readonly unit?: string }) => `${q
 export const checkText = (c: Check): string => {
   switch (c.kind) {
     case "gate":
-      return [c.name, c.ratchet ? "ratchet" : "", c.advise ? "advise" : "", c.threshold ? `${c.threshold.op} ${quantity(c.threshold.value)}` : "", c.scope === "changed" ? "on changed" : "", c.zone ? `in zone ${c.zone}` : ""]
+      return [c.name, c.ratchet ? "ratchet" : "", c.advise ? "advise" : "", c.threshold ? `${c.threshold.op} ${quantity(c.threshold.value)}` : "", c.scope === "changed" ? "on changed" : "", c.zone ? `in zone ${c.zone}` : "", c.zoneDefault ? "(zone default)" : ""]
         .filter((s) => s !== "").join(" ")
     case "suite":
     case "holdout":

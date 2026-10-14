@@ -128,17 +128,22 @@ export const Budget = Schema.Struct({
 })
 export type Budget = typeof Budget.Type
 
+export const GateCheck = Schema.Struct({
+  kind: Schema.Literal("gate"),
+  name: Schema.String,
+  ratchet: Schema.Boolean,
+  /** `advise` (spec 0011): the gate's findings are reported and block nothing. Absent otherwise. */
+  advise: Schema.optionalKey(Schema.Literal(true)),
+  threshold: Schema.optionalKey(Threshold),
+  scope: Schema.Literals(["changed", "all"]),
+  zone: Schema.optionalKey(Schema.String),
+  /** The zone got this check from the \`zones { … }\` defaults (spec 0009), not from a gate of its own. */
+  zoneDefault: Schema.optionalKey(Schema.Literal(true)),
+})
+export type GateCheck = typeof GateCheck.Type
+
 export const Check = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("gate"),
-    name: Schema.String,
-    ratchet: Schema.Boolean,
-    /** `advise` (spec 0011): the gate's findings are reported and block nothing. Absent otherwise. */
-    advise: Schema.optionalKey(Schema.Literal(true)),
-    threshold: Schema.optionalKey(Threshold),
-    scope: Schema.Literals(["changed", "all"]),
-    zone: Schema.optionalKey(Schema.String),
-  }),
+  GateCheck,
   Schema.Struct({ kind: Schema.Literal("suite"), name: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("holdout"), name: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("budget"), budget: Schema.String }),
@@ -249,6 +254,12 @@ export const PolicyIR = Schema.Struct({
   builds: Schema.optionalKey(Schema.Array(Build)),
   /** How many changed lines over several parts suggest stacked pull requests (\`split when diff > 600 lines\`). Omitted for the default. */
   split: Schema.optionalKey(Schema.Struct({ lines: Schema.Number })),
+  /**
+   * Checks every zone gets unless its own gates say otherwise (spec 0009). They are already
+   * expanded into each zone's gates, marked \`zoneDefault\`; kept here so \`explain\` can say so.
+   * Omitted when the policy has no \`zones\` block, so those policies keep their hashes.
+   */
+  zoneDefaults: Schema.optionalKey(Schema.Array(GateCheck)),
   /** How many blocked stops the agent hooks allow before an exhausted exit (ADR 0026). Only the limits the policy states; omitted when none. */
   attempts: Schema.optionalKey(Schema.Struct({ unchanged: Schema.optionalKey(Schema.Number), total: Schema.optionalKey(Schema.Number) })),
 })

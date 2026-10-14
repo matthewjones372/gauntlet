@@ -6,7 +6,7 @@ import { conflicts } from "./conflicts.ts"
 import { type Diagnostic, isError, PolicyInvalid } from "./diagnostic.ts"
 import { sortDiagnostics } from "./format.ts"
 import { parse } from "./parse.ts"
-import { resolve } from "./resolve.ts"
+import { resolve, zoneWarnings } from "./resolve.ts"
 
 export interface PolicySourceText {
   readonly file: string
@@ -37,6 +37,7 @@ export const compilePolicy = (source: PolicySourceText, packs: ReadonlyArray<Pac
   const draft = compile(parsed.ast, report)
   resolve(draft, packs, report)
   conflicts(draft, report, source.files)
+  if (!diagnostics.some(isError)) zoneWarnings(draft, report)
   const sorted = sortDiagnostics(diagnostics)
   // With errors present, info notes are noise: show errors and warnings only.
   if (sorted.some(isError)) return { _tag: "Invalid", diagnostics: sorted.filter((d) => d.severity !== "info") }
