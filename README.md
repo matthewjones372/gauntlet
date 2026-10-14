@@ -119,6 +119,55 @@ evaluates Gauntlet, but it's the problem Gauntlet is built for.
 On GitHub, the job that runs the pull request's code gets no secrets, and a
 separate job that never runs it makes the decision.
 
+## What it checks
+
+Beyond the boundary, a policy picks the checks a change has to pass. Each one
+is something Gauntlet runs itself, and a finding on a line the change touched
+shows on that line of the pull request's diff.
+
+- **Tests, coverage and mutation on the changed lines.** Mutation testing
+  scores only the mutants on lines the change wrote. Surviving mutants can
+  block below a score, or be reported on the diff without blocking
+  (`mutation advise on changed`).
+  [Mutation testing](docs/policy.md#mutation-testing)
+- **Only the tests a change affects.** The baseline records which files each
+  test exercises, and a check runs only the tests that exercise what changed,
+  for the JVM (Gradle) and TypeScript (Vitest, Jest, bun) packs. Anything the
+  map can't vouch for runs everything.
+  [Affected tests](docs/policy.md#running-the-tests-a-change-affects)
+- **Lint, compiler warnings and dead code**, with today's findings
+  grandfathered and new ones failing. The dead-code check uses Knip for
+  TypeScript and `deadcode` for Go.
+  [Compiler warnings](docs/policy.md#compiler-warnings),
+  [dead code](docs/policy.md#dead-code)
+- **Architecture and zones.** Layers that mustn't depend on each other, and
+  code (payments, auth) where a change needs its owner.
+- **Performance budgets** for a benchmark's latency, held to a limit and to the
+  baseline. [Budgets](docs/policy.md#performance-budgets)
+- **Tests that add no value, and removing a feature.** `gauntlet prune tests`
+  lists tests that can't fail or that no mutant needs. A change that only
+  removes tests is checked against the record of which tests kill which
+  mutants. A test deleted along with the code it tested is flagged rather than
+  forbidden, and project-wide ratchets leave removed code out.
+  [Tests that add no value](docs/policy.md#tests-that-add-no-value),
+  [removing a feature](docs/policy.md#removing-a-feature)
+
+### The owner's decisions
+
+Gauntlet makes a decision a person's when it should be, and keeps it to one
+step:
+
+- `gauntlet approve <pr>` approves a change, and with `--override "<reason>"`
+  accepts what blocks it, recorded against the commit. An agent can't run it.
+- An approval or override follows the code: a new commit with the same diff,
+  such as a merge from main that brought nothing new, keeps it.
+- `gauntlet grant` lets the agent change one protected file for one pull
+  request, reviewed rather than hidden.
+- A stack of pull requests is approved from the top, and each one moves onto
+  main as the one below it merges.
+
+[The owner's decisions](docs/policy.md#the-owners-decisions)
+
 ## Holdouts
 
 A test the agent can read is a target. It can make that test pass without
@@ -191,8 +240,9 @@ Code, shortened):
   Mutation testing makes small deliberate bugs in your code and runs your
   tests against each one; a bug no test catches is a test that doesn't really
   check anything. It runs your tests once per bug, so it's the slowest check.
-  I recommend it only on changed lines in payments, or leaving it out.
-  > Changed lines in payments
+  I recommend it only on changed lines in payments, with surviving mutants
+  shown on the pull request without blocking, or leaving it out.
+  > Changed lines in payments, shown without blocking
 
   Decision 6 of 6 · When to block
   Start in shadow mode (reports, blocks nothing), or block failing changes now?
@@ -202,7 +252,8 @@ Code, shortened):
     • owner @maria
     • zones payments (no floating-point money) and auth, both need @maria
     • domain must not depend on web
-    • 80% coverage on changed code; mutation 60% on changed code in payments
+    • 80% coverage on changed code; mutation on changed code in payments,
+      surviving mutants shown on the pull request
     • shadow mode
   Apply it now?
   > Apply it now
