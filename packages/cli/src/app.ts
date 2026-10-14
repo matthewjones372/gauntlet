@@ -1,6 +1,6 @@
 import {
   agentSummary, blockingSet, knownBlock, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, sameCodeCommits, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, pullRequestBase, protectionFor,
-  ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
+  ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, doctorRows, scanProject, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderPruneCode, renderPruneTests, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow, surveyCode, surveyTests,
   attemptBranch, attemptNote, renderStopHookCorpus, runStopHookCorpus, clearAttempts, commonDir, exhaustedLine, fingerprintLines, fingerprintOf, listAttempts, nextAttempt, readAttempts, reportedBlocked, worktreeOf, writeAttempts,
 } from "@gauntlet/core"
@@ -1667,9 +1667,15 @@ const needsBuild = Command.make("needs-build", {
 const doctor = Command.make("doctor", { repo: repoFlag }, (args) =>
   Effect.gen(function*() {
     const root = yield* absolute(args.repo)
+    // Spec 0009 §2: code that looks sensitive in the project as it is, outside every zone. Suggestions only.
+    const policy = yield* Effect.option((yield* PolicySource).load({ repo: root }))
+    const sensitive = Option.isSome(policy)
+      ? doctorRows(policy.value.compiled.ir, yield* scanProject(root, policy.value.compiled.ir).pipe(Effect.orElseSucceed(() => [])))
+      : []
     const checks = [
       { what: "gauntlet", ok: true, detail: `v${GAUNTLET_VERSION}` },
       ...(yield* runDoctor(root)),
+      ...sensitive,
       { what: "templates", ok: TEMPLATES.length > 0 && TEMPLATES.every((t) => t.files.length > 0), detail: TEMPLATES.map((t) => `${t.name} (${t.files.length} files)`).join(", ") },
       { what: "mcp tools", ok: Object.keys(GauntletTools.tools).length > 0, detail: Object.keys(GauntletTools.tools).join(", ") },
     ]

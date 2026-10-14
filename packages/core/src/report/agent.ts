@@ -1,4 +1,5 @@
 import { ranAsBase } from "./ran-as-base.ts"
+import { OUTSIDE_EVERY_ZONE } from "../sensitive.ts"
 import type { Report } from "./schema.ts"
 
 // What a coding agent is told about a check (Stop hook and MCP `check`):
@@ -38,7 +39,7 @@ export const agentSummary = (report: Report, reportDir: string): AgentSummary =>
   fixes: report.remediation,
   zones: report.facts.zonesTouched,
   head: report.policy.headSha,
-  suggestions: report.policy.notes.filter((n) => n.includes("/gauntlet-setup")),
+  suggestions: report.policy.notes.filter((n) => n.includes("/gauntlet-setup") || n.includes(OUTSIDE_EVERY_ZONE)),
   ...(report.stack ? { stack: report.stack.steps.map((s) => ({ title: s.title, files: s.files, lines: s.lines })) } : {}),
   ranAsBase: ranAsBase(report).map((f) => `${f.path}${f.leftOut ? " (left out)" : ""}`),
   advice: (report.advice ?? []).map((v) => `${v.path ? `${v.path}${v.line ? `:${v.line}` : ""}: ` : ""}${v.message} (${v.check})`),

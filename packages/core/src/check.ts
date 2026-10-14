@@ -6,7 +6,7 @@ import { judgedBaseline, onlyBaseline } from "./baseline-pr.ts"
 import { BaselineStore, renamesOf } from "./baseline-store.ts"
 import { hasBuilds, touchedBuilds } from "./builds.ts"
 import { CI_CONFIG_PATH, type CiConfig, parseCiConfig } from "./ci-config.ts"
-import { diffFacts } from "./diff-facts.ts"
+import { type DiffFacts, diffFacts } from "./diff-facts.ts"
 import { type GateRunnerOutput, runGates } from "./gate-runner.ts"
 import { Git } from "./git.ts"
 import { grantFor, grantsBetween } from "./grants.ts"
@@ -23,6 +23,7 @@ import { buildReport, type CheckRecord, type ImportRecord } from "./report/build
 import { Reporter } from "./report/reporter.ts"
 import type { Report, ReportAgent, RunRecord } from "./report/schema.ts"
 import { type CautionSignal, decide, type Evidence, type NewViolation, type Regression } from "./review.ts"
+import { sensitiveInChange, sensitiveNotes } from "./sensitive.ts"
 import { ShadowLog, shadowRecordOf } from "./shadow-log.ts"
 import { holdoutsOf, Workspace } from "./workspace.ts"
 
@@ -282,7 +283,7 @@ const judge = (
     }))
     return buildReport({
       gauntletVersion: request.gauntletVersion,
-      policy: { ir, irHash: hash, sourceMap, origin: p.loaded.origin, firstAdoption: p.loaded.firstAdoption, drift: p.loaded.drift, notes: [...p.loaded.notes, ...zoneSuggestions(p)] },
+      policy: { ir, irHash: hash, sourceMap, origin: p.loaded.origin, firstAdoption: p.loaded.firstAdoption, drift: p.loaded.drift, notes: [...p.loaded.notes, ...zoneNotes(p)] },
       ...(request.agent ? { agent: request.agent } : {}),
       facts: p.facts,
       checks: executed.checks,
@@ -300,15 +301,22 @@ const judge = (
 /**
  * Areas this change adds that look sensitive (payments, auth, migrations; see
  * infer.ts) but that no zone covers: a note suggesting the policy be reviewed.
+ * Then, by name and import (spec 0009 §2), each new file or new top-level
+ * symbol outside every zone that a folder's note doesn't already cover.
  * Never part of the decision; the policy is the person's to change.
  */
-const zoneSuggestions = (p: { readonly ir: PolicyIR; readonly facts: { readonly files: ReadonlyArray<{ readonly path: string; readonly status: string }> }; readonly used: ReadonlyArray<{ readonly spec: { readonly rules: ReadonlyArray<{ readonly name: string }> } }> }) => {
+export const zoneNotes = (p: { readonly ir: PolicyIR; readonly facts: Pick<DiffFacts, "files" | "addedLines">; readonly used: ReadonlyArray<{ readonly spec: { readonly rules: ReadonlyArray<{ readonly name: string }> } }> }) => {
   const added = p.facts.files.filter((f) => f.status === "added").map((f) => f.path)
   const uncovered = added.filter((f) => !p.ir.zones.some((z) => z.globs.some((g) => globMatches(g, f))))
-  if (uncovered.length === 0) return []
   const protectedGlobs = p.ir.protect.flatMap((g) => g.globs)
-  return inferZones(uncovered, protectedGlobs, p.used.flatMap((u) => u.spec.rules.map((r) => r.name)), true).map((z) =>
-    `This change adds ${z.globs.join(", ")}, which looks like ${z.why} but isn't in a zone. To protect it, run /gauntlet-setup in Claude Code (or add a zone to .gauntlet/policy.gx).`)
+  const folders = uncovered.length === 0 ? [] : inferZones(uncovered, protectedGlobs, p.used.flatMap((u) => u.spec.rules.map((r) => r.name)), true)
+  const byFolder = folders.flatMap((z) => z.globs)
+  const found = sensitiveInChange(p.ir, p.facts).filter((f) => !byFolder.some((g) => globMatches(g, f.path)))
+  return [
+    ...folders.map((z) =>
+      `This change adds ${z.globs.join(", ")}, which looks like ${z.why} but isn't in a zone. To protect it, run /gauntlet-setup in Claude Code (or add a zone to .gauntlet/policy.gx).`),
+    ...sensitiveNotes(p.ir, found),
+  ]
 }
 
 /** Whether a change only edits comments or documentation, reading each file at the base and the head. */
