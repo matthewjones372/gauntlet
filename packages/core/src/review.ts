@@ -3,6 +3,7 @@ import { loweredReason } from "./baseline-pr.ts"
 import type { DiffFacts } from "./diff-facts.ts"
 import { globMatches } from "@gauntlet/dsl"
 import { type IntegrityFinding, type IntegrityResult, testPathMatcher } from "./integrity.ts"
+import { blankOrLineComment, isDocumentation } from "./no-behaviour.ts"
 
 // The review decision (ADR 0005). Every rule whose conditions hold nominates
 // a tier; Gauntlet adds implicit nominations for failures, missing evidence
@@ -159,6 +160,48 @@ export const onlyTestsChanged = (facts: DiffFacts, ir: PolicyIR): boolean => {
     facts.files.every((f) => f.status !== "deleted" && test(f.path) && (f.oldPath === undefined || test(f.oldPath)))
 }
 
+/**
+ * Whether the change only removes main code and removes no test (spec 0017 §2),
+ * strict enough that \`auto when code removed and ...\` can't let new behaviour
+ * through. It holds when at least one file of main code (anything that isn't a
+ * test or documentation) is deleted or loses lines, and every changed file is:
+ *
+ * - main code that is deleted, or modified to lose lines while every line it
+ *   gains is blank or a whole-line comment (not one tools act on);
+ * - a test that is added or only gains lines (removing no test);
+ * - documentation, changed in any way.
+ *
+ * It doesn't hold for an added or renamed file of main code, a file
+ * that changes without losing a line (a binary file, a mode change), a deleted,
+ * renamed or shortened test, an added dependency, a change under
+ * \`.gauntlet/\`, or any \`deleted-tests\` finding (a test that ran at base and no
+ * longer runs). Deleting only comments counts as removing code: it adds nothing.
+ */
+export const codeRemoved = (facts: DiffFacts, ir: PolicyIR, integrity: IntegrityResult): boolean => {
+  const isTest = testPathMatcher(ir)
+  let removes = false
+  const fileOk = (f: DiffFacts["files"][number]): boolean => {
+    const paths = f.oldPath !== undefined ? [f.path, f.oldPath] : [f.path]
+    if (paths.every(isDocumentation)) return true
+    if (paths.some(isTest)) return (f.status === "added" || f.status === "modified") && f.removed === 0
+    if (f.status === "deleted") {
+      removes = true
+      return true
+    }
+    if (f.status !== "modified" || f.removed === 0) return false
+    const added = facts.addedLines.get(f.path) ?? []
+    if (added.length !== f.added || !added.every((l) => blankOrLineComment(f.path, l.text))) return false
+    removes = true
+    return true
+  }
+  return facts.files.length > 0 &&
+    !facts.gauntletChanged &&
+    !facts.dependencyChanges.some((d) => d.unparsed || d.added.length > 0) &&
+    !integrity.findings.some((f) => f.check === "deleted-tests") &&
+    facts.files.every(fileOk) &&
+    removes
+}
+
 export const evaluateCondition = (c: Condition, input: ReviewInput, depth = 0): boolean => {
   const { facts, evidence, ir } = input
   switch (c.kind) {
@@ -178,6 +221,8 @@ export const evaluateCondition = (c: Condition, input: ReviewInput, depth = 0): 
       return allGatesPass(evidence)
     case "only-tests-changed":
       return onlyTestsChanged(facts, ir)
+    case "code-removed":
+      return codeRemoved(facts, ir, evidence.integrity)
     case "diff":
       return compare(facts.linesChanged, c.op, c.lines)
     case "predicate": {

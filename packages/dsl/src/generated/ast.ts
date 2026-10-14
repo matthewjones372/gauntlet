@@ -83,6 +83,7 @@ export type GauntletKeywordNames =
     | "raise"
     | "ratchet"
     | "reads"
+    | "removed"
     | "require"
     | "review"
     | "rule"
@@ -600,10 +601,10 @@ export function isMode(item: unknown): item is Mode {
     return reflection.isInstance(item, Mode.$type);
 }
 
-export type Name = 'added' | 'affected' | 'all' | 'attempts' | 'baseline' | 'caution' | 'changed' | 'ci' | 'command' | 'cumulative' | 'env' | 'fail' | 'fix' | 'missing' | 'only' | 'pass' | 'reads' | 'split' | 'touched' | 'until' | string;
+export type Name = 'added' | 'affected' | 'all' | 'attempts' | 'baseline' | 'caution' | 'changed' | 'ci' | 'command' | 'cumulative' | 'env' | 'fail' | 'fix' | 'missing' | 'only' | 'pass' | 'reads' | 'removed' | 'split' | 'touched' | 'until' | string;
 
 export function isName(item: unknown): item is Name {
-    return item === 'split' || item === 'attempts' || item === 'reads' || item === 'affected' || item === 'baseline' || item === 'env' || item === 'command' || item === 'cumulative' || item === 'caution' || item === 'ci' || item === 'only' || item === 'fix' || item === 'fail' || item === 'until' || item === 'changed' || item === 'all' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'split' || item === 'attempts' || item === 'reads' || item === 'affected' || item === 'baseline' || item === 'env' || item === 'command' || item === 'cumulative' || item === 'caution' || item === 'ci' || item === 'only' || item === 'fix' || item === 'fail' || item === 'until' || item === 'changed' || item === 'all' || item === 'touched' || item === 'added' || item === 'removed' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface OnFail extends langium.AstNode {
@@ -906,10 +907,10 @@ export function isStackReview(item: unknown): item is StackReview {
     return reflection.isInstance(item, StackReview.$type);
 }
 
-export type StateWord = 'added' | 'changed' | 'missing' | 'pass' | 'touched';
+export type StateWord = 'added' | 'changed' | 'missing' | 'pass' | 'removed' | 'touched';
 
 export function isStateWord(item: unknown): item is StateWord {
-    return item === 'touched' || item === 'changed' || item === 'added' || item === 'missing' || item === 'pass';
+    return item === 'touched' || item === 'changed' || item === 'added' || item === 'removed' || item === 'missing' || item === 'pass';
 }
 
 export type SubjectWord = 'budget' | 'gates' | 'zone' | string;

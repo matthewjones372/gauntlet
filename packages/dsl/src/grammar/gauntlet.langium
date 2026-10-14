@@ -189,7 +189,7 @@ SubjectWord returns string:
     ID | 'zone' | 'budget' | 'gates';
 
 StateWord returns string:
-    'touched' | 'changed' | 'added' | 'missing' | 'pass';
+    'touched' | 'changed' | 'added' | 'removed' | 'missing' | 'pass';
 
 Stack:
     'stack' '{' items+=StackItem* '}';
@@ -234,7 +234,7 @@ QName returns string:
 // User-chosen names. A few keywords that read naturally as names are allowed.
 Name returns string:
     ID | 'split' | 'attempts' | 'reads' | 'affected' | 'baseline' | 'env' | 'command' | 'cumulative' | 'caution' | 'ci' | 'only' | 'fix' | 'fail' | 'until'
-    | 'changed' | 'all' | 'touched' | 'added' | 'missing' | 'pass';
+    | 'changed' | 'all' | 'touched' | 'added' | 'removed' | 'missing' | 'pass';
 
 // Words inside an integrity list. The three list keywords are left out so a
 // new `ratchet`, `forbid` or `flag` line starts a new list.

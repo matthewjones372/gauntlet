@@ -56,6 +56,8 @@ export const ReportFacts = Schema.Struct({
   })),
   budgetsChanged: Schema.Array(Schema.String),
   gauntletChanged: Schema.Boolean,
+  /** The change only removes main code and removes no test: the review condition `code removed` holds (spec 0017). */
+  codeRemoved: Schema.optionalKey(Schema.Literal(true)),
 })
 
 export const ReportCheck = Schema.Struct({

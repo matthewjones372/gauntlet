@@ -4,7 +4,7 @@ import type { DiffFacts } from "../diff-facts.ts"
 import type { IntegrityResult } from "../integrity.ts"
 import type { Drift } from "../policy-source.ts"
 import { suggestStack } from "../stack.ts"
-import type { CheckOutcome, Decision, NewViolation } from "../review.ts"
+import { type CheckOutcome, codeRemoved, type Decision, type NewViolation } from "../review.ts"
 import { REPORT_SCHEMA_VERSION, type Report, type ReportAgent } from "./schema.ts"
 
 /** A check outcome plus the proof and test counts it produced, if any. */
@@ -134,6 +134,7 @@ export const buildReport = (input: ReportInput): Report => {
       dependencyChanges: [...facts.dependencyChanges].sort(by((d) => d.manifest)).map((d) => ({ manifest: d.manifest, added: [...d.added].sort(), removed: [...d.removed].sort(), unparsed: d.unparsed })),
       budgetsChanged: [...facts.budgetsChanged].sort(),
       gauntletChanged: facts.gauntletChanged,
+      ...(codeRemoved(facts, ir, input.integrity) ? { codeRemoved: true as const } : {}),
     },
     checks,
     ratchets: [...input.ratchets].sort(by((r) => `${r.metric}\0${r.file ?? ""}`)).map((r) => ({
