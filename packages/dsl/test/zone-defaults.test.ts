@@ -35,7 +35,8 @@ describe("zone defaults", () => {
   test("a policy with a zones block compiles to golden IR", () => {
     const text = `${HEAD}${ZONES}${DEFAULTS}gates {\n  fast { build }\n  verify { unit, coverage ratchet, coverage >= 95% on changed in zone money }\n  advisory { llm review x2 }\n}\n`
     const r = compilePolicy({ file: FILE, text }, installed)
-    if (r._tag !== "Compiled") throw new Error(formatDiagnostics(r.diagnostics, text))
+    expect(r._tag === "Compiled" ? "Compiled" : formatDiagnostics(r.diagnostics, text)).toBe("Compiled")
+    if (r._tag !== "Compiled") return
     const base = join(import.meta.dir, "golden", "zone-defaults", "two-zones")
     expectGolden(`${base}.ir.json`, `${JSON.stringify({ hash: r.compiled.hash, ir: r.compiled.ir }, null, 2)}\n`)
     expectGolden(`${base}.sourcemap.json`, `${JSON.stringify(r.compiled.sourceMap, null, 2)}\n`)
