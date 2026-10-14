@@ -1,0 +1,54 @@
+[
+	{
+		"Name": "main",
+		"Path": "example.com/svc/cmd/app",
+		"Funcs": [
+			{
+				"Name": "neverCalled",
+				"Position": {
+					"File": "cmd/app/main.go",
+					"Line": 13,
+					"Col": 6
+				},
+				"Generated": false,
+				"Marker": false
+			}
+		]
+	},
+	{
+		"Name": "money",
+		"Path": "example.com/svc/money",
+		"Funcs": [
+			{
+				"Name": "Sub",
+				"Position": {
+					"File": "money/money.go",
+					"Line": 7,
+					"Col": 6
+				},
+				"Generated": false,
+				"Marker": false
+			},
+			{
+				"Name": "Money.unusedMethod",
+				"Position": {
+					"File": "money/money.go",
+					"Line": 11,
+					"Col": 16
+				},
+				"Generated": false,
+				"Marker": false
+			},
+			{
+				"Name": "helper",
+				"Position": {
+					"File": "money/money.go",
+					"Line": 13,
+					"Col": 6
+				},
+				"Generated": false,
+				"Marker": false
+			}
+		]
+	}
+]

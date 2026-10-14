@@ -2,15 +2,15 @@
 
 Back to the [README](../README.md).
 
-| Language | Build tool | Tests | Lint | Coverage | Mutation |
-| --- | --- | --- | --- | --- | --- |
-| Kotlin, Java | Gradle | JUnit | detekt | Kover (Gauntlet brings its agent if needed); JaCoCo for Java | PIT |
-| TypeScript, JavaScript | Bun, npm, pnpm, yarn | Bun test, Vitest, Jest | ESLint or Biome | the test runner's own | Stryker |
-| Python | uv, Poetry, pip | pytest | Ruff (and mypy if configured) | coverage.py | mutmut |
-| Go | go | go test | golangci-lint | go cover | gremlins |
-| Rust | Cargo | cargo-nextest | clippy | cargo-llvm-cov | cargo-mutants |
-| Scala | sbt | ScalaTest, munit, ZIO Test, weaver | scalafix | scoverage | Stryker4s |
-| Clojure | Clojure CLI, Leiningen | clojure.test (run by kaocha) | clj-kondo | cloverage | none yet (reported as not executed) |
+| Language | Build tool | Tests | Lint | Coverage | Mutation | Dead code |
+| --- | --- | --- | --- | --- | --- | --- |
+| Kotlin, Java | Gradle | JUnit | detekt | Kover (Gauntlet brings its agent if needed); JaCoCo for Java | PIT | not yet |
+| TypeScript, JavaScript | Bun, npm, pnpm, yarn | Bun test, Vitest, Jest | ESLint or Biome | the test runner's own | Stryker | Knip |
+| Python | uv, Poetry, pip | pytest | Ruff (and mypy if configured) | coverage.py | mutmut | not yet |
+| Go | go | go test | golangci-lint | go cover | gremlins | deadcode |
+| Rust | Cargo | cargo-nextest | clippy | cargo-llvm-cov | cargo-mutants | not yet |
+| Scala | sbt | ScalaTest, munit, ZIO Test, weaver | scalafix | scoverage | Stryker4s | not yet |
+| Clojure | Clojure CLI, Leiningen | clojure.test (run by kaocha) | clj-kondo | cloverage | none yet (reported as not executed) | not yet |
 
 Each language pack brings its own zone rules, integrity detectors and tamper
 fixtures. A suite marked `affected` runs only the tests a change affects with

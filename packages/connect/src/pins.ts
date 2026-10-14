@@ -19,10 +19,11 @@ export const ACTIONS = {
 
 export const pinned = (a: (typeof ACTIONS)[keyof typeof ACTIONS]) => `${a.uses}@${a.sha} # ${a.tag}`
 
-/** Go tools installed with `go install` at pinned versions, when the policy gates lint or mutation. */
+/** Go tools installed with `go install` at pinned versions, when the policy gates lint, mutation or dead code. */
 export const GO_TOOLS = {
   lint: "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0",
   mutation: "github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0",
+  "dead-code": "golang.org/x/tools/cmd/deadcode@v0.52.0",
 } as const
 
 /** Tool versions setup-clojure installs for the clojure pack. */

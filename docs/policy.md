@@ -94,6 +94,40 @@ The JVM pack reads kotlinc's and javac's warnings, the Scala pack scalac's,
 from the build's own compile. Once there are none left, switch on
 `allWarningsAsErrors` or `-Werror` in the build.
 
+## Dead code
+
+Code nothing calls still has to be read, kept compiling and counted by
+coverage and mutation. The `dead-code` check runs the ecosystem's own tool and
+reports what it finds as findings (`dead-code/<kind>`), with file and line
+([spec 0017](specs/0017-removing-code-and-its-tests.md)). As with compiler
+warnings, a ratchet grandfathers today's and fails a change that adds some,
+naming it; findings are matched by fingerprint, so code that only moved isn't
+new:
+
+```
+fast { build, lint ratchet, dead-code ratchet }
+```
+
+- **TypeScript**: the project's own [Knip](https://knip.dev) and its
+  configuration (add `knip` to devDependencies). Unused files, exports, types,
+  enum, class and namespace members, duplicate exports, and unused
+  dependencies (`dead-code/unused-file`, `dead-code/unused-export`,
+  `dead-code/unused-dependency` and so on). Unlisted or unresolved imports are
+  mistakes, not dead code, and aren't reported. `gauntlet init` drafts
+  `dead-code ratchet` when the project already uses Knip.
+- **Go**: `deadcode` from golang.org/x/tools
+  (`go install golang.org/x/tools/cmd/deadcode@v0.52.0`; `gauntlet connect
+  github` installs it in CI), with tests as well as main packages as roots,
+  so a library can be checked and code its tests call isn't reported:
+  `dead-code/unreachable-func`. Generated code and marker methods aren't
+  findings.
+
+Without the tool the check is an error that says how to add it, never a pass.
+`dead-code advise` reports the findings without blocking. Tools miss code
+reached only by reflection, dependency injection or an outside caller, so
+read a finding before deleting what it names. The other packs don't have the
+check yet.
+
 ## Mutation testing
 
 Mutation testing makes small deliberate bugs in your code (turning a `>` into
