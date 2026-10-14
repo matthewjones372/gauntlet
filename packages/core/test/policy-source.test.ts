@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { Effect, Exit, Option } from "effect"
-import { PolicySource } from "../src/index.ts"
+import { PolicySource, pullRequestBase } from "../src/index.ts"
 import { CoreTest } from "./layers.ts"
 import { TempRepo } from "./temp-repo.ts"
 
@@ -132,10 +132,52 @@ describe("PolicySource locally", () => {
     expect(loaded.notes.join(" ")).toContain("No base branch")
   })
 
+  test("a working copy without the policy falls back to the base's, and says so", async () => {
+    const r = repo()
+    r.write({ ".gauntlet/policy.gx": policy(90) })
+    const base = r.commit("base")
+    r.git("checkout", "-q", "-b", "feature")
+    r.remove(".gauntlet/policy.gx")
+    const loaded = await ok({ repo: r.dir })
+    expect(loaded.origin).toBe("base")
+    expect(coverageOf(loaded)).toBe(90)
+    expect(loaded.baseSha).toEqual(Option.some(base))
+    expect(loaded.notes).toContain(".gauntlet/policy.gx is missing from the working copy, so the base's policy is used.")
+  })
+
   test("no policy anywhere is PolicyNotFound", async () => {
     const r = repo()
     r.write({ "README.md": "hi" })
     r.commit("init")
     expect(failureTag(await load({ repo: r.dir }))).toBe("PolicyNotFound")
+  })
+})
+
+describe("pullRequestBase", () => {
+  const prBase = (repo: string, head: string, branch?: string) =>
+    Effect.runPromiseExit(pullRequestBase(repo, head, branch).pipe(Effect.provide(CoreTest)))
+
+  test("is the head's merge base with the default branch", async () => {
+    const r = repo()
+    r.write({ "a.txt": "a" })
+    const fork = r.commit("base")
+    r.git("checkout", "-q", "-b", "feature")
+    r.write({ "a.txt": "b" })
+    const head = r.commit("feature")
+    r.git("checkout", "-q", "main")
+    r.write({ "c.txt": "c" })
+    r.commit("main moves on")
+    const exit = await prBase(r.dir, head)
+    expect(Exit.isSuccess(exit) && exit.value).toEqual(Option.some(fork))
+  })
+
+  test("is none when no default branch exists, and a named branch that doesn't is an error", async () => {
+    const r = repo()
+    r.write({ "a.txt": "a" })
+    const head = r.commit("only commit")
+    r.git("branch", "-m", "trunk")
+    const none = await prBase(r.dir, head)
+    expect(Exit.isSuccess(none) && none.value).toEqual(Option.none())
+    expect(failureTag(await prBase(r.dir, head, "release"))).toBe("BaseRefNotFound")
   })
 })

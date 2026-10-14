@@ -85,6 +85,11 @@ describe("runGates", () => {
     ])
   })
 
+  test("a gate missing from every used pack's catalog is not executed, even with an implementation", async () => {
+    const uncatalogued: Pack = { ...pack({ build: () => Effect.succeed(run()) }), spec: { ...jvm, gates: jvm.gates.filter((g) => g.name !== "build") } }
+    expect(statuses(await go("fast { build }", uncatalogued))).toEqual(["build:not-executed (no used pack implements the 'build' gate)"])
+  })
+
   test("a ratcheted violations gate fails only on findings not in the baseline", async () => {
     const base = fingerprint([finding(2)], () => fileLines)
     const head = fingerprint([finding(2), finding(3)], () => fileLines)
