@@ -29,8 +29,8 @@ arch {
 }
 
 suites {
-  unit  "packages/*/test/**"
-  packs "packs/*/test/**"
+  unit  "packages/*/test/**" affected
+  packs "packs/*/test/**" affected
 }
 
 // Gauntlet's own speed (scripts/bench.ts): what runs on every check, CI build and
