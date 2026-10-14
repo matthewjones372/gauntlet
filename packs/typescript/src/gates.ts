@@ -7,6 +7,7 @@ import { availableParallelism } from "node:os"
 import { posix } from "node:path"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { convertEslintJson, convertJestJson, DETECTED, type Mutant, parseLcov, parseStryker, UNDETECTED } from "./reports.ts"
+import { parseKnip } from "./knip.ts"
 import { runRules } from "./rules.ts"
 import { line, ofType, parseTs } from "./syntax.ts"
 import { bunfigOf, bunPassed, GLOBAL_SETUP, reachesUnseen, RUNNER_CONFIG, testFileOf, testMapOf } from "./test-map.ts"
@@ -260,6 +261,31 @@ export const lint: GateImpl = (_check, ctx) =>
     const rulesRun: Run = { tool: { driver: { name: "ts-rules" } }, results }
     yield* writeSarif(ctx, "ts-rules.sarif", rulesRun)
     return { ...base(r), exitCode: 0, runs: [...runs, rulesRun] }
+  })
+
+// ---------- dead-code: Knip ----------
+
+/**
+ * Unused files, exports, types, members and dependencies, from the project's
+ * own Knip and its configuration (spec 0017 §4). Knip prints its JSON report;
+ * Gauntlet keeps it in the output directory and reads it from there.
+ */
+export const deadCode: GateImpl = (_check, ctx) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const { chain, blocked } = yield* prepared(ctx, "knip")
+    if (blocked) return blocked
+    if (!chain.deps.has("knip")) return { ...failed(["knip"], "Knip isn't installed: add knip to devDependencies"), notSetUp: true }
+    const r = yield* tool(ctx, "knip", ["--reporter", "json", "--no-progress", "--no-exit-code", "--no-config-hints"])
+    if (r.error) return base(r)
+    if (r.exitCode !== 0) return { ...base(r), error: `Knip couldn't run: ${r.stderr.trim().split("\n").at(-1) ?? ""}` }
+    yield* fs.writeFileString(path.join(ctx.outputDir, "knip.json"), r.stdout).pipe(Effect.orElseSucceed(() => undefined))
+    const manifests = new Map((yield* readFiles(ctx, ctx.files.filter((f) => f === "package.json" || f.endsWith("/package.json")))).map((m) => [m.path, m.text.split(/\r?\n/)]))
+    const run = parseKnip(r.stdout, ctx.dir, (p) => manifests.get(p))
+    if (Option.isNone(run)) return { ...base(r), error: "Knip's JSON report couldn't be read" }
+    yield* writeSarif(ctx, "knip.sarif", run.value)
+    return { ...base(r), runs: [run.value] }
   })
 
 // ---------- arch: import analysis ----------

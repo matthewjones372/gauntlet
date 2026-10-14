@@ -4,7 +4,7 @@ import { doctor } from "./doctor.ts"
 import { onboard } from "./onboard.ts"
 import { parseDependencies } from "./dependencies.ts"
 import { typescriptDetector, typescriptSurveyor } from "./detectors.ts"
-import { arch, build, coverage, lint, mutation, runSuite } from "./gates.ts"
+import { arch, build, coverage, deadCode, lint, mutation, runSuite } from "./gates.ts"
 import { enclosingSymbol, parseTs, stripLineComment } from "./syntax.ts"
 import { tamper } from "./tamper.ts"
 import { isTsSource } from "./toolchain.ts"
@@ -21,12 +21,13 @@ export const typescriptPack: Pack = {
   runnerConfig: [
     "vitest.config.*", "vitest.workspace.*", "jest.config.*", "bunfig.toml", "tsconfig*.json",
     "stryker.config.*", "stryker.conf.*", ".strykerrc*", "biome.json", "biome.jsonc", "eslint.config.*", ".eslintrc*",
+    "knip.json", "knip.jsonc", ".knip.json", ".knip.jsonc", "knip.config.*", "knip.ts",
   ],
   manifests: ["package.json", "**/package.json"],
   dependencies: parseDependencies,
   detectors: [typescriptDetector],
   surveyTests: typescriptSurveyor,
-  gates: { build, lint, arch, mutation, coverage },
+  gates: { build, lint, "dead-code": deadCode, arch, mutation, coverage },
   runSuite,
   reruns: true,
   // A baseline maps what each test file loads (Vitest, Jest and bun), and a check runs the test files a change affects (spec 0013).

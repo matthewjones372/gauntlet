@@ -6,7 +6,7 @@ import { packageManager, testRunner } from "./toolchain.ts"
 // Policy defaults for a TypeScript project (`gauntlet init --template`): a gate
 // is proposed only when the project already has its tool.
 
-const RUNNER_CONFIG = /^(vitest\.config\.|vitest\.workspace\.|jest\.config\.|bunfig\.toml$|tsconfig[^/]*\.json$|stryker\.con|\.strykerrc|biome\.jsonc?$|eslint\.config\.|\.eslintrc)/
+const RUNNER_CONFIG = /^(vitest\.config\.|vitest\.workspace\.|jest\.config\.|bunfig\.toml$|tsconfig[^/]*\.json$|stryker\.con|\.strykerrc|biome\.jsonc?$|eslint\.config\.|\.eslintrc|\.?knip\.(jsonc?$|config\.|ts$))/
 
 export const onboard = (repo: RepoView): Onboarding => {
   const deps = new Set(parseDependencies("package.json", repo.read("package.json") ?? "").map((d) => d.slice(0, d.lastIndexOf("@") > 0 ? d.lastIndexOf("@") : d.length)))
@@ -27,6 +27,8 @@ export const onboard = (repo: RepoView): Onboarding => {
     setup.push("Add @biomejs/biome or eslint to gate lint.")
     missing.push("@biomejs/biome")
   }
+  // Dead code (spec 0017): proposed only when the project already uses Knip.
+  if (deps.has("knip")) fast.push("dead-code ratchet")
   const coverageReady = runner._tag === "Some" && (runner.value !== "vitest" || deps.has("@vitest/coverage-v8") || deps.has("@vitest/coverage-istanbul"))
   if (coverageReady) verify.push("coverage ratchet on changed")
   else if (runner._tag === "Some") {

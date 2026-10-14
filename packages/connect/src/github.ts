@@ -100,7 +100,7 @@ export const toolchainSteps = (options: GithubOptions): string[] => {
   if (o.ir.packs.includes("go")) {
     steps.push(`- name: Set up Go\n  uses: ${pinned(ACTIONS.setupGo)}\n  with:\n    go-version-file: go.mod\n    cache: false`)
     const gates = new Set(o.ir.gates.flatMap((t) => t.checks.flatMap((c) => (c.kind === "gate" ? [c.name] : []))))
-    const tools = (["lint", "mutation"] as const).filter((g) => gates.has(g)).map((g) => GO_TOOLS[g])
+    const tools = (["lint", "mutation", "dead-code"] as const).filter((g) => gates.has(g)).map((g) => GO_TOOLS[g])
     if (tools.length > 0) steps.push(`- name: Install Go tools\n  run: |\n${tools.map((t) => `    go install ${t}`).join("\n")}\n    echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"`)
   }
   return steps

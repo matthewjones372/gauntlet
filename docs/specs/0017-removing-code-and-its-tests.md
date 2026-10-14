@@ -1,6 +1,6 @@
 # Spec 0017: removing code, and the tests only it needed
 
-Status: proposed. Builds on spec 0013 (the map of what each test exercises).
+Status: proposed; stage 4 implemented for TypeScript (Knip) and Go (`deadcode`). Builds on spec 0013 (the map of what each test exercises).
 
 ## Problem
 

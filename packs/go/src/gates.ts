@@ -4,6 +4,7 @@ import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { decodeLog, type Log, relativeUri, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Effect, FileSystem, Option, Path } from "effect"
+import { DEADCODE_MODULE, parseDeadcode } from "./deadcode.ts"
 import { convertGoTest, packageRelative, parseCoverProfile, parseGremlins } from "./reports.ts"
 import { runRules } from "./rules.ts"
 import { importPaths, ofType, parseGo } from "./syntax.ts"
@@ -128,6 +129,37 @@ export const lint: GateImpl = (_check, ctx) =>
     const rulesRun: Run = { tool: { driver: { name: "go-rules" } }, results }
     yield* writeSarif(ctx, "go-rules.sarif", rulesRun)
     return { ...base(r), exitCode: 0, runs: [...runs, rulesRun] }
+  })
+
+// ---------- dead-code: deadcode ----------
+
+/**
+ * Functions nothing reaches, from golang.org/x/tools' deadcode (spec 0017 §4).
+ * Tests are roots too (`-test`), so a library without a main package can be
+ * checked, and code its tests call isn't reported. It prints its JSON report;
+ * Gauntlet keeps it in the output directory and reads it from there.
+ */
+export const deadCode: GateImpl = (_check, ctx) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const blocked = yield* prepared(ctx, "deadcode")
+    if (blocked) return blocked
+    const bin = yield* goTool(ctx, "deadcode")
+    if (Option.isNone(bin)) return { ...failed(["deadcode"], `deadcode isn't installed (go install ${DEADCODE_MODULE})`), notSetUp: true }
+    const r = yield* exec(ctx, [bin.value, "-test", "-json", "./..."])
+    if (r.error) return base(r)
+    if (r.exitCode !== 0) {
+      const why = r.stderr.includes("no main packages")
+        ? "deadcode found no main package or test to start from"
+        : `deadcode couldn't run: ${r.stderr.trim().split("\n").at(-1) ?? ""}`
+      return { ...base(r), error: why }
+    }
+    yield* fs.writeFileString(path.join(ctx.outputDir, "deadcode.json"), r.stdout).pipe(Effect.orElseSucceed(() => undefined))
+    const run = parseDeadcode(r.stdout, ctx.dir)
+    if (Option.isNone(run)) return { ...base(r), error: "deadcode's JSON report couldn't be read" }
+    yield* writeSarif(ctx, "deadcode.sarif", run.value)
+    return { ...base(r), runs: [run.value] }
   })
 
 // ---------- arch: import analysis ----------
