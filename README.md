@@ -149,7 +149,9 @@ shows on that line of the pull request's diff.
   lists tests that can't fail or that no mutant needs. A change that only
   removes tests is checked against the record of which tests kill which
   mutants. A test deleted along with the code it tested is flagged rather than
-  forbidden, and project-wide ratchets leave removed code out.
+  forbidden, and project-wide ratchets leave removed code out. `gauntlet prune
+  code` lists code that could go: dead-code findings, and code no test runs
+  that nothing names.
   [Tests that add no value](docs/policy.md#tests-that-add-no-value),
   [removing a feature](docs/policy.md#removing-a-feature)
 

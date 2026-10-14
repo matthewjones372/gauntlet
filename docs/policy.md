@@ -160,9 +160,8 @@ fast { build, lint ratchet, dead-code ratchet }
   project's detekt configuration. detekt 2.0.0-alpha.6's `detekt` task runs
   only UnusedParameter and UnusedPrivateClass by default; a detekt that runs
   none of them is an error naming them. Java code isn't read: detekt reads
-  Kotlin only. Unused public code needs the map of what calls what
-  ([spec 0017](specs/0017-removing-code-and-its-tests.md) §5), which isn't
-  built yet.
+  Kotlin only. For unused public code, see `gauntlet prune code` under
+  "Removing a feature".
 - **Clojure**: the same clj-kondo run and `.clj-kondo` configuration as lint:
   `dead-code/unused-binding`, `dead-code/unused-private-var`,
   `dead-code/unused-namespace`, `dead-code/unused-referred-var`,
@@ -425,6 +424,46 @@ out again: the comparison is as before, and a drop in a change that deletes
 code says it may come from the removed code. Re-record the baseline with
 `gauntlet baseline --update --allow-lower` and its pull request takes the
 owner's route described under "The owner's decisions".
+
+### What could go
+
+`gauntlet prune code` lists code that could be removed, with why for each
+([spec 0017](specs/0017-removing-code-and-its-tests.md) §5). It runs nothing:
+it reads the baseline at HEAD and the working copy.
+
+- **Dead code:** the `dead-code` check's findings the baseline recorded (see
+  "Dead code"), in files that are still there. Without a `dead-code` gate it
+  says how to add one; a baseline recorded before the gate was added has none
+  until it's recorded again with `gauntlet baseline --update`.
+- **Code no test runs and nothing names:** main source files no test executed,
+  from the baseline's map of what each test executes (an `affected` suite; the
+  TypeScript and JVM packs record one), that existed when the map was
+  recorded. A file is listed whole when no other file mentions its name (an
+  index file's folder) or anything it exports; otherwise each public
+  declaration nothing else mentions is listed: TypeScript exports and the
+  public methods of exported classes, Kotlin's non-private classes, objects,
+  functions, properties and members, read with the pack's tree-sitter grammar.
+  Java has no grammar in Gauntlet yet, so a Java file is judged whole, by its
+  class name. Overrides and private code are left to the `dead-code` check.
+
+The search for names is textual over every file in the working copy except
+`.gauntlet/`: a name in a comment, a string, a configuration file or another
+language counts as a use, so it can miss dead code but rarely lists live code.
+Files something outside the code may start are never listed, and `--json`
+gives each with why: a `main`, a `#!` line, a file that runs code when it's
+loaded, a default export, an entry point's name (`index`, `main`, `cli`,
+`server`, `app`, `worker` and the like), framework folders and files (`pages/`,
+`app/`, `routes/`, `bin/`, `scripts/`, `*.config.*`, `page.tsx`, SvelteKit's
+`+` files), JVM code with an annotation other than the language's own (Spring,
+JAX-RS and so on), and Kotlin or Java whose inline functions or constants the
+compiler copies into callers, which the map can't see run. Code reached only by
+reflection, dependency injection or an outside caller, such as a library's
+public API, is still missed: check each before removing it.
+
+It's a list: it changes nothing and affects no decision. Removing what it lists
+is an ordinary change, judged by the rules above. Other packs list only the
+`dead-code` findings until they record a test map. `--json` prints the same list
+as JSON.
 
 ## Agent attempts
 
