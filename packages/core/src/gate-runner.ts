@@ -97,6 +97,16 @@ const NOT_IN_V1: Partial<Record<Check["kind"], string>> = {
 /** How many failing tests a report names per suite. */
 const MAX_FAILURES = 10
 
+/**
+ * The name a gate's measurement is recorded under: a zone's own (\`coverage in zone money\`),
+ * so each zone's ratchet starts from that zone's value and none overwrites the project's (spec 0009 §3).
+ */
+export const gateMetricKey = (gate: { readonly name: string; readonly zone?: string }): string =>
+  gate.zone === undefined ? gate.name : `${gate.name} in zone ${gate.zone}`
+
+/** The gate a recorded metric belongs to: \`coverage in zone money\` is coverage's. */
+export const metricGate = (key: string): string => key.split(" in zone ")[0]!
+
 const checkName = (c: Check) => (c.kind === "budget" ? `budget ${c.budget}` : c.kind === "llm-review" ? "llm review" : c.name)
 const dirName = (tier: number, index: number, c: Check) => `${tier}-${index}-${checkName(c).replace(/[^A-Za-z0-9._-]+/g, "-")}`
 
@@ -694,7 +704,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const inScope = (p: string) => (check.scope !== "changed" || input.recording || changed.includes(p)) && (!zone || zone.globs.some((g) => globMatches(g, p)))
           const changedOnly = check.scope === "changed" && !input.recording && pruning === undefined
           changedLinesOnly = changedOnly
-          scope = pruning?.kind === "confirm" ? [...pruning.files] : changedOnly || zone ? [...new Set([...changed, ...facts.files.map((f) => f.path)])].filter(inScope).sort() : undefined
+          // Recording a baseline, a zone's gate measures the zone as it is: every file in it (spec 0009 §3).
+          const pool = input.recording && zone ? input.files : [...changed, ...facts.files.map((f) => f.path)]
+          scope = pruning?.kind === "confirm" ? [...pruning.files] : changedOnly || zone ? [...new Set(pool)].filter(inScope).sort() : undefined
           start = multi
             ? (ctx) => acrossBuilds(check, targetsFor((p) => p.gates[check.name] !== undefined), dir, ctx, (bctx, t) => t.pack.gates[check.name]!(check, bctx))
             : (ctx) => impl(check, ctx)
@@ -740,7 +752,11 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         }).pipe(Effect.orElseSucceed(() => run.runs))
         const tagged = fingerprinted.map((r): Run => ({ ...r, properties: { ...r.properties, gauntlet: { ...r.properties?.gauntlet, check: checkName(check), proof } } }))
         runs.push(...tagged)
-        Object.assign(metrics, run.metrics ?? {})
+        // A zone's measurement goes under the zone's own name, beside the project's.
+        const zoned = check.kind === "gate" && check.zone !== undefined ? check : undefined
+        Object.assign(metrics, zoned && run.metrics?.[zoned.name]
+          ? { ...Object.fromEntries(Object.entries(run.metrics).filter(([k]) => k !== zoned.name)), [gateMetricKey(zoned)]: run.metrics[zoned.name] }
+          : run.metrics ?? {})
 
         // What the tool said, with the run's temporary paths as the proof has them, so identical runs read the same.
         const said = (run.output ?? []).map((l) => placeholder(l).replaceAll("{checkout}/", ""))
@@ -885,11 +901,14 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
                 return { status: "passed", ...(survivors.length > 0 ? { reason: `${survivors.length} mutant${survivors.length === 1 ? "" : "s"}${where} survive${survivors.length === 1 ? "s" : ""}, reported without blocking` } : {}), proof }
               }
             } else if (gate.ratchet && Option.isSome(baseline)) {
-              const recorded = baseline.value.metrics[gate.name]
+              // A zone's ratchet starts from the zone's own value; a baseline recorded before zones had one
+              // holds the zone's files to the project's (spec 0009 §3).
+              const key = gateMetricKey(gate)
+              const recorded = baseline.value.metrics[key] ?? baseline.value.metrics[gate.name]
               if (recorded) {
                 // Spec 0017 §3: a whole-project value is judged against the base's for the code that's left,
                 // and a renamed file keeps its base value. Changed-lines scopes are judged as before.
-                const c = compareMetrics({ [gate.name]: recorded }, { [gate.name]: value }, scope !== undefined ? { scoped: true } : {
+                const c = compareMetrics({ [key]: recorded }, { [key]: value }, scope !== undefined ? { scoped: true } : {
                   removed: removedCode,
                   renames,
                   ...(multi ? { groupOf: (p: string) => ownerDir(buildDirs, p) ?? "." } : {}),
@@ -897,7 +916,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
                 ratchets.push(...c.deltas)
                 for (const r of c.regressions) {
                   regressions.push({ metric: r.metric, ...(r.file ? { file: r.file } : {}), base: r.base, head: r.head, ...(r.note ? { note: r.note } : {}) })
-                  reasons.push(`${gate.name}${r.file ? ` for ${r.file}` : ""} fell from ${r.base} to ${r.head}${r.note ? `: ${r.note}` : ""}`)
+                  reasons.push(`${key}${r.file ? ` for ${r.file}` : ""} fell from ${r.base} to ${r.head}${r.note ? `: ${r.note}` : ""}`)
                 }
               }
             }
