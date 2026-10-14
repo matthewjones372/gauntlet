@@ -1,10 +1,11 @@
 import { type Mutant, mutationGateRun, failingToolSaid } from "@gauntlet/core"
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
-import { compilerWarningsRun, warningsGate } from "@gauntlet/core"
+import { compilerWarningsRun, isCompilerWarnings, warningsGate } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, type Log, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Effect, FileSystem, Option, Path } from "effect"
+import { isBuildDefinition, scalacDeadCode, unusedWarningsOn, WUNUSED } from "./deadcode.ts"
 import { convertScalafix, DETECTED, parseCobertura, parseStryker, UNDETECTED } from "./reports.ts"
 import { runRules } from "./rules.ts"
 import { line, nameOf, ofType, parseScala } from "./syntax.ts"
@@ -115,6 +116,24 @@ export const build: GateImpl = (_check, ctx) =>
 
 /** Compiler warnings, ratcheted with `warnings ratchet`: the build's, or a compile of its own when no build ran. */
 export const warnings: GateImpl = warningsGate((ctx) => build({ kind: "gate", name: "build" } as never, ctx))
+
+/**
+ * scalac's unused warnings as dead code (spec 0017 §4): from the build's
+ * compile, as the warnings check reads them, or a compile of its own when no
+ * build ran. A build that doesn't turn them on can't show any, so that's an
+ * error naming the option, never a pass.
+ */
+export const deadCode: GateImpl = (check, ctx) =>
+  Effect.gen(function*() {
+    const definition = yield* readFiles(ctx, ctx.files.filter(isBuildDefinition))
+    if (!unusedWarningsOn(definition)) return { ...failed(["scalac"], `scalac's unused warnings are off: add scalacOptions += "${WUNUSED}" to build.sbt (Scala 2.13 or 3.3+; -Ywarn-unused on 2.12)`), notSetUp: true }
+    const compiled = ctx.buildWarnings === undefined ? yield* build(check, ctx) : undefined
+    if (compiled?.error !== undefined) return compiled
+    if (compiled !== undefined && compiled.exitCode !== 0) return { ...compiled, error: "the code doesn't compile, so its warnings can't be read" }
+    const run = scalacDeadCode(ctx.buildWarnings ?? compiled!.runs.filter(isCompilerWarnings))
+    yield* writeSarif(ctx, "dead-code.sarif", run)
+    return { command: compiled?.command ?? ["(the build check's compiler output)"], exitCode: compiled?.exitCode ?? 0, runs: [run] }
+  })
 
 // ---------- suites: sbt test, JUnit XML into the output directory ----------
 

@@ -1,4 +1,5 @@
 import { directoriesNamed, type Onboarding, type RepoView } from "@gauntlet/core"
+import { isBuildDefinition, unusedWarningsOn } from "./deadcode.ts"
 
 // Policy defaults for an sbt project (`gauntlet init --template`): a gate is
 // proposed when project/plugins.sbt applies its plugin; otherwise the hint
@@ -19,6 +20,8 @@ export const onboard = (repo: RepoView): Onboarding => {
     if (plugins.includes(p.id)) (p.tier === "fast" ? fast : verify).push(p.gate)
     else setup.push(`Add ${p.line} to project/plugins.sbt to gate ${p.gate.split(" ")[0]}.`)
   }
+  // Dead code (spec 0017): proposed when the build already turns scalac's unused warnings on.
+  if (unusedWarningsOn(repo.files.filter(isBuildDefinition).map((f) => ({ text: repo.read(f) ?? "" })))) fast.push("dead-code ratchet")
   const tests = directoriesNamed(repo.files, ["src/test", "src/it"])
   return {
     protect: {

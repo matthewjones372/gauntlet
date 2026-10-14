@@ -128,7 +128,8 @@ const finding = (check: string, v: Result): NewViolation => {
   return { check, ruleId: v.ruleId, message: v.message.text, ...(path ? { path } : {}), ...(line ? { line } : {}) }
 }
 
-const isWarningsCheck = (check: Check) => check.kind === "gate" && check.name === "warnings"
+/** The checks that read the build's compiler warnings: `warnings`, and `dead-code` where a compiler's unused warnings are its findings (spec 0017 §4). */
+const isWarningsCheck = (check: Check) => check.kind === "gate" && (check.name === "warnings" || check.name === "dead-code")
 
 export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput, never, ProcessRunner | FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function*() {

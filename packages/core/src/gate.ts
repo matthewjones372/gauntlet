@@ -39,10 +39,11 @@ export interface GateContext {
   /** The coverage gate: the suite's run already wrote the coverage reports into \`outputDir\`. */
   readonly coverageFromSuite?: boolean
   /**
-   * For the warnings check: the compiler warnings the build check printed
-   * earlier in this check, already read. Undefined when no build ran here
+   * For the warnings and dead-code checks: the compiler warnings the build
+   * check printed earlier in this check, already read (an incremental compile
+   * only warns about what it recompiles). Undefined when no build ran here
    * (its results came from CI, or the policy has no build check), so the
-   * warnings check compiles itself.
+   * check compiles itself.
    */
   readonly buildWarnings?: ReadonlyArray<Run>
   /**
