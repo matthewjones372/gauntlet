@@ -136,8 +136,9 @@ shows on that line of the pull request's diff.
   map can't vouch for runs everything.
   [Affected tests](docs/policy.md#running-the-tests-a-change-affects)
 - **Lint, compiler warnings and dead code**, with today's findings
-  grandfathered and new ones failing. The dead-code check uses Knip for
-  TypeScript and `deadcode` for Go.
+  grandfathered and new ones failing. The dead-code check uses each
+  ecosystem's own tool: Knip, `deadcode`, vulture, rustc's lints, scalac's
+  `-Wunused`, detekt and clj-kondo.
   [Compiler warnings](docs/policy.md#compiler-warnings),
   [dead code](docs/policy.md#dead-code)
 - **Architecture and zones.** Layers that mustn't depend on each other, and
