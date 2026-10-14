@@ -4,13 +4,13 @@ Back to the [README](../README.md).
 
 | Language | Build tool | Tests | Lint | Coverage | Mutation | Dead code |
 | --- | --- | --- | --- | --- | --- | --- |
-| Kotlin, Java | Gradle | JUnit | detekt | Kover (Gauntlet brings its agent if needed); JaCoCo for Java | PIT | not yet |
+| Kotlin, Java | Gradle | JUnit | detekt | Kover (Gauntlet brings its agent if needed); JaCoCo for Java | PIT | detekt's unused rules (Kotlin) |
 | TypeScript, JavaScript | Bun, npm, pnpm, yarn | Bun test, Vitest, Jest | ESLint or Biome | the test runner's own | Stryker | Knip |
-| Python | uv, Poetry, pip | pytest | Ruff (and mypy if configured) | coverage.py | mutmut | not yet |
+| Python | uv, Poetry, pip | pytest | Ruff (and mypy if configured) | coverage.py | mutmut | vulture |
 | Go | go | go test | golangci-lint | go cover | gremlins | deadcode |
-| Rust | Cargo | cargo-nextest | clippy | cargo-llvm-cov | cargo-mutants | not yet |
-| Scala | sbt | ScalaTest, munit, ZIO Test, weaver | scalafix | scoverage | Stryker4s | not yet |
-| Clojure | Clojure CLI, Leiningen | clojure.test (run by kaocha) | clj-kondo | cloverage | none yet (reported as not executed) | not yet |
+| Rust | Cargo | cargo-nextest | clippy | cargo-llvm-cov | cargo-mutants | rustc's dead-code lints |
+| Scala | sbt | ScalaTest, munit, ZIO Test, weaver | scalafix | scoverage | Stryker4s | scalac's `-Wunused` warnings |
+| Clojure | Clojure CLI, Leiningen | clojure.test (run by kaocha) | clj-kondo | cloverage | none yet (reported as not executed) | clj-kondo's unused linters |
 
 Each language pack brings its own zone rules, integrity detectors and tamper
 fixtures. A suite marked `affected` runs only the tests a change affects with

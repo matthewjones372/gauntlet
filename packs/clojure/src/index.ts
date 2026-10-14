@@ -3,7 +3,7 @@ import { spec } from "./catalog.ts"
 import { parseDependencies } from "./dependencies.ts"
 import { clojureDetector, clojureSurveyor } from "./detectors.ts"
 import { doctor } from "./doctor.ts"
-import { arch, build, coverage, lint, runSuite } from "./gates.ts"
+import { arch, build, coverage, deadCode, lint, runSuite } from "./gates.ts"
 import { onboard } from "./onboard.ts"
 import { enclosingSymbol, read, stripLineComment } from "./syntax.ts"
 import { tamper } from "./tamper.ts"
@@ -24,7 +24,7 @@ export const clojurePack: Pack = {
   detectors: [clojureDetector],
   surveyTests: clojureSurveyor,
   // No mutation: listed in the spec, reported not executed (catalog.ts).
-  gates: { build, lint, arch, coverage },
+  gates: { build, lint, "dead-code": deadCode, arch, coverage },
   runSuite,
   reruns: true,
   tamper,

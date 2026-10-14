@@ -9,6 +9,7 @@ export const spec: PackSpec = {
     { name: "build", description: "compiles main and test code", produces: "outcome", units: [], higherIsBetter: true, scopable: false, zoneScopable: false },
     { name: "warnings", description: "kotlinc and javac warnings (`warnings ratchet`: new ones fail)", produces: "violations", units: [], higherIsBetter: false, scopable: true, zoneScopable: true },
     { name: "lint", description: "detekt plus the zones' Kotlin rules", produces: "violations", units: [], higherIsBetter: false, scopable: true, zoneScopable: true },
+    { name: "dead-code", description: "detekt's unused rules: private classes, functions and properties, parameters, variables, imports, unreachable code (`dead-code ratchet`: new ones fail)", produces: "violations", units: [], higherIsBetter: false, scopable: true, zoneScopable: true },
     { name: "arch", description: "module dependency rules, from imports", produces: "violations", units: [], higherIsBetter: false, scopable: false, zoneScopable: false },
     { name: "mutation", description: "Pitest mutation score", produces: "metric", units: ["%"], higherIsBetter: true, scopable: true, zoneScopable: true },
     { name: "coverage", description: "Kover line coverage (changed lines with `on changed`)", produces: "metric", units: ["%"], higherIsBetter: true, scopable: true, zoneScopable: true },

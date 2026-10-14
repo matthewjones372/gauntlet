@@ -108,25 +108,75 @@ new:
 fast { build, lint ratchet, dead-code ratchet }
 ```
 
-- **TypeScript**: the project's own [Knip](https://knip.dev) and its
-  configuration (add `knip` to devDependencies). Unused files, exports, types,
-  enum, class and namespace members, duplicate exports, and unused
-  dependencies (`dead-code/unused-file`, `dead-code/unused-export`,
-  `dead-code/unused-dependency` and so on). Unlisted or unresolved imports are
-  mistakes, not dead code, and aren't reported. `gauntlet init` drafts
-  `dead-code ratchet` when the project already uses Knip.
-- **Go**: `deadcode` from golang.org/x/tools
-  (`go install golang.org/x/tools/cmd/deadcode@v0.52.0`; `gauntlet connect
-  github` installs it in CI), with tests as well as main packages as roots,
-  so a library can be checked and code its tests call isn't reported:
-  `dead-code/unreachable-func`. Generated code and marker methods aren't
-  findings.
+| Pack | Tool | Findings | `gauntlet init` drafts `dead-code ratchet` |
+| --- | --- | --- | --- |
+| TypeScript | the project's own [Knip](https://knip.dev) and its configuration | unused files, exports, types, members, duplicate exports, dependencies | when the project already uses Knip |
+| Go | `deadcode` (golang.org/x/tools) | functions no main or test reaches | no |
+| Python | the project's own [vulture](https://github.com/jendrikseipp/vulture) | unused imports, functions, classes, methods, properties, attributes, variables; unreachable code | when vulture is a dependency |
+| Rust | rustc's own lints, from `cargo check` | `dead_code`, `unused_imports`, `unused_variables`, `unused_macros`, `unreachable_code` | no: clippy reports them under `lint ratchet` |
+| Scala | scalac's unused warnings (`-Wunused`), from the build's compile | unused private and local definitions, imports, parameters, pattern variables; `-Wdead-code` | when the build turns them on |
+| Kotlin | detekt's unused rules | unused private classes, functions and properties, parameters, variables, imports; unreachable code | no: `lint ratchet` holds them |
+| Clojure | clj-kondo's unused linters | unused bindings, private vars, namespaces, referred vars, imports (and aliases, if turned on) | no: `lint ratchet` holds them |
 
-Without the tool the check is an error that says how to add it, never a pass.
-`dead-code advise` reports the findings without blocking. Tools miss code
-reached only by reflection, dependency injection or an outside caller, so
-read a finding before deleting what it names. The other packs don't have the
-check yet.
+- **TypeScript**: add `knip` to devDependencies. Rule ids such as
+  `dead-code/unused-file`, `dead-code/unused-export` and
+  `dead-code/unused-dependency`. Unlisted or unresolved imports are mistakes,
+  not dead code, and aren't reported.
+- **Go**: `go install golang.org/x/tools/cmd/deadcode@v0.52.0` (`gauntlet
+  connect github` installs it in CI). Tests are roots as well as main
+  packages, so a library can be checked and code its tests call isn't
+  reported: `dead-code/unreachable-func`. Generated code and marker methods
+  aren't findings.
+- **Python**: add `vulture` as a dev dependency. Gauntlet reads every
+  top-level directory with Python in it, tests included (so code only tests
+  call isn't unused), at 80% confidence: vulture is that sure only of unused
+  imports and arguments and unreachable code, while an unused function,
+  class, method, attribute or property is 60%, since a framework (a route, a
+  fixture, an ORM field) or `getattr` may use it by name. To have those too,
+  set `min_confidence = 60` under `[tool.vulture]` in pyproject.toml and list
+  what's used by name in `vulture_whitelist.py` (runner configuration, put back
+  to base before the check runs); `paths` there replaces Gauntlet's choice.
+  Findings in test files aren't reported: pytest calls tests and fixtures by
+  name. `dead-code/unused-function`, `dead-code/unused-import`,
+  `dead-code/unreachable-code` and so on.
+- **Rust**: every target, tests included, once per finding. rustc judges the
+  library as built for release too, so an item only tests use is reported; a
+  `pub` item in a library never is. `dead_code` is reported by what's never
+  used: `dead-code/unused-function`, `dead-code/unused-field`,
+  `dead-code/unused-variant` and so on; the others as
+  `dead-code/unused-import`, `dead-code/unused-variable`,
+  `dead-code/unused-macro` and `dead-code/unreachable-code`.
+- **Scala**: add `scalacOptions += "-Wunused:all"` (Scala 2.13 and 3.3+;
+  `-Ywarn-unused` on 2.12; `-Xlint` and sbt-tpolecat turn them on too).
+  Without it the check is an error naming the option. Like the `warnings`
+  check it reads the build check's compile, or compiles itself when no build
+  ran: `dead-code/unused-import`, `dead-code/unused-private`,
+  `dead-code/unused-local`, `dead-code/unused-parameter`,
+  `dead-code/unused-pattern-variable`, `dead-code/unreachable-code`.
+  Deprecations and a var never updated stay the `warnings` check's.
+- **Kotlin**: detekt's UnusedPrivateClass, UnusedPrivateFunction,
+  UnusedPrivateProperty, UnusedParameter, UnusedVariable, UnusedImport and
+  UnreachableCode (`dead-code/unused-private-function` and so on), with the
+  project's detekt configuration. detekt 2.0.0-alpha.6's `detekt` task runs
+  only UnusedParameter and UnusedPrivateClass by default; a detekt that runs
+  none of them is an error naming them. Java code isn't read: detekt reads
+  Kotlin only. Unused public code needs the map of what calls what
+  ([spec 0017](specs/0017-removing-code-and-its-tests.md) §5), which isn't
+  built yet.
+- **Clojure**: the same clj-kondo run and `.clj-kondo` configuration as lint:
+  `dead-code/unused-binding`, `dead-code/unused-private-var`,
+  `dead-code/unused-namespace`, `dead-code/unused-referred-var`,
+  `dead-code/unused-import`. A file clj-kondo can't read is an error.
+
+Where `lint ratchet` already holds the same findings (Rust, Kotlin, Clojure),
+`dead-code` reports them again under their own names; use it when you want
+dead code ratcheted, or advised, apart from the rest of lint.
+
+Without the tool the check is an error that says how to add it, never a pass,
+and so is output it can't read. `dead-code advise` reports the findings
+without blocking. Tools miss code reached only by reflection, dependency
+injection or an outside caller, so read a finding before deleting what it
+names.
 
 ## Mutation testing
 

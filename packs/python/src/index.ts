@@ -4,10 +4,11 @@ import { doctor } from "./doctor.ts"
 import { onboard } from "./onboard.ts"
 import { parseDependencies } from "./dependencies.ts"
 import { pythonDetector, pythonSurveyor } from "./detectors.ts"
-import { arch, build, coverage, lint, mutation, runSuite } from "./gates.ts"
+import { arch, build, coverage, deadCode, lint, mutation, runSuite } from "./gates.ts"
 import { enclosingSymbol, parsePython, stripLineComment } from "./syntax.ts"
 import { tamper } from "./tamper.ts"
 import { isPython } from "./toolchain.ts"
+import { VULTURE_WHITELISTS } from "./vulture.ts"
 
 /** Detects a Python project from its file list. */
 export const detectPython = (files: ReadonlyArray<string>): boolean =>
@@ -20,12 +21,12 @@ export const pythonPack: Pack = {
   doctor,
   // Test and tool configuration, put back to base before anything runs (ADR 0003).
   // conftest.py files can change which tests are collected and how they run.
-  runnerConfig: ["pytest.ini", "setup.cfg", "tox.ini", ".coveragerc", "mypy.ini", ".mypy.ini", "ruff.toml", ".ruff.toml", "pyrightconfig.json", "**/conftest.py"],
+  runnerConfig: ["pytest.ini", "setup.cfg", "tox.ini", ".coveragerc", "mypy.ini", ".mypy.ini", "ruff.toml", ".ruff.toml", "pyrightconfig.json", "**/conftest.py", ...VULTURE_WHITELISTS],
   manifests: ["pyproject.toml", "**/pyproject.toml", "requirements*.txt", "**/requirements*.txt"],
   dependencies: parseDependencies,
   detectors: [pythonDetector],
   surveyTests: pythonSurveyor,
-  gates: { build, lint, arch, mutation, coverage },
+  gates: { build, lint, "dead-code": deadCode, arch, mutation, coverage },
   runSuite,
   reruns: true,
   tamper,

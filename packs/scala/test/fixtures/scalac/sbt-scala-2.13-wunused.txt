@@ -1,0 +1,33 @@
+[info] welcome to sbt 1.11.7 (Eclipse Adoptium Java 21.0.8)
+[info] loading project definition from /repo/project
+[info] loading settings for project root from build.sbt...
+[info] compiling 2 Scala sources to /repo/target/scala-2.13/classes ...
+[warn] /repo/src/main/scala/svc/Money.scala:3:25: Unused import
+[warn] import scala.util.{Try, Success}
+[warn]                         ^
+[warn] /repo/src/main/scala/svc/Money.scala:8:15: private val rate in object Money is never used
+[warn]   private val rate = 3
+[warn]               ^
+[warn] /repo/src/main/scala/svc/Money.scala:10:15: private method helper in object Money is never used
+[warn]   private def helper(x: Int): Int = x + 1
+[warn]               ^
+[warn] /repo/src/main/scala/svc/Money.scala:13:9: local val unused in method add is never used
+[warn]     val unused = 1
+[warn]         ^
+[warn] /repo/src/main/scala/svc/Money.scala:17:26: parameter ctx in method handle is never used
+[warn]   def handle(req: String, ctx: Int): String = req
+[warn]                           ^
+[warn] /repo/src/main/scala/svc/Money.scala:20:10: pattern var rest in method head is never used: use a wildcard `_` or suppress this warning with `rest@_`
+[warn]     case h :: rest => h
+[warn]               ^
+[warn] /repo/src/main/scala/svc/Money.scala:24:5: dead code following this construct
+[warn]     throw new IllegalStateException("never")
+[warn]     ^
+[warn] /repo/src/main/scala/svc/Ledger.scala:4:15: private var count in class Ledger is never updated: consider using immutable val
+[warn]   private var count = 0
+[warn]               ^
+[warn] /repo/src/main/scala/svc/Ledger.scala:7:20: method old in object Money is deprecated (since 1.0): use add
+[warn]   def total = Money.old(1)
+[warn]                     ^
+[warn] 9 warnings found
+[success] Total time: 4 s, completed 14 Oct 2026, 17:00:00

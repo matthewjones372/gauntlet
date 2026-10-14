@@ -4,7 +4,8 @@ import { directoriesNamed, type Onboarding, type RepoView } from "@gauntlet/core
 // Lint and mutation use the build's own plugins (ADR 0007), so they're proposed
 // only when applied; otherwise the hint gives the line to add. Coverage is
 // always proposed: without Kover, Gauntlet brings Kover's agent (Kotlin) or
-// JaCoCo (Java) itself.
+// JaCoCo (Java) itself. Dead code isn't proposed: its findings are detekt's
+// unused rules, which `lint ratchet` already holds.
 
 const PLUGINS = {
   detekt: { id: "dev.detekt", line: `id("dev.detekt") version "2.0.0-alpha.6"`, gate: "lint ratchet", tier: "fast" },

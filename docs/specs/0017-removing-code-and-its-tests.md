@@ -1,6 +1,6 @@
 # Spec 0017: removing code, and the tests only it needed
 
-Status: proposed; stage 2's `code removed` review condition implemented (defined in `docs/policy.md`, "Review conditions"), while its per-test explanation waits for stage 1's method-level map; stage 3 implemented (project-wide ratchets judged against the code that's left; see "Removing a feature" in `docs/policy.md`); stage 4 implemented for TypeScript (Knip) and Go (`deadcode`). Builds on spec 0013 (the map of what each test exercises).
+Status: proposed; stage 2's `code removed` review condition implemented (defined in `docs/policy.md`, "Review conditions"), while its per-test explanation waits for stage 1's method-level map; stage 3 implemented (project-wide ratchets judged against the code that's left; see "Removing a feature" in `docs/policy.md`); stage 4 implemented for every pack: TypeScript (Knip), Go (`deadcode`), Python (vulture), Rust (rustc's dead-code lints), Scala (scalac's `-Wunused`), Kotlin (detekt's unused rules; unused public code waits for §5's map) and Clojure (clj-kondo's unused linters). Builds on spec 0013 (the map of what each test exercises).
 
 ## Problem
 
@@ -83,7 +83,7 @@ unused private, unreachable), with file and line:
 | Rust | rustc's `dead_code` lint |
 | Scala | scalac's `-Wunused` (Scala 2 and 3) |
 | Kotlin, Java | detekt's unused-code rules, and the map (§5) for unused public code |
-| Clojure | clj-kondo's unused-binding and unused-private-var |
+| Clojure | clj-kondo's unused-binding, unused-private-var, unused-namespace, unused-referred-var and unused-import |
 
 With `dead-code ratchet`, today's findings are recorded in the baseline and
 grandfathered, and a change that adds one fails, naming it. They're matched by

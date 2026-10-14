@@ -8,6 +8,7 @@ export const spec: PackSpec = {
   gates: [
     { name: "build", description: "loads every namespace, main and test", produces: "outcome", units: [], higherIsBetter: true, scopable: false, zoneScopable: false },
     { name: "lint", description: "clj-kondo, plus the zones' Clojure rules", produces: "violations", units: [], higherIsBetter: false, scopable: true, zoneScopable: true },
+    { name: "dead-code", description: "clj-kondo's unused bindings, private vars, namespaces, referred vars and imports (`dead-code ratchet`: new ones fail)", produces: "violations", units: [], higherIsBetter: false, scopable: true, zoneScopable: true },
     { name: "arch", description: "namespace dependency rules, from ns :require", produces: "violations", units: [], higherIsBetter: false, scopable: false, zoneScopable: false },
     // Listed so a policy can name it, and reported not executed: Clojure has no mature mutation tool.
     { name: "mutation", description: "not executed: Clojure has no mature mutation tool, so this is missing evidence", produces: "metric", units: ["%"], higherIsBetter: true, scopable: true, zoneScopable: true },

@@ -4,6 +4,7 @@ import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, type Log, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Effect, FileSystem, Option, Path } from "effect"
+import { isCargoJson, parseRustcDeadCode } from "./deadcode.ts"
 import { convertClippy, parseLcov, parseMutants } from "./reports.ts"
 import { runRules } from "./rules.ts"
 import { inTestModule, line, ofType, parseRust } from "./syntax.ts"
@@ -120,6 +121,31 @@ export const lint: GateImpl = (_check, ctx) =>
     yield* writeSarif(ctx, "clippy.sarif", clippy)
     yield* writeSarif(ctx, "rust-rules.sarif", rulesRun)
     return { ...base(r), exitCode: 0, runs: [clippy, rulesRun] }
+  })
+
+// ---------- dead-code: rustc's dead-code lints ----------
+
+/**
+ * Items, imports, variables and macros nothing uses, and statements that
+ * can't run, from the compiler's own lints (spec 0017 §4) over every target,
+ * tests included. cargo prints its JSON messages; Gauntlet keeps them in the
+ * output directory and reads them from there.
+ */
+export const deadCode: GateImpl = (_check, ctx) =>
+  Effect.gen(function*() {
+    const blocked = yield* prepared(ctx, "cargo check")
+    if (blocked?.error?.startsWith("cargo couldn't be started")) return { ...failed(["cargo", "check"], "cargo isn't installed (https://rustup.rs)"), notSetUp: true }
+    if (blocked) return blocked
+    const r = yield* exec(ctx, ["cargo", "check", "--workspace", "--all-targets", "--message-format=json", ...locked(ctx)])
+    if (r.error) return base(r)
+    if (r.exitCode !== 0) return { ...base(r), error: `cargo check couldn't check the code: ${r.stderr.trim().split("\n").filter((l) => l.startsWith("error")).at(0) ?? r.stderr.trim().split("\n").at(-1) ?? ""}` }
+    if (!isCargoJson(r.stdout)) return { ...base(r), error: `cargo check's messages couldn't be read: ${r.stdout.trim().split("\n")[0]?.slice(0, 200) ?? ""}` }
+    yield* writeOut(ctx, "cargo-check.json", r.stdout)
+    const file = (yield* reports(ctx, (p) => p === "cargo-check.json"))[0]
+    if (!file) return { ...base(r), error: "cargo check wrote no messages" }
+    const run = parseRustcDeadCode(file.content, ctx.dir)
+    yield* writeSarif(ctx, "dead-code.sarif", run)
+    return { ...base(r), exitCode: 0, runs: [run] }
   })
 
 // ---------- arch: use declarations ----------

@@ -3,7 +3,7 @@ import { spec } from "./catalog.ts"
 import { parseDependencies } from "./dependencies.ts"
 import { rustDetector, rustSurveyor } from "./detectors.ts"
 import { doctor } from "./doctor.ts"
-import { arch, build, coverage, lint, mutation, runSuite } from "./gates.ts"
+import { arch, build, coverage, deadCode, lint, mutation, runSuite } from "./gates.ts"
 import { onboard } from "./onboard.ts"
 import { enclosingSymbol, parseRust, stripLineComment } from "./syntax.ts"
 import { tamper } from "./tamper.ts"
@@ -23,7 +23,7 @@ export const rustPack: Pack = {
   dependencies: parseDependencies,
   detectors: [rustDetector],
   surveyTests: rustSurveyor,
-  gates: { build, lint, arch, mutation, coverage },
+  gates: { build, lint, "dead-code": deadCode, arch, mutation, coverage },
   runSuite,
   reruns: true,
   tamper,
