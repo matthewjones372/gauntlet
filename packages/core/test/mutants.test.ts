@@ -15,7 +15,7 @@ describe("mutation result", () => {
   test("the whole project: every mutant counts, scored per file and overall", () => {
     const r = mutationResult("pitest", mutants, {})
     expect(r.lineScoped).toBe(false)
-    expect(r.metrics?.mutation).toEqual({ value: 50, unit: "%", higherIsBetter: true, perFile: { "src/A.kt": 50, "src/B.kt": 100, "src/C.kt": 0 } })
+    expect(r.metrics?.mutation).toEqual({ value: 50, unit: "%", higherIsBetter: true, perFile: { "src/A.kt": 50, "src/B.kt": 100, "src/C.kt": 0 }, perFileTotal: { "src/A.kt": 4, "src/B.kt": 1, "src/C.kt": 1 } })
     expect(r.runs[0]!.results.map((x) => `${x.locations![0]!.physicalLocation!.artifactLocation!.uri}:${x.locations![0]!.physicalLocation!.region!.startLine}`))
       .toEqual(["src/A.kt:3", "src/A.kt:10", "src/C.kt:1"])
   })
@@ -32,7 +32,7 @@ describe("mutation result", () => {
       changedLines: new Map([["src/A.kt", new Set([3, 4])], ["src/B.kt", new Set([9])]]),
     })
     expect(r.lineScoped).toBe(true)
-    expect(r.metrics?.mutation).toEqual({ value: 50, unit: "%", higherIsBetter: true, perFile: { "src/A.kt": 50 } })
+    expect(r.metrics?.mutation).toEqual({ value: 50, unit: "%", higherIsBetter: true, perFile: { "src/A.kt": 50 }, perFileTotal: { "src/A.kt": 2 } })
     expect(r.runs[0]!.results.map((x) => x.message.text)).toEqual(["No test kills a mutant at 3"])
   })
 

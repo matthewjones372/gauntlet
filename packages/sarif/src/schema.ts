@@ -67,6 +67,12 @@ export const Metric = Schema.Struct({
   unit: Schema.Literals(["%", "count", "ratio", "ms"]),
   higherIsBetter: Schema.Boolean,
   perFile: Schema.optionalKey(Schema.Record(Schema.String, Schema.Finite)),
+  /**
+   * What each per-file percentage is out of (the lines measured, the mutants
+   * counted), so the project's value can be worked out again without some files
+   * (spec 0017 §3). Older baselines don't have it.
+   */
+  perFileTotal: Schema.optionalKey(Schema.Record(Schema.String, Schema.Finite)),
 })
 export type Metric = typeof Metric.Type
 

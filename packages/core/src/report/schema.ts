@@ -97,6 +97,8 @@ export const ReportRatchet = Schema.Struct({
   head: Schema.Number,
   delta: Schema.Number,
   regressed: Schema.Boolean,
+  /** Why the base isn't the baseline's value as recorded, or what a drop may come from (spec 0017 §3). */
+  note: Schema.optionalKey(Schema.String),
 })
 
 export const ReportFinding = Schema.Struct({

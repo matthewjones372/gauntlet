@@ -431,8 +431,8 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
       newViolations: ev.violations.map((v) => ({ check: v.check, ruleId: v.ruleId, message: v.message, ...(v.path ? { path: v.path } : {}), ...(v.line ? { line: v.line } : {}) })),
       // Never part of the decision, so the evidence's word is enough: it's reported and annotated.
       advice: (ev.advice ?? []).map((v) => ({ check: v.check, ruleId: v.ruleId, message: v.message, ...(v.path ? { path: v.path } : {}), ...(v.line ? { line: v.line } : {}) })),
-      regressions: ev.ratchets.filter((r) => r.regressed).map((r) => ({ metric: r.metric, ...(r.file ? { file: r.file } : {}), base: r.base, head: r.head })),
-      ratchets: ev.ratchets.map((r) => ({ metric: r.metric, ...(r.file ? { file: r.file } : {}), base: r.base, head: r.head, delta: r.delta, regressed: r.regressed })),
+      regressions: ev.ratchets.filter((r) => r.regressed).map((r) => ({ metric: r.metric, ...(r.file ? { file: r.file } : {}), base: r.base, head: r.head, ...(r.note ? { note: r.note } : {}) })),
+      ratchets: ev.ratchets.map((r) => ({ metric: r.metric, ...(r.file ? { file: r.file } : {}), base: r.base, head: r.head, delta: r.delta, regressed: r.regressed, ...(r.note ? { note: r.note } : {}) })),
       runs: [],
       ...(suiteCounts.length > 0
         ? { tests: { counts: suiteCounts.reduce((a, c) => ({ executed: a.executed + c.executed, passed: a.passed + c.passed, failed: a.failed + c.failed, errored: a.errored + c.errored, skipped: a.skipped + c.skipped }), { executed: 0, passed: 0, failed: 0, errored: 0, skipped: 0 }), ids: [] } }

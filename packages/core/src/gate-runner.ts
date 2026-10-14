@@ -2,10 +2,11 @@ import { type GateSpec, globMatches } from "@gauntlet/dsl"
 import { type Check, type PolicyIR, sha256 } from "@gauntlet/ir"
 import { type Baseline, compareMetrics, compareWithBaseline, convertJUnit, type Metric, type MetricDelta, type Proof, type Result, resultPath, resultRegion, type Run, type KillMap, mergeKillMaps, migrateTestIds, renameKillMap, type TestMap } from "@gauntlet/sarif"
 import { Clock, Effect, FileSystem, Option, type Path } from "effect"
-import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy, runFromBuild, toBuild } from "./builds.ts"
+import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy, ownerDir, runFromBuild, toBuild } from "./builds.ts"
 import { judgeBudget, parseBudgetResults } from "./budget.ts"
 import { asInCi, type CiConfig } from "./ci-config.ts"
 import type { DiffFacts } from "./diff-facts.ts"
+import { isDocumentation } from "./no-behaviour.ts"
 import { ProcessRunner, whyNotRun } from "./process-runner.ts"
 import { fingerprintRuns } from "./fingerprints.ts"
 import { GateProgress } from "./gate-progress.ts"
@@ -146,6 +147,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     const killMaps: KillMap[] = []
     const deselected = new Set<string>()
     const changed = facts.files.filter((f) => f.status !== "deleted").map((f) => f.path)
+    // Main code the change deletes: a whole-project ratchet doesn't hold it to the base's value (spec 0017 §3).
+    const isTest = testPathMatcher(ir)
+    const removedCode = facts.files.filter((f) => f.status === "deleted" && !isTest(f.path) && !isDocumentation(f.path)).map((f) => f.path)
     const specOf = (name: string): { pack: Pack; spec: GateSpec } | undefined => {
       for (const pack of packs) {
         const spec = pack.spec.gates.find((g) => g.name === name)
@@ -882,11 +886,17 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
             } else if (gate.ratchet && Option.isSome(baseline)) {
               const recorded = baseline.value.metrics[gate.name]
               if (recorded) {
-                const c = compareMetrics({ [gate.name]: recorded }, { [gate.name]: value }, { scoped: scope !== undefined })
+                // Spec 0017 §3: a whole-project value is judged against the base's for the code that's left,
+                // and a renamed file keeps its base value. Changed-lines scopes are judged as before.
+                const c = compareMetrics({ [gate.name]: recorded }, { [gate.name]: value }, scope !== undefined ? { scoped: true } : {
+                  removed: removedCode,
+                  renames,
+                  ...(multi ? { groupOf: (p: string) => ownerDir(buildDirs, p) ?? "." } : {}),
+                })
                 ratchets.push(...c.deltas)
                 for (const r of c.regressions) {
-                  regressions.push({ metric: r.metric, ...(r.file ? { file: r.file } : {}), base: r.base, head: r.head })
-                  reasons.push(`${gate.name}${r.file ? ` for ${r.file}` : ""} fell from ${r.base} to ${r.head}`)
+                  regressions.push({ metric: r.metric, ...(r.file ? { file: r.file } : {}), base: r.base, head: r.head, ...(r.note ? { note: r.note } : {}) })
+                  reasons.push(`${gate.name}${r.file ? ` for ${r.file}` : ""} fell from ${r.base} to ${r.head}${r.note ? `: ${r.note}` : ""}`)
                 }
               }
             }

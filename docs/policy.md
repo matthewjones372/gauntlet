@@ -355,6 +355,27 @@ Other packs record no map yet, so their `affected` suites run every test.
 
 Deleting a test is forbidden: it's the oldest way to make a check pass. But removing a feature removes its tests too. When a change deletes a test file together with the source file it's named after (`FxTest.kt` with `Fx.kt`, `fx.test.ts` with `fx.ts`, `fx_test.go` with `fx.go`, `test_fx.py` with `fx.py`), it's flagged instead: the change needs a person's review, not a fix. Those tests don't count against the executed-tests ratchet either. A test deleted while its code stays is still forbidden.
 
+Removing code doesn't trip a whole-project coverage or mutation ratchet
+(`coverage ratchet`, `mutation ratchet` without `on changed`): the change is
+judged against the base's value for the code that's left
+([spec 0017](specs/0017-removing-code-and-its-tests.md) §3). The baseline
+records each file's value and what it's out of (the lines measured, the mutants
+counted), so Gauntlet works the base's value out again without the files the
+change deletes, as the tool worked it out: lines hit over lines measured, and
+the worst build's with several builds. Deleting well-tested code isn't a
+regression, deleting poorly tested code doesn't hide a drop elsewhere, and the
+report says what the base value was worked out from. A renamed file keeps its
+base value under its new path. A file that only loses lines is compared as
+before: its own value against its base value, counted at its base size. With
+`on changed`, a removed line isn't a changed line, so nothing changes.
+
+A baseline recorded before Gauntlet kept these totals, or a value the files
+don't add up to (a mutant the tool couldn't trace to a file), can't be worked
+out again: the comparison is as before, and a drop in a change that deletes
+code says it may come from the removed code. Re-record the baseline with
+`gauntlet baseline --update --allow-lower` and its pull request takes the
+owner's route described under "The owner's decisions".
+
 ## Agent attempts
 
 Claude Code's Stop and SubagentStop hooks keep an agent working while

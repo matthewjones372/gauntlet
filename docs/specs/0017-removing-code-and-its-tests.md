@@ -1,6 +1,6 @@
 # Spec 0017: removing code, and the tests only it needed
 
-Status: proposed; stage 2's `code removed` review condition implemented (defined in `docs/policy.md`, "Review conditions"), while its per-test explanation waits for stage 1's method-level map; stage 4 implemented for TypeScript (Knip) and Go (`deadcode`). Builds on spec 0013 (the map of what each test exercises).
+Status: proposed; stage 2's `code removed` review condition implemented (defined in `docs/policy.md`, "Review conditions"), while its per-test explanation waits for stage 1's method-level map; stage 3 implemented (project-wide ratchets judged against the code that's left; see "Removing a feature" in `docs/policy.md`); stage 4 implemented for TypeScript (Knip) and Go (`deadcode`). Builds on spec 0013 (the map of what each test exercises).
 
 ## Problem
 
