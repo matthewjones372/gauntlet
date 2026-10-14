@@ -29,6 +29,8 @@ export const typescriptPack: Pack = {
   gates: { build, lint, arch, mutation, coverage },
   runSuite,
   reruns: true,
+  // A baseline maps what each test file loads (Vitest and Jest), and a check runs the test files a change affects (spec 0013).
+  testMaps: true,
   tamper,
   locate: (path, lines, line) => (isTsSource(path) ? enclosingSymbol(parseTs(path, lines.join("\n")), line) : undefined),
   normalise: stripLineComment,
