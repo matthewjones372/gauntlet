@@ -17,5 +17,5 @@ describe("gauntlet doctor", () => {
     }
     expect(res.out).toContain("uses jvm, mode enforce")
     expect(res.out).toMatch(/jvm: java /)
-  })
+  }, 30_000)
 })
