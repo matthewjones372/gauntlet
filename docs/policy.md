@@ -275,6 +275,15 @@ without `affected`, when:
   only needs the tests that run the changed lines);
 - the check runs on trunk, or the project's CI already ran the tests.
 
+A test can only be mapped to what ran in its own process. A TypeScript test
+file that could run the project's code in another one (a worker, `bun`, `node`,
+`npx`, a shell, a script or source path, or a command Gauntlet can't read),
+itself or through a helper it imports, is mapped to everything and runs with
+any change to mapped code. Starting a known external tool by its literal name,
+such as `Bun.spawnSync(["git", ...])`, `` Bun.$`git log` `` or
+`execFileSync("git", ...)`, doesn't count, unless the file also changes `PATH`
+or passes `shell:`. Spec 0013 lists the tools and the rule's limits.
+
 Documentation (`.md`, `.adoc`, `.rst`) and `.gauntlet/` don't count as touched.
 Integrity knows what selection left out: the deleted-tests check and the
 executed-tests ratchet compare only the tests of the classes that ran, so a
