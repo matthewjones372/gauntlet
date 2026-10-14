@@ -8,6 +8,7 @@ export const spec: PackSpec = {
   gates: [
     { name: "build", description: "compiles every target, tests included", produces: "outcome", units: [], higherIsBetter: true, scopable: false, zoneScopable: false },
     { name: "lint", description: "clippy, plus the zones' Rust rules", produces: "violations", units: [], higherIsBetter: false, scopable: true, zoneScopable: true },
+    { name: "dead-code", description: "rustc's dead_code, unused_imports, unused_variables, unused_macros and unreachable_code lints (`dead-code ratchet`: new ones fail)", produces: "violations", units: [], higherIsBetter: false, scopable: true, zoneScopable: true },
     { name: "arch", description: "module dependency rules, from use declarations", produces: "violations", units: [], higherIsBetter: false, scopable: false, zoneScopable: false },
     { name: "mutation", description: "cargo-mutants mutation score", produces: "metric", units: ["%"], higherIsBetter: true, scopable: true, zoneScopable: true },
     { name: "coverage", description: "cargo-llvm-cov line coverage (changed lines with `on changed`)", produces: "metric", units: ["%"], higherIsBetter: true, scopable: true, zoneScopable: true },

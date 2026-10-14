@@ -2,7 +2,8 @@ import { directoriesNamed, type Onboarding, type RepoView } from "@gauntlet/core
 
 // Policy defaults for a Cargo project (`gauntlet init --template`). Build,
 // clippy and coverage come with the usual toolchain; mutation is proposed
-// when the project has configured cargo-mutants.
+// when the project has configured cargo-mutants. Dead code isn't proposed: its
+// findings are rustc's lints, which clippy reports and `lint ratchet` holds.
 
 const CONFIG = ["clippy.toml", ".clippy.toml", ".config/nextest.toml", ".cargo/config.toml", ".cargo/mutants.toml", "rust-toolchain.toml", "rust-toolchain"]
 
