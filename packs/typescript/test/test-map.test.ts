@@ -54,11 +54,56 @@ describe("following a test's helpers", () => {
   })
 
   test("a test that starts processes or workers, itself or through a helper, isn't", () => {
-    expect(unseen({ "test/a.test.ts": `import { spawnSync } from "node:child_process"` })).toBe(true)
+    expect(unseen({ "test/a.test.ts": `import { spawnSync } from "node:child_process"\nspawnSync("node", ["dist/cli.js"])` })).toBe(true)
     expect(unseen({ "test/a.test.ts": `const p = Bun.spawn(["bun", "src/cli.ts"])` })).toBe(true)
-    expect(unseen({ "test/a.test.ts": `import { $ } from "bun"` })).toBe(true)
+    expect(unseen({ "test/a.test.ts": "import { $ } from \"bun\"\nawait $`bun src/cli.ts`" })).toBe(true)
     expect(unseen({ "test/a.test.ts": `new Worker(new URL("./w.ts", import.meta.url))` })).toBe(true)
-    expect(unseen({ "test/a.test.ts": `import { run } from "./run.ts"`, "test/run.ts": `import { execa } from "execa"` })).toBe(true)
+    expect(unseen({ "test/a.test.ts": `import { run } from "./run.ts"`, "test/run.ts": `import { execa } from "execa"\nawait execa("npx", ["tsx", "src/cli.ts"])` })).toBe(true)
+  })
+
+  test("starting a known external tool by its name can't run the project's code, itself or through a helper", () => {
+    const git = `export const git = (...args: string[]) => Bun.spawnSync(["git", ...args], { cwd: dir, env: ENV })`
+    expect(unseen({ "test/a.test.ts": `import { git } from "./helpers"\ngit("init")`, "test/helpers.ts": git })).toBe(false)
+    expect(unseen({ "test/a.test.ts": `Bun.spawn({ cmd: ["tar", "-x"], stdin: archive })\nBun.spawnSync(["true"])` })).toBe(false)
+    expect(unseen({ "test/a.test.ts": "const log = await Bun.$`git log --oneline ${base}..${head}`.text()" })).toBe(false)
+    expect(unseen({ "test/a.test.ts": "import { $, file } from \"bun\"\nawait $`git status`.cwd(dir)" })).toBe(false)
+    expect(unseen({ "test/a.test.ts": `import { execFileSync, execSync } from "node:child_process"\nexecFileSync("git", ["init"])\nexecSync("java -version")` })).toBe(false)
+    expect(unseen({ "test/a.test.ts": `import { spawn as start } from "node:child_process"\nstart("sbt", ["test"])` })).toBe(false)
+    // Imported and never called starts nothing; a function that only shares a name isn't one.
+    expect(unseen({ "test/a.test.ts": `import { spawnSync, type SpawnOptions } from "node:child_process"\nimport { $ } from "bun"` })).toBe(false)
+    expect(unseen({ "test/a.test.ts": `const execFile = (b: Uint8Array) => b\nexecFile(new Uint8Array())` })).toBe(false)
+  })
+
+  test("a runtime, a shell, a path, or a command it can't read could run the project's code", () => {
+    for (const source of [
+      `Bun.spawnSync(["node", "dist/cli.js"])`,
+      `Bun.spawnSync({ cmd: ["npx", "tsx", "src/cli.ts"] })`,
+      `import { execFileSync } from "node:child_process"\nexecFileSync("tsx", ["src/cli.ts"])`,
+      // Repository code, a script included: it could start bun itself.
+      `Bun.spawn(["./scripts/release.ts"])`,
+      `Bun.spawn(["src/cli.ts", "check"])`,
+      `import { spawnSync } from "node:child_process"\nspawnSync("sh", [join(ROOT, "install.sh")])`,
+      `Bun.spawnSync(["bash", "-e", "-c", "git status"])`,
+      // Not a literal.
+      `Bun.spawnSync(cmd, { cwd })`,
+      `Bun.spawnSync({ cmd: [process.execPath, "test"] })`,
+      `import { execFileSync } from "node:child_process"\nexecFileSync(tool, [])`,
+      "await Bun.$`${tool} --version`",
+      "import { exec } from \"node:child_process\"\nexec(`git ${args}`)",
+      // A shell line that runs more than one command.
+      "await Bun.$`git status && bun src/cli.ts`",
+      `import { execSync } from "node:child_process"\nexecSync("git log | bun x")`,
+      // A spawn function passed around, or reached another way.
+      `const run = Bun.spawnSync`,
+      `const { spawnSync } = Bun`,
+      `import { fork } from "node:child_process"\nfork("./w.ts")`,
+      `const cp = require("node:child_process")`,
+      `import * as cp from "node:child_process"`,
+      `import { execaNode } from "execa"\nawait execaNode("src/cli.ts")`,
+      // An external tool found on a PATH the test changed, or a command line through a shell.
+      `Bun.spawnSync(["git", "push"], { env: { PATH: \`\${bin}:\${process.env.PATH}\` } })`,
+      `import { spawn } from "node:child_process"\nspawn("git", ["status"], { shell: true })`,
+    ]) expect([source, unseen({ "test/a.test.ts": source })]).toEqual([source, true])
   })
 
   test("nor is one that imports a computed path, or a relative path that names no file", () => {
@@ -268,7 +313,7 @@ describe("recording the TypeScript test map", () => {
       [project("bun", { extra: { "bunfig.toml": `[test]\ncoverageDir = "cov"\n` } }), "bunfig.toml sets coverageDir"],
       [project("bun", { extra: { "bunfig.toml": `[test]\ncoverageReporter = ["text"]\n` } }), "bunfig.toml sets coverageReporter"],
       [project("bun", { extra: { "bunfig.toml": `[test]\npreload = ["./test/server.ts"]\n`, "test/server.ts": `Bun.spawn(["bun", "src/server.ts"])\n` } }), "bunfig.toml preloads test/server.ts, which starts processes"],
-      [project("bun", { extra: { "bunfig.toml": `[test]\npreload = ["./src/boot.ts"]\n`, "src/boot.ts": `import { spawn } from "node:child_process"\n` } }), "bunfig.toml preloads src/boot.ts"],
+      [project("bun", { extra: { "bunfig.toml": `[test]\npreload = ["./src/boot.ts"]\n`, "src/boot.ts": `import { spawn } from "node:child_process"\nspawn("node", ["server.js"])\n` } }), "bunfig.toml preloads src/boot.ts"],
       [project("bun", { loads: {} }), "no test file's run wrote coverage"],
       [project("vitest", { extra: { "vitest.config.ts": `export default { test: { globalSetup: "./test/db.ts" } }` } }), "vitest.config.ts sets a global setup"],
       [project("vitest", { junit: `<testsuite name="x"><testcase classname="money" name="adds"/></testsuite>` }), "1 test the suite ran isn't named after a test file, such as money.adds"],
