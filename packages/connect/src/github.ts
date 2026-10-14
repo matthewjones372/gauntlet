@@ -74,8 +74,8 @@ export const toolchainSteps = (options: GithubOptions): string[] => {
   // sbt itself; the launcher fetches the version project/build.properties names.
   if (o.ir.packs.includes("scala")) steps.push(`- name: Set up sbt\n  uses: ${pinned(ACTIONS.setupSbt)}`)
   if (o.ir.packs.includes("clojure")) {
-    // The project's build tool, and clj-kondo when the policy gates lint.
-    const lint = o.ir.gates.some((t) => t.checks.some((c) => c.kind === "gate" && c.name === "lint"))
+    // The project's build tool, and clj-kondo when the policy gates lint or dead code (both run it).
+    const lint = o.ir.gates.some((t) => t.checks.some((c) => c.kind === "gate" && (c.name === "lint" || c.name === "dead-code")))
     const tool = o.files.includes("deps.edn") ? `cli: "${CLOJURE_TOOLS.cli}"` : `lein: "${CLOJURE_TOOLS.lein}"`
     steps.push(`- name: Set up Clojure\n  uses: ${pinned(ACTIONS.setupClojure)}\n  with:\n    ${tool}${lint ? `\n    clj-kondo: "${CLOJURE_TOOLS.cljKondo}"` : ""}`)
   }
