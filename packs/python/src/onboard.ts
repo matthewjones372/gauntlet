@@ -6,7 +6,7 @@ import { manager } from "./toolchain.ts"
 // proposed only when the project declares its tool as a dependency.
 
 const MANIFESTS = /^(pyproject\.toml|requirements[^/]*\.txt)$/
-const CONFIG = /^(pyproject\.toml|pytest\.ini|setup\.cfg|tox\.ini|\.coveragerc|mypy\.ini|\.mypy\.ini|ruff\.toml|\.ruff\.toml|pyrightconfig\.json)$/
+const CONFIG = /^(pyproject\.toml|pytest\.ini|setup\.cfg|tox\.ini|\.coveragerc|mypy\.ini|\.mypy\.ini|ruff\.toml|\.ruff\.toml|pyrightconfig\.json|\.?vulture_whitelist\.py)$|(^|\/)vulture_whitelist\.py$/
 
 const nameOf = (requirement: string) => requirement.trim().split(/[\s<>=!~;[(@]/)[0]!.toLowerCase().replaceAll("_", "-")
 
@@ -27,6 +27,8 @@ export const onboard = (repo: RepoView): Onboarding => {
     setup.push("Add ruff as a dev dependency to gate lint.")
     missing.push("ruff")
   }
+  // Dead code (spec 0017): proposed only when the project already uses vulture.
+  if (declared.has("vulture")) fast.push("dead-code ratchet")
   if (!declared.has("pytest")) {
     setup.push("Add pytest as a dev dependency to run the suites (it also runs unittest tests).")
     missing.push("pytest")

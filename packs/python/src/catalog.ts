@@ -3,11 +3,12 @@ import { RULES } from "./rules.ts"
 
 export const spec: PackSpec = {
   name: "python",
-  description: "Python: uv, poetry or pip; mypy or pyright; pytest; ruff; mutmut; coverage.py",
+  description: "Python: uv, poetry or pip; mypy or pyright; pytest; ruff; vulture; mutmut; coverage.py",
   runsSuites: true,
   gates: [
     { name: "build", description: "type checks with mypy or pyright (or compiles every file)", produces: "outcome", units: [], higherIsBetter: true, scopable: false, zoneScopable: false },
     { name: "lint", description: "ruff, plus the zones' Python rules", produces: "violations", units: [], higherIsBetter: false, scopable: true, zoneScopable: true },
+    { name: "dead-code", description: "vulture: unused code and code that can't run (`dead-code ratchet`: new ones fail)", produces: "violations", units: [], higherIsBetter: false, scopable: true, zoneScopable: true },
     { name: "arch", description: "module dependency rules, from imports", produces: "violations", units: [], higherIsBetter: false, scopable: false, zoneScopable: false },
     { name: "mutation", description: "mutmut mutation score", produces: "metric", units: ["%"], higherIsBetter: true, scopable: true, zoneScopable: true },
     { name: "coverage", description: "coverage.py line coverage (changed lines with `on changed`)", produces: "metric", units: ["%"], higherIsBetter: true, scopable: true, zoneScopable: true },

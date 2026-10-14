@@ -8,6 +8,7 @@ import { parseLcov, parseMutmutMeta } from "./reports.ts"
 import { runRules } from "./rules.ts"
 import { line, nameOf, ofType, parsePython } from "./syntax.ts"
 import { declares, ensureInstalled, has, isMainSource, isPython, moduleName, tool, type ToolRun } from "./toolchain.ts"
+import { parseVulture, vultureArgs, vultureCouldNotRead } from "./vulture.ts"
 
 // The Python pack's gates. Each installs dependencies once per check, runs
 // the project's own tool, and reads only what lands in the check's output
@@ -115,6 +116,35 @@ export const lint: GateImpl = (_check, ctx) =>
     const rulesRun: Run = { tool: { driver: { name: "py-rules" } }, results }
     yield* writeSarif(ctx, "py-rules.sarif", rulesRun)
     return { ...base(r), exitCode: 0, runs: [...runs, rulesRun] }
+  })
+
+// ---------- dead-code: vulture ----------
+
+/**
+ * Unused imports, functions, classes, variables and attributes, and code that
+ * can't run, from the project's own vulture (spec 0017 §4). vulture prints a
+ * line per finding; Gauntlet keeps the report in the output directory and
+ * reads it from there.
+ */
+export const deadCode: GateImpl = (_check, ctx) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const blocked = yield* prepared(ctx, "vulture")
+    if (blocked) return blocked
+    if (!(yield* has(ctx, "vulture"))) return { ...failed(["vulture"], "vulture isn't installed in the project: add it as a dev dependency"), notSetUp: true }
+    const pyproject = Option.getOrUndefined(yield* fs.readFileString(path.join(ctx.dir, "pyproject.toml")).pipe(Effect.option))
+    const r = yield* tool(ctx, "vulture", vultureArgs(pyproject, ctx.files))
+    if (r.error) return base(r)
+    // 0: nothing unused; 3: something unused; 1: code it couldn't read; 2: bad arguments or configuration.
+    const unread = vultureCouldNotRead(r.stderr)
+    if (unread !== undefined) return { ...base(r), error: `vulture couldn't read the code: ${unread}` }
+    if (r.exitCode !== 0 && r.exitCode !== 3) return { ...base(r), error: `vulture couldn't run: ${r.stderr.trim().split("\n").at(-1) ?? ""}` }
+    yield* fs.writeFileString(path.join(ctx.outputDir, "vulture.txt"), r.stdout).pipe(Effect.orElseSucceed(() => undefined))
+    const run = parseVulture(r.stdout, ctx.dir)
+    if (Option.isNone(run)) return { ...base(r), error: `vulture's report couldn't be read: ${r.stdout.trim().split("\n")[0] ?? ""}` }
+    yield* writeSarif(ctx, "vulture.sarif", run.value)
+    return { ...base(r), exitCode: 0, runs: [run.value] }
   })
 
 // ---------- arch: import analysis ----------
