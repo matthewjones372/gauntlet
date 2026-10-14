@@ -44,9 +44,9 @@ Bun's test runner records no map. Integrity has to tell a test that selection
 left out from one that was deleted, which needs each test id to name its test
 file; Vitest's (`<file>.<name>`) and Jest's (`<file> > <name>`) do, but Bun's
 JUnit report names a test by its `describe` blocks alone (`money.adds`, or
-`.adds` at the top level). Selection for Bun needs its test ids to carry the
-file, a change of id that every Bun project's baseline would have to be
-re-recorded for.
+`.adds` at the top level). ADR 0027 puts the file in Bun's ids
+(`test/money.test.ts.money.adds`) and matches older baselines' ids to them, so
+recording a map for Bun is what's left.
 
 ### 2. A check runs the tests that exercise what changed
 
