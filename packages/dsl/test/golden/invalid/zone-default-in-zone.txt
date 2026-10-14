@@ -1,0 +1,11 @@
+.gauntlet/policy.gx:5:44  error[zone-default-in-zone]  A zone default applies to every zone, so it can't name zone 'money'.
+  5 | zones { coverage >= 90% on changed in zone money, unit }
+    |                                            ^^^^^
+  expected: a check without `in zone`
+  fix: Remove `in zone money`, or write the check in a gate tier for that zone alone.
+
+.gauntlet/policy.gx:5:51  error[zone-default-suite]  'unit' is a suite: it runs the same tests whichever zone a change touches, so it can't be a zone default.
+  5 | zones { coverage >= 90% on changed in zone money, unit }
+    |                                                   ^^^^
+  expected: a gate that can be limited to a zone, such as `coverage` or `mutation`
+  fix: Remove 'unit' here; it belongs in a gate tier.

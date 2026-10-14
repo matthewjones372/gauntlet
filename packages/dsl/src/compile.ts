@@ -4,6 +4,7 @@ import {
   type Comparator,
   type Condition,
   DEFAULT_INTEGRITY,
+  type GateCheck,
   type FlagCheck,
   type ForbidCheck,
   IMPLICIT_PROTECT,
@@ -57,6 +58,8 @@ export type Ref =
   | { readonly kind: "integrity"; readonly id: RatchetCheck | ForbidCheck | FlagCheck; readonly phrase: string; readonly span: Span }
   | { readonly kind: "check"; readonly tier: string; readonly name: string; readonly check: Check; readonly span: Span }
   | { readonly kind: "zone-ref"; readonly name: string; readonly span: Span }
+  /** A check in \`zones { … }\`, checked once here; its copies in each zone's tier aren't \`check\` refs. */
+  | { readonly kind: "zone-default"; readonly check: GateCheck; readonly span: Span }
   | { readonly kind: "budget-ref"; readonly name: string; readonly span: Span }
   | { readonly kind: "on-fail"; readonly gate: string; readonly span: Span }
   | { readonly kind: "predicate-ref"; readonly name: string; readonly from: string | undefined; readonly span: Span }
@@ -71,6 +74,8 @@ export interface Draft {
     readonly mode?: Span
     readonly owners?: Span
     readonly gates?: Span
+    /** The \`zones { … }\` block of zone defaults. */
+    readonly zoneDefaults?: Span
     readonly review?: Span
     readonly stack?: Span
     readonly integrity?: Span
@@ -263,6 +268,9 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       case "Zone":
         zone(block)
         break
+      case "ZoneDefaults":
+        if (once("zones", block)) zoneDefaults(block)
+        break
       case "Arch":
         if (once("arch", block)) arch(block)
         break
@@ -306,6 +314,7 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
   }
 
   ir.protect = [...protectGroups.values(), { ...IMPLICIT_PROTECT, globs: [...IMPLICIT_PROTECT.globs] }]
+  expandZoneDefaults()
 
   return { ir, refs, spans }
 
@@ -597,6 +606,14 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       }
       return done({ kind: suiteKind, name: c.name }, c.name)
     }
+    const gate = gateCheck(c)
+    if (!gate) return undefined
+    if (c.zone !== undefined) refs.push({ kind: "zone-ref", name: c.zone, span: propertySpan(c, "zone") })
+    return done(gate, c.name)
+  }
+
+  /** A pack gate as written: its scope and threshold checked, nothing resolved yet. */
+  function gateCheck(c: Ast.MetricCheck): GateCheck | undefined {
     let scope: "changed" | "all" = "all"
     if (c.scope !== undefined) {
       if (!isOneOf(SCOPES, c.scope)) {
@@ -612,8 +629,7 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       if (!value) return undefined
       threshold = { op: c.op as Comparator, value }
     }
-    if (c.zone !== undefined) refs.push({ kind: "zone-ref", name: c.zone, span: propertySpan(c, "zone") })
-    return done({
+    return {
       kind: "gate",
       name: c.name,
       ratchet: c.ratchet,
@@ -621,7 +637,63 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       ...(threshold ? { threshold } : {}),
       scope,
       ...(c.zone !== undefined ? { zone: c.zone } : {}),
-    }, c.name)
+    }
+  }
+
+  // ---------- zone defaults (spec 0009) ----------
+
+  function zoneDefaults(block: Ast.ZoneDefaults) {
+    spans.zoneDefaults = headSpan(block, "zones")
+    const defaults: GateCheck[] = []
+    for (const c of block.checks) {
+      const span = nodeSpan(c)
+      if (suiteKinds.has(c.name)) {
+        error("zone-default-suite", span, `'${c.name}' is a suite: it runs the same tests whichever zone a change touches, so it can't be a zone default.`,
+          "a gate that can be limited to a zone, such as `coverage` or `mutation`", `Remove '${c.name}' here; it belongs in a gate tier.`)
+        continue
+      }
+      if (c.zone !== undefined) {
+        error("zone-default-in-zone", propertySpan(c, "zone"), `A zone default applies to every zone, so it can't name zone '${c.zone}'.`,
+          "a check without `in zone`", `Remove \`in zone ${c.zone}\`, or write the check in a gate tier for that zone alone.`)
+        continue
+      }
+      if (defaults.some((d) => d.name === c.name)) {
+        error("duplicate-zone-default", span, `'${c.name}' is a zone default more than once.`, "each check once in `zones`",
+          `Keep one '${c.name}'. A zone that needs a different '${c.name}' says so with its own gate: ${c.name} … in zone <name>.`)
+        continue
+      }
+      const gate = gateCheck(c)
+      if (!gate) continue
+      refs.push({ kind: "zone-default", check: gate, span })
+      defaults.push(at(gate, span))
+    }
+    if (defaults.length > 0) ir.zoneDefaults = defaults
+  }
+
+  /**
+   * Each zone gets every default it doesn't have a gate of its own for: a zone
+   * with \`coverage … in zone money\` keeps that coverage and still gets the other
+   * defaults. A default goes into the first tier that already runs that gate, or
+   * else the last required tier, so the tests it reads have run.
+   */
+  function expandZoneDefaults() {
+    const defaults = ir.zoneDefaults ?? []
+    if (defaults.length === 0) return
+    const required = ir.gates.filter((t) => !t.advisory)
+    if (required.length === 0) {
+      error("zone-defaults-without-gates", spans.zoneDefaults!, "Zone defaults are added to the policy's gate tiers, and it has none to add them to.",
+        "a `gates` block with a required tier", "Add gates, for example: gates { verify { unit, coverage ratchet } }")
+      return
+    }
+    const own = (zone: string, name: string) =>
+      ir.gates.some((t) => t.checks.some((c) => c.kind === "gate" && c.name === name && c.zone === zone && c.zoneDefault !== true))
+    for (const zone of ir.zones) {
+      for (const d of defaults) {
+        if (own(zone.name, d.name)) continue
+        const tier = required.find((t) => t.checks.some((c) => c.kind === "gate" && c.name === d.name)) ?? required.at(-1)!
+        ;(tier.checks as Check[]).push(at({ ...d, zone: zone.name, zoneDefault: true as const }, spanOfNode(d)!))
+      }
+    }
   }
 
   function onFail(o: Ast.OnFail) {

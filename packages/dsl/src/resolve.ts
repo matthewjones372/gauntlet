@@ -91,15 +91,25 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
 
   // ---------- gate checks ----------
 
+  // A gate limited to a zone is a check of its own: \`coverage ratchet\` and \`coverage >= 90% in zone money\` both run.
   const checkNames = new Map<string, { tier: string; span: Span }>()
   const runsSuites = used.some((p) => p.runsSuites)
   for (const ref of of("check")) {
-    const previous = checkNames.get(ref.name)
+    const key = ref.check.kind === "gate" && ref.check.zone !== undefined ? `${ref.name} in zone ${ref.check.zone}` : ref.name
+    const previous = checkNames.get(key)
     if (previous) {
-      warning("duplicate-check", ref.span, `'${ref.name}' already runs in tier '${previous.tier}' (line ${previous.span.line}).`,
-        "each check once", `Remove this '${ref.name}'.`)
-    } else checkNames.set(ref.name, { tier: ref.tier, span: ref.span })
+      warning("duplicate-check", ref.span, `'${key}' already runs in tier '${previous.tier}' (line ${previous.span.line}).`,
+        "each check once", `Remove this '${key}'.`)
+    } else checkNames.set(key, { tier: ref.tier, span: ref.span })
     checkGate(ref.check, ref.span)
+  }
+  // Zone defaults (spec 0009) are checked once, as written, and must be able to run in a zone.
+  for (const ref of of("zone-default")) {
+    const spec = gate(ref.check, ref.span)
+    if (spec && !spec.zoneScopable) {
+      error("not-zone-scopable", ref.span, `'${ref.check.name}' can't be limited to a zone, so it can't be a zone default.`,
+        "a gate that can be limited to a zone, such as `coverage` or `mutation`", `Move '${ref.check.name}' to a gate tier.`)
+    }
   }
 
   function checkGate(check: Check, span: Span) {
@@ -125,21 +135,21 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
     }
   }
 
-  function gate(check: Extract<Check, { kind: "gate" }>, span: Span) {
+  function gate(check: Extract<Check, { kind: "gate" }>, span: Span): GateSpec | undefined {
     const hit = usedGates.find((g) => g.gate.name === check.name)
     if (!hit) {
       const elsewhere = installed.find((p) => p.gates.some((g) => g.name === check.name))
       if (elsewhere) {
         error("pack-not-used", span, `Gate '${check.name}' comes from pack '${elsewhere.name}', which this policy doesn't use.`,
           "a gate from a used pack or a declared suite", `Add \`use ${elsewhere.name}\`.`)
-        return
+        return undefined
       }
       const candidates = [...usedGates.map((g) => g.gate.name), ...ir.suites.map((s) => s.name)]
       error("unknown-gate", span, `Unknown gate '${check.name}'.`, "a gate from a used pack, or a suite declared in `suites`",
         didYouMean(check.name, candidates, candidates.length > 0
           ? `Use one of ${quoteList(candidates)}, or declare '${check.name}' in \`suites\`.`
           : "No used pack provides gates. Add `use <pack>` first."), candidates)
-      return
+      return undefined
     }
     const spec: GateSpec = hit.gate
     if (check.ratchet && spec.produces === "outcome") {
@@ -183,6 +193,7 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
     if (check.zone !== undefined && !spec.zoneScopable) {
       error("not-zone-scopable", span, `'${check.name}' can't be limited to a zone.`, `'${check.name}' without \`in zone\``, `Remove \`in zone ${check.zone}\`.`)
     }
+    return spec
   }
 
   // ---------- references ----------
@@ -217,7 +228,7 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
     }
   }
 
-  const gateNames = [...checkNames.keys()]
+  const gateNames = [...new Set([...of("check").map((r) => r.name), ...of("zone-default").map((r) => r.check.name)])]
   for (const ref of of("on-fail")) {
     if (!gateNames.includes(ref.gate)) {
       error("unknown-gate", ref.span, `\`on fail ${ref.gate}\` names a check that no gate tier runs.`, `a check from \`gates\`: ${quoteList(gateNames)}`,
@@ -281,5 +292,28 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
   if (ir.stack && spans.stack) {
     info("not-executed-in-v1", spans.stack, `The stack block describes stacked changes. ${NOT_EXECUTED}`,
       "Nothing to fix. Remove the block if changes should be able to reach auto or skim in v1.")
+  }
+}
+
+/**
+ * Spec 0009: a zone added later shouldn't quietly get less than the first ones
+ * did. Run only on a policy without errors: until it compiles, its errors are
+ * what to fix, and a zone's checks may be among them (\`in zone mony\`).
+ */
+export const zoneWarnings = (draft: Draft, report: Report): void => {
+  const { ir } = draft
+  for (const zone of ir.zones) {
+    const checked = zone.rules.length > 0
+      || ir.gates.some((t) => t.checks.some((c) => c.kind === "gate" && c.zone === zone.name))
+      || ir.budgets.some((b) => b.when?.zone === zone.name)
+    if (checked || (ir.zoneDefaults ?? []).length > 0) continue
+    report({
+      severity: "warning",
+      code: "zone-only-review",
+      span: spanOfNode(zone)!,
+      message: `Zone '${zone.name}' only gets an owner's review; add checks or zone defaults.`,
+      expected: `a gate \`in zone ${zone.name}\`, a \`rule\` in the zone, or a \`zones { … }\` block`,
+      fix: `Add checks every zone gets, for example: zones { coverage >= 90% on changed }, or a gate for this zone alone, such as: coverage >= 90% on changed in zone ${zone.name}`,
+    })
   }
 }

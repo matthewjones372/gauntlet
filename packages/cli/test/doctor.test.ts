@@ -17,5 +17,16 @@ describe("gauntlet doctor", () => {
     }
     expect(res.out).toContain("uses jvm, mode enforce")
     expect(res.out).toMatch(/jvm: java /)
-  })
+  }, 30_000)
+
+  // Spec 0009 §2: code that looks sensitive in the project as it is, outside every zone, is listed and never fails doctor.
+  test("lists code that looks sensitive outside every zone, as a suggestion", async () => {
+    const s = baseRepo()
+    repos.push(s.r)
+    s.r.write({ "src/main/RefundService.kt": "class RefundService\n", "src/money/Ledger.kt": "class Ledger\n" })
+    const res = await cli(["doctor", "--repo", s.r.dir], [...INSTALLED_PACKS])
+    expect(res.code).toBe(0)
+    expect(res.out).toMatch(/^-- {4}outside every zone: money +1 file that looks like money code: src\/main\/RefundService\.kt\. Add to `money`, or make a new zone\?$/m)
+    expect(res.out).not.toContain("Ledger.kt")
+  }, 30_000)
 })

@@ -1,4 +1,4 @@
-import { attemptLimits, type Check, type Condition, type PolicyIR } from "@gauntlet/ir"
+import { attemptLimits, type Check, type Condition, type GateCheck, type PolicyIR } from "@gauntlet/ir"
 
 // `gauntlet explain [block]`: what the policy enforces, in plain language.
 // Deterministic, from the IR; the authoring agent's explanations come later.
@@ -32,10 +32,20 @@ const describeCheck = (c: Check): string => {
       if (c.scope === "changed") parts.push("on changed code")
       if (c.zone) parts.push(`in zone ${c.zone}`)
       if (c.advise) parts.push("(findings reported, never blocking)")
+      if (c.zoneDefault) parts.push("(zone default)")
       return parts.join(" ")
     }
   }
 }
+
+/** The gates a zone runs, its own and its defaults', for the zones section. */
+const zoneChecks = (ir: PolicyIR, zone: string): string => {
+  const checks = ir.gates.flatMap((t) => t.checks.flatMap((c) => (c.kind === "gate" && c.zone === zone ? [c] : [])))
+  return checks.length === 0 ? "" : `; checks ${checks.map((c) => `${describeCheck(unzoned(c))}${c.zoneDefault ? " (zone default)" : ""}`).join("; ")}`
+}
+
+/** A zone's gate as the check it is, without which zone or where it came from. */
+const unzoned = ({ zone: _zone, zoneDefault: _default, ...c }: GateCheck): Check => c
 
 export const explainPolicy = (ir: PolicyIR, block?: string): string => {
   const sections: Record<string, string[]> = {
@@ -46,8 +56,13 @@ export const explainPolicy = (ir: PolicyIR, block?: string): string => {
       "Protected files are taken from the base branch before anything runs, and changing them needs review. `.gauntlet/` always counts and needs an owner.",
       ...ir.protect.map((g) => `- ${g.group}${g.kind === "tests" ? " (new tests here run; changed or deleted ones are put back)" : ""}: ${g.globs.join(", ")}`),
     ],
-    zones: ir.zones.length === 0 ? ["No zones."] : ir.zones.map((z) =>
-      `- zone ${z.name}: ${z.globs.join(", ")}${z.owners.length > 0 ? `, owned by ${z.owners.join(", ")}` : ", no owner"}${z.rules.length > 0 ? `, rules ${z.rules.join(", ")}` : ""}`),
+    zones: [
+      ...(ir.zones.length === 0 ? ["No zones."] : ir.zones.map((z) =>
+        `- zone ${z.name}: ${z.globs.join(", ")}${z.owners.length > 0 ? `, owned by ${z.owners.join(", ")}` : ", no owner"}${z.rules.length > 0 ? `, rules ${z.rules.join(", ")}` : ""}${zoneChecks(ir, z.name)}`)),
+      ...((ir.zoneDefaults ?? []).length > 0
+        ? [`Zone defaults: every zone, including one added later, gets ${(ir.zoneDefaults ?? []).map((c) => describeCheck(unzoned(c))).join("; ")}, unless its own gate for that check says otherwise.`]
+        : []),
+    ],
     gates: ir.gates.length === 0 ? ["No gates: every change is missing evidence."] : [
       "Gate tiers run in order; a failure stops the tiers after it.",
       ...ir.gates.map((t) => `- ${t.name}${t.advisory ? " (advisory, caution only)" : ""}: ${t.checks.map(describeCheck).join("; ")}`),

@@ -57,6 +57,59 @@ The pieces:
 - **Shadow mode** only reports. Switch to `mode enforce` when
   `gauntlet report shadow` looks right.
 
+## Zones as a project grows
+
+Zones are drawn once, at setup; the project keeps growing
+([spec 0009](specs/0009-zones-as-a-project-grows.md)).
+
+**Zone defaults** are checks every zone gets, so a zone added later is held
+to the same bar the moment it's added:
+
+```
+zones {
+  coverage >= 90% on changed
+  mutation >= 60% on changed
+}
+```
+
+Each zone gets each default as a gate of its own, as if you had written
+`coverage >= 90% on changed in zone billing`. A zone's own gate for a check
+replaces that default for that zone only: with
+`coverage >= 95% on changed in zone money`, `money` keeps 95% and still gets
+the mutation default. A default goes into the first tier that already runs
+that gate, or else the last required tier. Defaults are gates that can be
+limited to a zone (not suites, `build` or `arch`), and name no zone.
+`gauntlet explain zones` shows the defaults and which of each zone's checks
+come from them. A zone with no gate, `rule` or budget of its own and no
+defaults gets only an owner's review, and `gauntlet validate` warns about it.
+
+**Sensitive code outside every zone.** On every check Gauntlet reads the
+change's new files and new top-level symbols (a class, function or type at the
+start of a line) for the signs setup asks about: money and payments;
+authentication, permissions and secrets; personal data; contracts other
+systems depend on (APIs, schemas, events); data stores and migrations. The
+signs are names, imports, annotations and paths (`Refund`, `Ledger`, `jwt`,
+`BCrypt`, `@RestController`, `migrations/`), never guesses about what the code
+does. Tests, protected files, documentation and generated folders are left
+out. When a change adds such code outside every zone, the report and the
+agent's summary say so:
+
+> This adds `src/orders/RefundService.kt`, which handles money, outside every
+> zone. Add it to `payments`, or make a new zone?
+
+It's a suggestion: the decision doesn't change, and the agent tells the
+person rather than editing the policy. A new folder whose name says what it
+holds (`billing/`, `auth/`) gets the folder note setup's own inference gives
+instead. `gauntlet doctor` lists the same signs for the whole project as it
+is.
+
+**A new zone's baseline.** A gate limited to a zone records its measurement
+under the zone's name (`coverage in zone money`), over every file in the zone,
+beside the project's own value. When the policy gains a zone, the next
+`gauntlet baseline --update` records it, so the zone's ratchets start from
+today. A baseline recorded before a zone had its own value holds the zone's
+files to the project's, as before.
+
 ## Several builds in one repository
 
 When the builds sit in folders of their own, name each folder after its pack

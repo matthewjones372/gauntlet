@@ -1,0 +1,212 @@
+{
+  "hash": "be02058113e8b894efe3d5afed4760d3169bca7736f96212c6a7e3012e47b2d0",
+  "ir": {
+    "arch": [],
+    "budgets": [],
+    "gates": [
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "gate",
+            "name": "build",
+            "ratchet": false,
+            "scope": "all"
+          }
+        ],
+        "name": "fast"
+      },
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "gate",
+            "name": "coverage",
+            "ratchet": false,
+            "scope": "changed",
+            "threshold": {
+              "op": ">=",
+              "value": {
+                "unit": "%",
+                "value": 90
+              }
+            },
+            "zone": "billing",
+            "zoneDefault": true
+          },
+          {
+            "kind": "gate",
+            "name": "coverage",
+            "ratchet": false,
+            "scope": "changed",
+            "threshold": {
+              "op": ">=",
+              "value": {
+                "unit": "%",
+                "value": 95
+              }
+            },
+            "zone": "money"
+          },
+          {
+            "kind": "gate",
+            "name": "coverage",
+            "ratchet": true,
+            "scope": "all"
+          },
+          {
+            "kind": "gate",
+            "name": "mutation",
+            "ratchet": false,
+            "scope": "changed",
+            "threshold": {
+              "op": ">=",
+              "value": {
+                "unit": "%",
+                "value": 60
+              }
+            },
+            "zone": "billing",
+            "zoneDefault": true
+          },
+          {
+            "kind": "gate",
+            "name": "mutation",
+            "ratchet": false,
+            "scope": "changed",
+            "threshold": {
+              "op": ">=",
+              "value": {
+                "unit": "%",
+                "value": 60
+              }
+            },
+            "zone": "money",
+            "zoneDefault": true
+          },
+          {
+            "kind": "suite",
+            "name": "unit"
+          }
+        ],
+        "name": "verify"
+      },
+      {
+        "advisory": true,
+        "checks": [
+          {
+            "kind": "llm-review",
+            "reviews": 2
+          }
+        ],
+        "name": "advisory"
+      }
+    ],
+    "imports": [],
+    "integrity": {
+      "flag": [
+        "catch-all-near-changed-code",
+        "env-branching",
+        "equality-overrides",
+        "flaky-patterns",
+        "mocks-of-class-under-test",
+        "test-special-case-comments"
+      ],
+      "forbid": [
+        "added-retries",
+        "deleted-tests",
+        "exit-in-tests",
+        "new-skips",
+        "new-suppressions",
+        "test-refs-in-main",
+        "weakened-assertions"
+      ],
+      "ratchet": [
+        "assertions-per-test",
+        "executed-tests",
+        "property-tests",
+        "quarantined-tests",
+        "skipped-tests",
+        "suppressions"
+      ]
+    },
+    "irVersion": 1,
+    "mode": "shadow",
+    "name": "x",
+    "owners": [
+      "@platform"
+    ],
+    "packs": [
+      "jvm"
+    ],
+    "predicates": [],
+    "protect": [
+      {
+        "globs": [
+          ".gauntlet/**"
+        ],
+        "group": "gauntlet",
+        "kind": "gauntlet"
+      }
+    ],
+    "remediation": [],
+    "review": [],
+    "suites": [
+      {
+        "kind": "suite",
+        "location": "src/test/**",
+        "name": "unit"
+      }
+    ],
+    "zoneDefaults": [
+      {
+        "kind": "gate",
+        "name": "coverage",
+        "ratchet": false,
+        "scope": "changed",
+        "threshold": {
+          "op": ">=",
+          "value": {
+            "unit": "%",
+            "value": 90
+          }
+        }
+      },
+      {
+        "kind": "gate",
+        "name": "mutation",
+        "ratchet": false,
+        "scope": "changed",
+        "threshold": {
+          "op": ">=",
+          "value": {
+            "unit": "%",
+            "value": 60
+          }
+        }
+      }
+    ],
+    "zones": [
+      {
+        "globs": [
+          "src/billing/**"
+        ],
+        "name": "billing",
+        "owners": [
+          "@bill"
+        ],
+        "rules": []
+      },
+      {
+        "globs": [
+          "src/money/**"
+        ],
+        "name": "money",
+        "owners": [
+          "@pay"
+        ],
+        "rules": []
+      }
+    ]
+  }
+}

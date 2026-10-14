@@ -69,7 +69,7 @@ export const BUDGET_METRICS: Record<string, ReadonlyArray<Unit>> = {
 export const AGGREGATES = ["avg", "min", "max", "sum"] as const
 
 export const TOP_LEVEL_BLOCKS = [
-  "use", "mode", "owners", "protect", "zone", "arch", "suites", "integrity", "import", "budget",
+  "use", "mode", "owners", "protect", "zone", "zones", "arch", "suites", "integrity", "import", "budget",
   "gates", "on fail", "predicate", "review", "stack", "quarantine", "split", "attempts",
 ] as const
 

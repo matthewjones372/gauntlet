@@ -1,0 +1,11 @@
+.gauntlet/policy.gx:1:10  info[default-mode]  No `mode` line, so the policy runs in shadow mode: it reports but never blocks.
+  1 | gauntlet "x"
+    |          ^^^
+  expected: nothing; this is for information
+  fix: Add `mode enforce` when the shadow period is over.
+
+.gauntlet/policy.gx:14:14  info[not-executed-in-v1]  `llm review` is caution-only. It is parsed and validated but not executed in v1, so it is reported as missing evidence and nominates review.
+  14 |   advisory { llm review x2 }
+     |              ^^^^^^^^^^^^^
+  expected: nothing; this is for information
+  fix: Nothing to fix. Remove it if changes should be able to reach auto or skim in v1.

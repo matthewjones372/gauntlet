@@ -14,7 +14,7 @@ entry Policy:
     blocks+=Block*;
 
 Block:
-    Use | Mode | Owners | Protect | Zone | Arch | Suites | Integrity | Import
+    Use | Mode | Owners | Protect | Zone | ZoneDefaults | Arch | Suites | Integrity | Import
     | Budget | Gates | OnFail | Predicate | Review | Stack | Quarantine | Split | Attempts;
 
 // \`attempts { unchanged 3, total 8 }\`: how many blocked stops the agent hooks allow
@@ -58,6 +58,10 @@ Zone:
 
 ZoneItem:
     ZonePaths | ZoneOwner | ZoneRule;
+
+// \`zones { coverage >= 90% on changed }\`: checks every zone gets unless its own gates say otherwise (spec 0009).
+ZoneDefaults:
+    'zones' '{' (checks+=MetricCheck (','? checks+=MetricCheck)*)? '}';
 
 ZonePaths:
     'paths' globs+=STRING (','? globs+=STRING)*;
@@ -239,12 +243,12 @@ Name returns string:
 // Words inside an integrity list. The three list keywords are left out so a
 // new `ratchet`, `forbid` or `flag` line starts a new list.
 IntegrityWord returns string:
-    ID | 'split' | 'reads' | 'affected' | 'in' | 'on' | 'not' | 'env' | 'from' | 'only' | 'module' | 'baseline' | 'diff' | 'fail' | 'fix'
+    ID | 'zones' | 'split' | 'reads' | 'affected' | 'in' | 'on' | 'not' | 'env' | 'from' | 'only' | 'module' | 'baseline' | 'diff' | 'fail' | 'fix'
     | 'changed' | 'all' | 'no' | 'touched' | 'added' | 'missing' | 'pass';
 
 // Words inside a stack layer body, which is closed by '}'.
 LayerWord returns string:
-    ID | 'split' | 'reads' | 'affected' | 'zone' | 'budget' | 'gates' | 'paths' | 'rule' | 'module' | 'must' | 'not' | 'depend'
+    ID | 'zones' | 'split' | 'reads' | 'affected' | 'zone' | 'budget' | 'gates' | 'paths' | 'rule' | 'module' | 'must' | 'not' | 'depend'
     | 'on' | 'from' | 'env' | 'vs' | 'baseline' | 'ratchet' | 'advise' | 'in' | 'layer' | 'max' | 'diff'
     | 'cumulative' | 'ci' | 'only' | 'caution' | 'fix' | 'fail' | 'flag' | 'forbid' | 'review'
     | 'owner' | 'skim' | 'auto' | 'llm' | 'protect' | 'suites' | 'integrity' | 'arch' | 'stack'

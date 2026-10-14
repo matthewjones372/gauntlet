@@ -2,7 +2,7 @@ import type { PolicyIR } from "@gauntlet/ir"
 import type { KillMap, Metric, Result, TestMap } from "@gauntlet/sarif"
 import { Effect, Option } from "effect"
 import { computeFacts } from "./diff-facts.ts"
-import { runGates } from "./gate-runner.ts"
+import { metricGate, runGates } from "./gate-runner.ts"
 import { Git } from "./git.ts"
 import { runImports } from "./imports.ts"
 import { runIntegrity, testPathMatcher } from "./integrity.ts"
@@ -63,7 +63,7 @@ export const recordBaseline = (repo: string, commit: string, ir: PolicyIR, optio
       const metrics: Record<string, Metric> = {}
       // Budgets' measurements too, so "vs baseline" has something to compare with (spec 0006).
       const budgets = new Set(ir.budgets.map((b) => `budget/${b.name}/`))
-      for (const [name, value] of Object.entries(gates.metrics)) if (metricGates.has(name) || [...budgets].some((b) => name.startsWith(b))) metrics[name] = value
+      for (const [name, value] of Object.entries(gates.metrics)) if (metricGates.has(metricGate(name)) || [...budgets].some((b) => name.startsWith(b))) metrics[name] = value
       Object.assign(metrics, integrity.metrics)
       return { metrics, results, testIds: gates.tests?.ids ?? [], ...(gates.testMap ? { testMap: gates.testMap } : {}), ...(gates.testMapMissing ? { testMapMissing: gates.testMapMissing } : {}), ...(gates.killMap ? { killMap: gates.killMap } : {}), checks: [...gates.checks, ...imports.checks] } satisfies RecordedBaseline
     }))

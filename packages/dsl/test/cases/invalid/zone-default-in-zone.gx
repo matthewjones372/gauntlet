@@ -1,0 +1,7 @@
+gauntlet "x"
+use jvm
+owners @platform
+zone money { paths "m/**" owner @m }
+zones { coverage >= 90% on changed in zone money, unit }
+suites { unit "src/test/**" }
+gates { verify { unit } }

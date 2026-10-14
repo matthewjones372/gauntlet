@@ -1,6 +1,6 @@
 # Spec 0009: zones keep up as the project grows
 
-Status: proposed.
+Status: implemented on branch `spec-0009-zones` (see "Zones as a project grows" in `docs/policy.md`). Zone defaults are expanded into each zone's gates at compile time, so only policies with a `zones` block change their IR hash. The signs of sensitive code are a fixed list of names, imports, annotations and paths in `packages/core/src/sensitive.ts`, since setup's own reading of the code is Claude's, in its prompt; a new folder that setup's folder-name inference recognises keeps that note instead. Nothing is left out.
 
 ## Problem
 Zones are drawn once, at setup. As a project grows, new sensitive code appears (a refunds service, a new permissions module, a table of personal data) outside every zone, so a change to it needs nobody's review. And a zone added later gets an owner's review but none of the stricter checks the first zones have, unless someone remembers to name it in each gate.
