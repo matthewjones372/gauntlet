@@ -433,6 +433,7 @@ them:
 | `evidence missing` | A check or integrity check didn't run. |
 | `all gates pass` | Every required check passed, with nothing new, worse or forbidden. |
 | `only tests changed` | Every changed file is a test (see below). |
+| `code removed` | The change only deletes main code and removes no test (see below). |
 | `diff < N lines` | The change adds and removes fewer than N lines. |
 
 `only tests changed` lets a change that only adds tests skip review however
@@ -457,6 +458,39 @@ tests and touches a README doesn't hold. It doesn't loosen anything else: an
 edited existing protected test still nominates `review` on its own, and the most
 cautious nomination wins, so `only tests changed` can't auto-approve it; a
 failing gate, an integrity finding or a touched zone still win as before.
+
+`code removed` lets an owner choose how a change that only deletes code is
+treated (spec 0017), for example:
+
+```
+auto when code removed and no zone touched and all gates pass
+```
+
+It's strict, so that a rule like this can't let new behaviour through. Main
+code is any changed file that isn't a test (as above) or documentation
+(Markdown, reStructuredText, AsciiDoc, LICENSE and the like). The condition
+holds when at least one file of main code is deleted or loses lines, and every
+changed file is one of:
+
+- main code that is deleted, or that loses lines while every line it gains is
+  blank or a whole-line comment (`//`, `#` or `;`, by language) that isn't one
+  tools act on (a suppression, a lint or type-check directive, a build tag:
+  the same list as for comment-only changes, ADR 0023),
+- a test that is new or only gains lines,
+- documentation, changed in any way.
+
+So it doesn't hold when the change adds, renames or edits main code (a line of
+code it gains, a block comment, a binary file), deletes, renames or shortens a
+test, has a `deleted-tests` finding (a test that ran at base no longer runs,
+even one removed with its code and only flagged), adds a dependency, or
+touches `.gauntlet/`. Deleting only comments counts: it adds nothing. A line is
+read on its own, so a line of a multi-line string that starts with `//` would
+pass for a comment; the gates still run it. Like `only tests changed`, it
+loosens nothing else: a touched zone, a protected change, a failing gate or an
+integrity finding still win, and the report says when the condition held.
+
+A change that removes code together with the tests only it needed is judged by
+the `deleted-tests` rules (see "Removing a feature"), not by `code removed`.
 
 ## The owner's decisions
 

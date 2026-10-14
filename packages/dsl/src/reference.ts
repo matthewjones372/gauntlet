@@ -37,4 +37,4 @@ review {
   auto   when small and all gates pass
 }
 
-Review conditions: zone touched, no zone touched, protected changed, dependency added, budget changed, evidence missing, all gates pass, only tests changed, diff < N lines, or a predicate name. The most cautious matching rule wins; with no match the tier is review.`
+Review conditions: zone touched, no zone touched, protected changed, dependency added, budget changed, evidence missing, all gates pass, only tests changed, code removed (the change only deletes main code and removes no test), diff < N lines, or a predicate name. The most cautious matching rule wins; with no match the tier is review.`

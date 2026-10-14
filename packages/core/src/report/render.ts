@@ -182,7 +182,7 @@ export const plainSummary = (r: Report, opts: RenderOptions = {}): string[] => {
     : d.tier === "review" ? ["IMPORTANT", "Needs review"]
     : ["TIP", "Low-risk change"]
   const lowRisk = alert === "TIP"
-  const what = `It changes ${plural(r.facts.files.length, "file")} (${plural(r.facts.linesChanged, "line")})${commentOnly ? ", only comments or documentation, so nothing needed building or testing" : ""}.`
+  const what = `It changes ${plural(r.facts.files.length, "file")} (${plural(r.facts.linesChanged, "line")})${commentOnly ? ", only comments or documentation, so nothing needed building or testing" : r.facts.codeRemoved ? ", only removing code and no tests (the review condition `code removed`)" : ""}.`
   const headline = lowRisk ? `**${title}**: it can merge without anyone's approval. ${what}` : `**${title}**${why.length > 0 ? ` because ${sentence(why)}` : ""}. ${what}`
   const blocking = blockingNoms.flatMap((n) => plainReason(n, link) ?? [])
   const zones = r.facts.zonesTouched.map((z) =>

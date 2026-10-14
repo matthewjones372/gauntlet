@@ -2700,6 +2700,10 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           },
           {
             "$type": "Keyword",
+            "value": "removed"
+          },
+          {
+            "$type": "Keyword",
             "value": "missing"
           },
           {
@@ -3386,6 +3390,10 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
           {
             "$type": "Keyword",
             "value": "added"
+          },
+          {
+            "$type": "Keyword",
+            "value": "removed"
           },
           {
             "$type": "Keyword",

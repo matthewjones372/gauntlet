@@ -8,6 +8,9 @@
 /** Files that are documentation, never built or run. Plain text isn't one: it can be a fixture or data. */
 const DOCS = /(\.(md|markdown|rst|adoc)$)|((^|\/)(LICENSE|NOTICE|AUTHORS|CHANGELOG)(\.(md|txt))?$)/i
 
+/** Whether a path is documentation, never built or run. */
+export const isDocumentation = (path: string) => DOCS.test(path)
+
 type Syntax = { readonly line: ReadonlyArray<string>; readonly block: boolean; readonly nested: boolean; readonly strings: ReadonlyArray<string> }
 
 const C_LIKE: Syntax = { line: ["//"], block: true, nested: false, strings: ['"""', '"', "'", "`"] }
@@ -73,6 +76,20 @@ export const withoutComments = (path: string, text: string): string | undefined 
     i++
   }
   return out.replace(/\s+/g, " ").trim()
+}
+
+/**
+ * Whether one line, read on its own, is blank or a whole-line comment in a
+ * language this knows, and not a comment tools act on. Only line comments
+ * count (`//`, `#`, `;`); a line in a block comment counts as code. Read
+ * without the rest of the file, a line of a multi-line string that starts with
+ * a comment marker is taken for a comment: rare, and the gates still run it.
+ */
+export const blankOrLineComment = (path: string, text: string): boolean => {
+  const line = text.trim()
+  if (line === "") return true
+  const syntax = SYNTAX.find(([re]) => re.test(path))?.[1]
+  return syntax !== undefined && syntax.line.some((l) => line.startsWith(l)) && !DIRECTIVE.test(line)
 }
 
 interface ChangedSource {

@@ -191,7 +191,7 @@ const KEYWORDS = new Set([
   "must", "not", "depend", "on", "suites", "holdout", "ci", "only", "from", "env", "integrity", "ratchet", "advise", "forbid",
   "flag", "import", "caution", "budget", "command", "vs", "baseline", "gates", "llm", "review", "in", "fail", "fix",
   "predicate", "when", "and", "skim", "auto", "require", "raise", "no", "all", "touched", "changed", "added",
-  "missing", "pass", "diff", "stack", "layer", "max", "cumulative", "quarantine", "until", "split", "attempts", "reads", "affected",
+  "removed", "missing", "pass", "diff", "stack", "layer", "max", "cumulative", "quarantine", "until", "split", "attempts", "reads", "affected",
 ])
 
 const RETIRED = new Set(["harness", "require", "raise"])
@@ -199,7 +199,7 @@ const RETIRED = new Set(["harness", "require", "raise"])
 /** Keywords the grammar also accepts as names (the `Name` rule). */
 const NAME_KEYWORDS = new Set([
   "baseline", "env", "command", "cumulative", "caution", "ci", "only", "fix", "fail", "changed", "all", "touched",
-  "added", "missing", "pass", "until", "split", "attempts", "reads", "affected",
+  "added", "removed", "missing", "pass", "until", "split", "attempts", "reads", "affected",
 ])
 
 /** What may start a line inside each block, for "unexpected line" hints. */

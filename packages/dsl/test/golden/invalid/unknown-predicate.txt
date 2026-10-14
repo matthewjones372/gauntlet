@@ -9,4 +9,4 @@
     |             ^^^^
   expected: a predicate ('small') or a condition such as 'zone touched', 'no zone touched', 'protected changed'
   fix: Did you mean 'small'?
-  available: small, zone touched, no zone touched, protected changed, dependency added, budget changed, evidence missing, all gates pass, only tests changed
+  available: small, zone touched, no zone touched, protected changed, dependency added, budget changed, evidence missing, all gates pass, only tests changed, code removed
