@@ -1,6 +1,6 @@
 # Spec 0013: run the tests a change affects
 
-Status: implemented for the JVM pack and the TypeScript pack on Vitest and Jest; Bun's test runner and the other packs record no map yet, so their affected suites run every test.
+Status: implemented for the JVM pack and the TypeScript pack on Vitest, Jest and Bun's test runner; the other packs record no map yet, so their affected suites run every test.
 
 ## Problem
 
@@ -29,7 +29,7 @@ the baseline next to `testIds`. The JVM pack takes it from Pitest's coverage ste
 packs from their coverage tools where they can, and record nothing where they can't.
 
 The TypeScript pack's "test class" is a test file. It runs each test file the
-suite ran on its own with the runner's coverage (Vitest or Jest), and maps it to
+suite ran on its own with the runner's coverage (Vitest, Jest or bun), and maps it to
 itself and every file that run loaded. That's a run per test file, once per
 baseline: dearer than one run, but it sees setup files, dynamic imports and
 path aliases as they really load, which a static import graph would have to
@@ -40,13 +40,22 @@ test loaded, as does a test file whose own run failed. A global setup runs
 outside every test file's process, so a runner configuration with one records
 no map.
 
-Bun's test runner records no map. Integrity has to tell a test that selection
-left out from one that was deleted, which needs each test id to name its test
-file; Vitest's (`<file>.<name>`) and Jest's (`<file> > <name>`) do, but Bun's
-JUnit report names a test by its `describe` blocks alone (`money.adds`, or
-`.adds` at the top level). ADR 0027 puts the file in Bun's ids
-(`test/money.test.ts.money.adds`) and matches older baselines' ids to them, so
-recording a map for Bun is what's left.
+Integrity has to tell a test that selection left out from one that was
+deleted, which needs each test id to name its test file: Vitest's
+(`<file>.<name>`) and Jest's (`<file> > <name>`) do, and ADR 0027 puts the
+file in Bun's (`test/money.test.ts.money.adds`). Bun runs each test file by
+its path (`./test/money.test.ts`), since a bare argument is a filter that runs
+every file whose path contains it. Bun has no global setup: a `bunfig.toml`
+`[test] preload` runs in each test file's own process, so its coverage sees
+what the preload loads, and every test file maps to it; a preload that starts
+processes or loads code coverage can't follow records no map. Bun's coverage
+leaves out files named like tests, so the test-side files a test file imports
+are added to its map from its imports. A `bunfig.toml` `coverageDir`, or a
+`coverageReporter` without `lcov`, wins over the command line and leaves no
+coverage where Gauntlet reads it, so it records no map; a coverage threshold
+fails a run whose tests all passed, so a run counts when its own JUnit report
+has no failures. Changing `bunfig.toml` runs every test, like any runner
+configuration.
 
 ### 2. A check runs the tests that exercise what changed
 

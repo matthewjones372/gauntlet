@@ -102,7 +102,7 @@ export const selectTests = (input: SelectionInput): Selection => {
  * The base's test ids that belong to classes selection left out (a nested
  * class's tests, `Outer$Inner.x`, belong to `Outer`). A class is whatever the
  * map names: a JVM class, or a test file whose tests are `<file>.<name>`
- * (Vitest's JUnit XML) or `<file> > <name>` (Jest).
+ * (Vitest's and bun's JUnit XML) or `<file> > <name>` (Jest).
  */
 export const excusedBySelection = (baseIds: ReadonlyArray<string>, deselected: ReadonlyArray<string>): string[] => {
   if (deselected.length === 0) return []

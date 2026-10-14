@@ -292,7 +292,7 @@ Java constants) are left out of the map, so changing one runs every test. When
 test classes run at the same time, or a class that ran has no data, no map is
 recorded.
 
-The TypeScript pack, with Vitest or Jest, maps each test file instead of each
+The TypeScript pack, with Vitest, Jest or bun, maps each test file instead of each
 class: while recording a baseline it runs every test file the suite ran on its
 own with coverage, and maps it to itself and the files that run loaded. A check
 runs the test files that loaded what the change touches. Coverage sees only the
@@ -300,9 +300,11 @@ test's own process, so a test file that starts processes or workers, imports a
 computed path, or uses a test helper that does (or that Gauntlet can't find),
 maps to every file any test loaded, as does one whose own run failed. A runner
 configuration with a global setup records no map, since what the setup loads
-runs outside every test file. Bun's test runner records no map yet: its test
-ids name their file now (ADR 0027), which selection needs, but recording a map
-for it is still to do.
+runs outside every test file. Bun has no global setup; a `bunfig.toml`
+preload runs inside each test file's run, so every test file maps to what it
+loads, unless it starts processes (then no map). A `bunfig.toml` that sets
+`coverageDir`, or a `coverageReporter` without `lcov`, records no map: bun
+puts those before the command line, so Gauntlet can't read each file's coverage.
 
 Other packs record no map yet, so their `affected` suites run every test.
 
