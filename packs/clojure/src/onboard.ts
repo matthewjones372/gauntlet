@@ -4,7 +4,8 @@ import { testRoots } from "./toolchain.ts"
 // Policy defaults for a Clojure project (`gauntlet init --template`). kaocha
 // and cloverage come with Gauntlet, so the suite and coverage are always
 // proposed; lint is proposed when the project configures clj-kondo. There is
-// no mutation gate to propose.
+// no mutation gate to propose. Nor is dead-code: its findings are clj-kondo's
+// unused-* linters, which `lint ratchet` already holds.
 
 export const onboard = (repo: RepoView): Onboarding => {
   const tool = repo.files.includes("deps.edn") ? "deps.edn" : "project.clj"

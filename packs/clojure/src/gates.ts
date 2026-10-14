@@ -4,6 +4,7 @@ import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, type Log, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Effect, FileSystem, Option, Path } from "effect"
+import { parseKondoDeadCode } from "./deadcode.ts"
 import { convertKondo, focusOf, parseLcov, tidyJUnit } from "./reports.ts"
 import { runRules } from "./rules.ts"
 import { head, nsOf, read } from "./syntax.ts"
@@ -125,6 +126,31 @@ export const lint: GateImpl = (_check, ctx) =>
     yield* writeSarif(ctx, "clj-kondo.sarif", kondo.value)
     yield* writeSarif(ctx, "clojure-rules.sarif", rulesRun)
     return { ...base(r), exitCode: 0, runs: [kondo.value, rulesRun] }
+  })
+
+// ---------- dead-code: clj-kondo's unused-* linters ----------
+
+/**
+ * Unused bindings, private vars, namespaces, referred vars and imports, from
+ * clj-kondo with the project's .clj-kondo configuration (spec 0017 §4). It
+ * reads what lint reads and keeps its JSON in the output directory.
+ */
+export const deadCode: GateImpl = (_check, ctx) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const roots = [...new Set([...sourceRoots(ctx.files), ...testRoots(ctx.files)])].filter((r) => ctx.files.some((f) => f.startsWith(`${r}/`)))
+    const r = yield* run(ctx, ["clj-kondo", "--lint", ...roots, "--config", "{:output {:format :json}}", "--parallel"])
+    if (r.error?.startsWith("clj-kondo couldn't be started")) return { ...failed(["clj-kondo"], "clj-kondo isn't installed (https://github.com/clj-kondo/clj-kondo/blob/master/doc/install.md)"), notSetUp: true }
+    if (r.error) return base(r)
+    // 0 is clean, 2 warnings, 3 errors; anything else means it couldn't lint.
+    if (![0, 2, 3].includes(r.exitCode)) return { ...base(r), error: `clj-kondo couldn't lint the code: ${r.stderr.trim().split("\n")[0] ?? ""}` }
+    yield* fs.writeFileString(path.join(ctx.outputDir, "clj-kondo-dead-code.json"), r.stdout).pipe(Effect.orElseSucceed(() => undefined))
+    const parsed = parseKondoDeadCode(r.stdout, ctx.dir)
+    if (Option.isNone(parsed)) return { ...base(r), error: `clj-kondo's output couldn't be read: ${r.stdout.trim().split("\n")[0]?.slice(0, 200) ?? ""}` }
+    if (parsed.value._tag === "Unread") return { ...base(r), error: `clj-kondo couldn't read the code: ${parsed.value.where}` }
+    yield* writeSarif(ctx, "clj-kondo-dead-code.sarif", parsed.value.run)
+    return { ...base(r), exitCode: 0, runs: [parsed.value.run] }
   })
 
 // ---------- arch: ns :require ----------
