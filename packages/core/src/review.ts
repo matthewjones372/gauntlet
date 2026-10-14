@@ -41,6 +41,8 @@ export interface Regression {
   readonly file?: string
   readonly base: number
   readonly head: number
+  /** Why the base isn't the baseline's value as recorded, or what the drop may come from (spec 0017 §3). */
+  readonly note?: string
 }
 
 /** A probabilistic signal: an advisory review or an imported finding from a caution source (ADR 0011). */
@@ -276,7 +278,7 @@ export const decide = (input: ReviewInput): Decision => {
   }
   for (const v of evidence.newViolations) nominate("review", `New ${v.ruleId} finding from ${v.check}${where(v)}: ${v.message}`, implicit("new-violation"), true)
   for (const r of evidence.regressions) {
-    nominate("review", `${r.metric}${r.file ? ` for ${r.file}` : ""} dropped below the baseline (${r.base} to ${r.head}).`, implicit("ratchet-regression"), true)
+    nominate("review", `${r.metric}${r.file ? ` for ${r.file}` : ""} dropped below the baseline (${r.base} to ${r.head}).${r.note ? ` ${r.note.charAt(0).toUpperCase()}${r.note.slice(1)}.` : ""}`, implicit("ratchet-regression"), true)
   }
 
   // Integrity.

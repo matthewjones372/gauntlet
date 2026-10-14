@@ -138,7 +138,7 @@ export const buildReport = (input: ReportInput): Report => {
     },
     checks,
     ratchets: [...input.ratchets].sort(by((r) => `${r.metric}\0${r.file ?? ""}`)).map((r) => ({
-      metric: r.metric, ...opt("file", r.file), base: r.base, head: r.head, delta: r.delta, regressed: r.regressed,
+      metric: r.metric, ...opt("file", r.file), base: r.base, head: r.head, delta: r.delta, regressed: r.regressed, ...opt("note", r.note),
     })),
     integrity: {
       findings: [...input.integrity.findings]

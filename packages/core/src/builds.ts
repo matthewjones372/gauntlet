@@ -77,7 +77,11 @@ export const runFromBuild = (run: GateRun, dir: string): GateRun => {
   }))
   const metrics = run.metrics === undefined ? undefined : Object.fromEntries(Object.entries(run.metrics).map(([name, m]): [string, Metric] => [
     name,
-    m.perFile ? { ...m, perFile: Object.fromEntries(Object.entries(m.perFile).map(([p, v]) => [fromBuild(dir, p), v])) } : m,
+    {
+      ...m,
+      ...(m.perFile ? { perFile: Object.fromEntries(Object.entries(m.perFile).map(([p, v]) => [fromBuild(dir, p), v])) } : {}),
+      ...(m.perFileTotal ? { perFileTotal: Object.fromEntries(Object.entries(m.perFileTotal).map(([p, v]) => [fromBuild(dir, p), v])) } : {}),
+    },
   ]))
   const testMap = run.testMap === undefined ? undefined : Object.fromEntries(Object.entries(run.testMap).map(([name, files]) => [name, files.map((f) => fromBuild(dir, f))]))
   const killMap = run.killMap === undefined ? undefined : renameKillMap(run.killMap, { path: uri })
@@ -125,7 +129,10 @@ export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; read
       }
       const worse = m.higherIsBetter ? Math.min(seen.value, m.value) : Math.max(seen.value, m.value)
       const perFile = seen.perFile || m.perFile ? { ...seen.perFile, ...m.perFile } : undefined
-      metrics[name] = { ...seen, value: worse, ...(perFile ? { perFile } : {}) }
+      // Totals only when every build gave them, so a value can be worked out again from them (spec 0017 §3).
+      const perFileTotal = seen.perFileTotal && m.perFileTotal ? { ...seen.perFileTotal, ...m.perFileTotal } : undefined
+      const { perFileTotal: _, ...rest } = seen
+      metrics[name] = { ...rest, value: worse, ...(perFile ? { perFile } : {}), ...(perFileTotal ? { perFileTotal } : {}) }
     }
   }
   const maps = ran.flatMap((p) => (p.run.testMap ? [p.run.testMap] : []))

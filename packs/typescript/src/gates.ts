@@ -506,10 +506,13 @@ export const coverage: GateImpl = (_check, ctx) =>
     if (!lcov) return { ...base(r), error: runner === "vitest" ? "no lcov report: add @vitest/coverage-v8 (or -istanbul)" : "no lcov report was written" }
     const files = parseLcov(lcov.content, ctx.dir).filter((f) => ctx.scope === undefined || ctx.scope.includes(f.path))
     const perFile: Record<string, number> = {}
+    const perFileTotal: Record<string, number> = {}
     const pct = (covered: number, total: number) => Math.round((covered / total) * 10000) / 100
     for (const f of files) {
       const lines = [...f.lines.values()]
-      if (lines.length > 0) perFile[f.path] = pct(lines.filter(Boolean).length, lines.length)
+      if (lines.length === 0) continue
+      perFile[f.path] = pct(lines.filter(Boolean).length, lines.length)
+      perFileTotal[f.path] = lines.length
     }
     let covered = 0
     let total = 0
@@ -526,8 +529,11 @@ export const coverage: GateImpl = (_check, ctx) =>
       if (files.some((f) => f.path === p)) continue
       const uncovered = (ctx.facts.addedLines.get(p) ?? []).filter((l) => !COMMENT_OR_BLANK.test(l.text)).length
       total += uncovered
-      if (uncovered > 0) perFile[p] = 0
+      if (uncovered > 0) {
+        perFile[p] = 0
+        perFileTotal[p] = uncovered
+      }
     }
     if (total === 0) return { ...base(r), exitCode: 0, nothingInScope: ctx.scope ? "no executable changed lines" : "no executable lines were measured" }
-    return { ...base(r), exitCode: 0, metrics: { coverage: { value: pct(covered, total), unit: "%", higherIsBetter: true, perFile } } }
+    return { ...base(r), exitCode: 0, metrics: { coverage: { value: pct(covered, total), unit: "%", higherIsBetter: true, perFile, perFileTotal } } }
   })

@@ -344,6 +344,9 @@ export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
     lines.push("### Ratchets", "")
     lines.push(...table(["Metric", "Base", "Head", "Change"], capped(moved, (x) =>
       `| ${x.metric}${x.file ? ` (${code(x.file)})` : ""} | ${x.base} | ${x.head} | ${x.delta > 0 ? "+" : ""}${x.delta}${x.regressed ? " **worse**" : ""} |`)))
+    // Spec 0017 §3: a base worked out without removed code, or a drop that may come from it.
+    const noted = r.ratchets.filter((x) => x.note !== undefined && (x.delta !== 0 || x.regressed))
+    if (noted.length > 0) lines.push(...noted.map((x) => `- ${x.metric}: ${x.note}`), "")
   }
 
   const imported = r.imports.filter((i) => i.new.length > 0)

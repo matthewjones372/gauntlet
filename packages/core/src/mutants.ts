@@ -59,7 +59,12 @@ export const mutationResult = (tool: string, mutants: ReadonlyArray<Mutant>, at:
     return { runs: [], lineScoped, nothingInScope: `${tool} generated no mutants ${lineScoped ? "on the changed lines" : "for the code in scope"}` }
   }
   const perFile: Record<string, number> = {}
-  for (const p of [...new Set(counted.flatMap((x) => x.path ?? []))].sort()) perFile[p] = pct(counted.filter((x) => x.path === p))
+  const perFileTotal: Record<string, number> = {}
+  for (const p of [...new Set(counted.flatMap((x) => x.path ?? []))].sort()) {
+    const mine = counted.filter((x) => x.path === p)
+    perFile[p] = pct(mine)
+    perFileTotal[p] = mine.length
+  }
   const survivors: Run = {
     tool: { driver: { name: tool } },
     results: counted.filter((x) => !x.killed)
@@ -71,7 +76,7 @@ export const mutationResult = (tool: string, mutants: ReadonlyArray<Mutant>, at:
         ...(x.path ? { locations: [{ physicalLocation: { artifactLocation: { uri: x.path }, region: { startLine: x.line } } }] } : {}),
       })),
   }
-  return { runs: [survivors], lineScoped, metrics: { mutation: { value: pct(counted), unit: "%", higherIsBetter: true, perFile } } }
+  return { runs: [survivors], lineScoped, metrics: { mutation: { value: pct(counted), unit: "%", higherIsBetter: true, perFile, perFileTotal } } }
 }
 
 /**
