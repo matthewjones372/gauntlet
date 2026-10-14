@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, Option } from "effect"
+import { Context, Data, Effect, Layer, Option, Semaphore } from "effect"
 import { ProcessFailed, ProcessRunner, ProcessTimedOut } from "./process-runner.ts"
 
 /** Files a working-tree snapshot never includes: `/gauntlet-setup`'s proposal, applied with `gauntlet apply`. */
@@ -114,6 +114,9 @@ export const GitLive = Layer.effect(
       raw(repo, args).pipe(
         Effect.flatMap((r) => r.exitCode === 0 ? Effect.succeed(r.stdout) : Effect.fail(new GitError({ args, exitCode: r.exitCode, stderr: r.stderr.trim() }))),
       )
+    // Worktrees are added and removed one at a time: removing the last one deletes .git/worktrees,
+    // so an add running alongside it fails ("could not create directory of '.git/worktrees/…'").
+    const worktrees = yield* Semaphore.make(1)
 
     return {
       revParse: (repo, ref) => git(repo, ["rev-parse", "--verify", `${ref}^{commit}`]).pipe(Effect.map((s) => s.trim())),
@@ -208,8 +211,8 @@ export const GitLive = Layer.effect(
           return { commit, tree, dirty: true }
         }),
       applyPatch: (worktree, patchFile) => git(worktree, ["apply", "--whitespace=nowarn", patchFile]).pipe(Effect.asVoid),
-      addWorktree: (repo, dir, commit) => git(repo, ["worktree", "add", "--detach", "--quiet", dir, commit]).pipe(Effect.asVoid),
-      removeWorktree: (repo, dir) => git(repo, ["worktree", "remove", "--force", dir]).pipe(Effect.asVoid),
+      addWorktree: (repo, dir, commit) => git(repo, ["worktree", "add", "--detach", "--quiet", dir, commit]).pipe(Effect.asVoid, Semaphore.withPermit(worktrees)),
+      removeWorktree: (repo, dir) => git(repo, ["worktree", "remove", "--force", dir]).pipe(Effect.asVoid, Semaphore.withPermit(worktrees)),
       lastChange: (repo, from, to, path) =>
         git(repo, ["log", "-n", "1", "--format=%H", `${from}..${to}`, "--", path]).pipe(Effect.map((out) => (out.trim() === "" ? Option.none<string>() : Option.some(out.trim())))),
       restore: (worktree, ref, paths) =>
