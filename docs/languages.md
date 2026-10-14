@@ -17,6 +17,15 @@ fixtures. A suite marked `affected` runs only the tests a change affects with
 the Kotlin and Java pack and with TypeScript on Vitest or Jest; elsewhere it
 runs every test ([policy](policy.md#running-the-tests-a-change-affects)). .NET, Ruby, PHP, Maven and frontend packs are planned.
 
+Integrity names each test by an id from the runner's report. Bun's test
+runner names a test only by its describe path and name, so Gauntlet puts its
+file in front, as Vitest's ids have it: `test/money.test.ts.money.adds`
+([ADR 0027](adr/0027-bun-test-ids.md)). A baseline recorded by an older
+version names bun's tests without their files; a check matches each to the
+test that now carries that name, so upgrading doesn't look like deleting tests.
+Two files' tests that shared an old id count as one until the baseline is
+recorded again, and a quarantine of a bun test needs its new id.
+
 On Gradle, the gates of one check share one warm daemon that only that check
 can use, and it's shut down when the check ends
 ([ADR 0020](adr/0020-one-build-tool-per-check.md)). Nothing carries over

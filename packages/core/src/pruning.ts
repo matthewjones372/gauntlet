@@ -1,4 +1,4 @@
-import type { KillMap } from "@gauntlet/sarif"
+import { type KillMap, migrateTestIds } from "@gauntlet/sarif"
 import type { DiffFacts } from "./diff-facts.ts"
 
 // Spec 0016 §3: a change that only removes tests can go through when the tests
@@ -22,7 +22,8 @@ export const removedTests = (
   if (facts.files.length === 0 || baseTestIds === undefined || headTestIds === undefined) return undefined
   if (!facts.files.every((f) => isTestPath(f.path) && (f.oldPath === undefined || isTestPath(f.oldPath)))) return undefined
   const now = new Set(headTestIds)
-  const removed = baseTestIds.filter((id) => !now.has(id))
+  // A bun test the baseline names the way an older version did is the head's test of that name (ADR 0027).
+  const removed = migrateTestIds(baseTestIds, headTestIds).filter((id) => !now.has(id))
   return removed.length > 0 ? removed : undefined
 }
 

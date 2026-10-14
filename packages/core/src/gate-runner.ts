@@ -1,6 +1,6 @@
 import { type GateSpec, globMatches } from "@gauntlet/dsl"
 import { type Check, type PolicyIR, sha256 } from "@gauntlet/ir"
-import { type Baseline, compareMetrics, compareWithBaseline, convertJUnit, type Metric, type MetricDelta, type Proof, type Result, resultPath, resultRegion, type Run, type KillMap, mergeKillMaps, renameKillMap, type TestMap } from "@gauntlet/sarif"
+import { type Baseline, compareMetrics, compareWithBaseline, convertJUnit, type Metric, type MetricDelta, type Proof, type Result, resultPath, resultRegion, type Run, type KillMap, mergeKillMaps, migrateTestIds, renameKillMap, type TestMap } from "@gauntlet/sarif"
 import { Clock, Effect, FileSystem, Option, type Path } from "effect"
 import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy, runFromBuild, toBuild } from "./builds.ts"
 import { judgeBudget, parseBudgetResults } from "./budget.ts"
@@ -207,7 +207,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const junit = yield* Effect.exit(convertJUnit("ci", [f]))
           if (junit._tag === "Success") for (const t of junit.value.tests) ran.add(t.id)
         }
-        const whole = expected.every((id) => ran.has(id))
+        const whole = migrateTestIds(expected, [...ran]).every((id) => ran.has(id))
         ciWhole.set(dir, whole)
         return whole
       })
