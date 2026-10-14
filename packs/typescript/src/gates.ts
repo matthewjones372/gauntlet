@@ -4,11 +4,12 @@ import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
 import { convertJUnit, decodeLog, type Log, relativeUri, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { availableParallelism } from "node:os"
+import { posix } from "node:path"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { convertEslintJson, convertJestJson, DETECTED, type Mutant, parseLcov, parseStryker, UNDETECTED } from "./reports.ts"
 import { runRules } from "./rules.ts"
 import { line, ofType, parseTs } from "./syntax.ts"
-import { GLOBAL_SETUP, reachesUnseen, RUNNER_CONFIG, testFileOf, testMapOf } from "./test-map.ts"
+import { bunfigOf, bunPassed, GLOBAL_SETUP, reachesUnseen, RUNNER_CONFIG, testFileOf, testMapOf } from "./test-map.ts"
 import { bun, ensureInstalled, isMainSource, isTsSource, tool, type ToolRun, type Toolchain, toolchain } from "./toolchain.ts"
 
 // The TypeScript pack's gates. Each installs dependencies once per check,
@@ -92,7 +93,8 @@ const runTests = (ctx: GateContext, chain: Toolchain, filter: string, subset?: T
         return yield* tool(ctx, "jest", ["--ci", "--json", `--outputFile=${out}/jest/results.json`, ...(paths.length > 0 ? ["--testPathPatterns", subset?.affected ? exactly(paths) : paths.map(escape).join("|")] : []),
           ...(shuffled ? ["--randomize", `--seed=${subset.seed}`] : [])])
       case "bun":
-        return yield* bun(ctx, ["test", ...paths, ...(shuffled ? ["--randomize", `--seed=${subset.seed}`] : []), "--reporter=junit", // bun silently skips the report if its directory is missing, so write at the top level.
+        // The selected files by path (`./`): a bare argument is a filter, which also runs every file whose path contains it.
+        return yield* bun(ctx, ["test", ...(subset?.affected ? paths.map((p) => `./${p}`) : paths), ...(shuffled ? ["--randomize", `--seed=${subset.seed}`] : []), "--reporter=junit", // bun silently skips the report if its directory is missing, so write at the top level.
           `--reporter-outfile=${out}/junit.xml`])
       default:
         return { command: ["test"], exitCode: -1, stdout: "", stderr: "", error: "no test runner found: add vitest or jest, or use bun" } satisfies ToolRun
@@ -139,37 +141,74 @@ const mapTests = (ctx: GateContext, chain: Toolchain, ids: ReadonlyArray<string>
     const path = yield* Path.Path
     const missing = (why: string): { readonly why: string } => ({ why })
     const runner = Option.getOrUndefined(chain.runner)
-    if (runner === "bun") return missing("bun test's JUnit XML doesn't name each test's file, so a test selection left out couldn't be told from a deleted one")
-    if (runner !== "vitest" && runner !== "jest") return missing("no test runner that can run one test file with coverage")
+    if (runner !== "vitest" && runner !== "jest" && runner !== "bun") return missing("no test runner that can run one test file with coverage")
     if (ids.length === 0) return missing("the suite ran no tests")
-    const configs = yield* readFiles(ctx, ctx.files.filter((f) => RUNNER_CONFIG.test(f)))
-    const global = configs.find((c) => GLOBAL_SETUP.test(c.text))
-    if (global) return missing(`${global.path} sets a global setup, which runs outside every test file's process, so what it loads can't be mapped`)
     const all = new Set(ctx.files)
+    const texts = new Map((yield* readFiles(ctx, ctx.files.filter((f) => isTsSource(f) && !isMainSource(f)))).map((t) => [t.path, t.text]))
+    const unseen = (file: string, reached?: Set<string>) => reachesUnseen(file, (p) => texts.get(p), isMainSource, all, reached)
+    if (runner === "bun") {
+      // Bun has no global setup: a preload runs in each test file's own process, where its coverage sees it,
+      // unless it starts processes or loads code coverage can't follow.
+      const bunfig = (yield* readFiles(ctx, all.has("bunfig.toml") ? ["bunfig.toml"] : []))[0]
+      const settings = bunfig === undefined ? undefined : bunfigOf(bunfig.text)
+      if (typeof settings === "string") return missing(settings)
+      if (settings?.overrides) return missing(`bunfig.toml sets ${settings.overrides}, which bun puts before the command line, so a test file's coverage can't be read`)
+      const preloads = (settings?.preload ?? []).map((p) => posix.normalize(p)).filter((p) => all.has(p))
+      const mainPreloads = new Map((yield* readFiles(ctx, preloads.filter(isMainSource))).map((t) => [t.path, t.text]))
+      const hidden = preloads.find((p) => reachesUnseen(p, (f) => texts.get(f) ?? mainPreloads.get(f), isMainSource, all))
+      if (hidden) return missing(`bunfig.toml preloads ${hidden}, which starts processes or loads code coverage can't follow`)
+    } else {
+      const configs = yield* readFiles(ctx, ctx.files.filter((f) => RUNNER_CONFIG.test(f)))
+      const global = configs.find((c) => GLOBAL_SETUP.test(c.text))
+      if (global) return missing(`${global.path} sets a global setup, which runs outside every test file's process, so what it loads can't be mapped`)
+    }
     const unmapped = ids.filter((id) => testFileOf(id, all) === undefined)
     if (unmapped.length > 0) return missing(`${unmapped.length} ${unmapped.length === 1 ? "test the suite ran isn't" : "tests the suite ran aren't"} named after a test file, such as ${unmapped[0]}`)
     const tests = [...new Set(ids.map((id) => testFileOf(id, all)!))].sort()
     const out = `${ctx.outputDir}-testmap`
+    // bun silently skips a JUnit report whose directory is missing.
+    if (runner === "bun") yield* fs.makeDirectory(out, { recursive: true }).pipe(Effect.orElseSucceed(() => undefined))
+    const read = (file: string) => fs.readFileString(file).pipe(Effect.option, Effect.map(Option.getOrUndefined))
     const coverageRun = (file: string, i: number) => {
       const dir = path.join(out, String(i))
-      return (runner === "vitest"
-        ? tool(ctx, "vitest", ["run", file, "--coverage.enabled=true", "--coverage.reporter=lcov", `--coverage.reportsDirectory=${dir}`])
-        : tool(ctx, "jest", ["--ci", "--coverage", "--coverageReporters=lcov", `--coverageDirectory=${dir}`, "--testPathPatterns", exactly([file])])).pipe(
-          Effect.flatMap((r) => r.error || r.exitCode !== 0 ? Effect.succeed(undefined) : fs.readFileString(path.join(dir, "lcov.info")).pipe(Effect.option, Effect.map(Option.getOrUndefined))),
-        )
+      const lcov = path.join(dir, "lcov.info")
+      switch (runner) {
+        case "vitest":
+          return tool(ctx, "vitest", ["run", file, "--coverage.enabled=true", "--coverage.reporter=lcov", `--coverage.reportsDirectory=${dir}`]).pipe(
+            Effect.flatMap((r) => r.error || r.exitCode !== 0 ? Effect.succeed(undefined) : read(lcov)),
+          )
+        case "jest":
+          return tool(ctx, "jest", ["--ci", "--coverage", "--coverageReporters=lcov", `--coverageDirectory=${dir}`, "--testPathPatterns", exactly([file])]).pipe(
+            Effect.flatMap((r) => r.error || r.exitCode !== 0 ? Effect.succeed(undefined) : read(lcov)),
+          )
+        case "bun": {
+          // By path (`./`): a bare argument is a filter, which would also run every file whose path contains it.
+          const junit = path.join(out, `${i}.junit.xml`)
+          return bun(ctx, ["test", `./${file}`, "--coverage", "--coverage-reporter=lcov", `--coverage-dir=${dir}`, "--reporter=junit", `--reporter-outfile=${junit}`]).pipe(
+            Effect.flatMap((r) =>
+              r.error ? Effect.succeed(undefined) : r.exitCode === 0 ? read(lcov) : read(junit).pipe(Effect.flatMap((x) => (bunPassed(x) ? read(lcov) : Effect.succeed(undefined))))
+            ),
+          )
+        }
+      }
     }
-    // Each runner has its own workers: half the machine's cores keeps them from crowding each other.
-    const lcovs = yield* Effect.forEach(tests, coverageRun, { concurrency: Math.max(1, Math.floor(availableParallelism() / 2)) })
+    // Vitest and Jest have their own workers: half the machine's cores keeps them from crowding each other. Bun runs a file in one process.
+    const cores = availableParallelism()
+    const lcovs = yield* Effect.forEach(tests, coverageRun, { concurrency: Math.max(1, runner === "bun" ? cores - 1 : Math.floor(cores / 2)) })
     if (lcovs.every((l) => l === undefined)) {
       return missing(runner === "vitest" ? "no test file's run wrote coverage: add @vitest/coverage-v8 (or -istanbul)" : "no test file's run wrote coverage")
     }
-    const texts = new Map((yield* readFiles(ctx, ctx.files.filter((f) => isTsSource(f) && !isMainSource(f)))).map((t) => [t.path, t.text]))
     const map = testMapOf(tests.map((testFile, i) => {
       const lcov = lcovs[i]
+      // The test-side files it imports count as loaded too: bun's coverage leaves out files named like tests.
+      const reached = new Set<string>()
+      const hidden = unseen(testFile, reached)
       return {
         testFile,
-        loaded: lcov === undefined ? undefined : parseLcov(lcov, ctx.dir).filter((f) => all.has(f.path) && [...f.lines.values()].some(Boolean)).map((f) => f.path),
-        unseen: reachesUnseen(testFile, (p) => texts.get(p), isMainSource, all),
+        loaded: lcov === undefined
+          ? undefined
+          : [...new Set([...parseLcov(lcov, ctx.dir).filter((f) => all.has(f.path) && [...f.lines.values()].some(Boolean)).map((f) => f.path), ...reached])],
+        unseen: hidden,
       }
     }))
     return { map }

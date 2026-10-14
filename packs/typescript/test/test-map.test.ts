@@ -1,6 +1,7 @@
 import { BunServices } from "@effect/platform-bun"
 import { type GateContext, ProcessRunner, type RunRequest, suiteSelections } from "@gauntlet/core"
 import { compilePolicy } from "@gauntlet/dsl"
+import { ProcessRunnerLive } from "@gauntlet/core"
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
@@ -8,7 +9,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { runSuite } from "../src/gates.ts"
 import { typescriptPack } from "../src/index.ts"
-import { reachesUnseen, resolveImport, testFileOf, testMapOf } from "../src/test-map.ts"
+import { bunfigOf, bunPassed, reachesUnseen, resolveImport, testFileOf, testMapOf } from "../src/test-map.ts"
 import { isMainSource } from "../src/toolchain.ts"
 
 // The TypeScript pack's test map (spec 0013): a baseline runs each test file
@@ -27,7 +28,7 @@ describe("which test file a test belongs to", () => {
     expect(testFileOf("test/b.spec.ts.works", files)).toBe("test/b.spec.ts")
   })
 
-  test("none for bun's ids, which name no file", () => {
+  test("none for ids that name no file, as bun's did before ADR 0027", () => {
     expect(testFileOf(".top", files)).toBeUndefined()
     expect(testFileOf("money.adds", files)).toBeUndefined()
   })
@@ -87,12 +88,31 @@ describe("the map from each test file's run", () => {
   })
 })
 
-// ---------- recording, with a fake Vitest and Jest ----------
+describe("bun's configuration and reports", () => {
+  test("bunfig.toml's preloads, and the coverage settings bun puts before the command line", () => {
+    expect(bunfigOf(`[test]\npreload = ["./test/setup.ts", "happy-dom"]\ncoverageThreshold = 0.9\n`)).toEqual({ preload: ["./test/setup.ts", "happy-dom"], overrides: undefined })
+    expect(bunfigOf(`[test]\npreload = "./test/setup.ts"\ncoverageReporter = ["text", "lcov"]\n`)).toEqual({ preload: ["./test/setup.ts"], overrides: undefined })
+    // A top-level preload is for `bun run`, not `bun test`.
+    expect(bunfigOf(`preload = ["./x.ts"]\n[install]\nexact = true\n`)).toEqual({ preload: [], overrides: undefined })
+    expect(bunfigOf(`[test]\ncoverageReporter = ["text"]\n`)).toMatchObject({ overrides: "coverageReporter" })
+    expect(bunfigOf(`[test]\ncoverageDir = "out"\n`)).toMatchObject({ overrides: "coverageDir" })
+    expect(bunfigOf(`[test\n`)).toBe("bunfig.toml couldn't be read")
+  })
+
+  test("a run passed when its report has tests and no failures, whatever bun's exit code", () => {
+    expect(bunPassed(`<testsuites name="bun test" tests="2" assertions="2" failures="0" skipped="0"><testsuite/></testsuites>`)).toBe(true)
+    expect(bunPassed(`<testsuites name="bun test" tests="2" failures="1"></testsuites>`)).toBe(false)
+    expect(bunPassed(`<testsuites name="bun test" tests="0" failures="0"></testsuites>`)).toBe(false)
+    expect(bunPassed(undefined)).toBe(false)
+  })
+})
+
+// ---------- recording, with a fake Vitest, Jest and bun ----------
 
 const lcov = (hit: Record<string, boolean>) => Object.entries(hit).map(([f, h]) => `SF:${f}\nDA:1,${h ? 1 : 0}\nend_of_record`).join("\n")
 
 const VITEST_JUNIT = `<testsuites><testsuite name="test/a.test.ts"><testcase classname="test/a.test.ts" name="money &gt; adds"/></testsuite><testsuite name="test/b.test.ts"><testcase classname="test/b.test.ts" name="converts"/></testsuite></testsuites>`
-const BUN_JUNIT = `<testsuites><testsuite name="test/a.test.ts"><testcase classname="" name="adds"/></testsuite></testsuites>`
+const BUN_JUNIT = `<testsuites name="bun test" tests="2" failures="0"><testsuite name="test/a.test.ts" file="test/a.test.ts"><testsuite name="money" file="test/a.test.ts"><testcase classname="money" name="adds" file="test/a.test.ts"/></testsuite></testsuite><testsuite name="test/b.test.ts" file="test/b.test.ts"><testcase classname="" name="converts" file="test/b.test.ts"/></testsuite></testsuites>`
 const JEST_JSON = JSON.stringify({ testResults: [{ name: "test/a.test.ts", assertionResults: [{ fullName: "money adds", status: "passed" }] }] })
 
 const SOURCES: Record<string, string> = {
@@ -109,7 +129,10 @@ const SOURCES: Record<string, string> = {
  * test file's coverage run writes lcov with what `loads` says it loaded (a
  * missing entry fails that run).
  */
-const project = (runner: "vitest" | "jest" | "bun", options: { readonly junit?: string; readonly loads?: Record<string, Record<string, boolean>>; readonly extra?: Record<string, string> } = {}) => {
+const project = (
+  runner: "vitest" | "jest" | "bun",
+  options: { readonly junit?: string; readonly loads?: Record<string, Record<string, boolean>>; readonly extra?: Record<string, string>; readonly belowThreshold?: boolean } = {},
+) => {
   const files: Record<string, string> = {
     ...SOURCES,
     "package.json": JSON.stringify({ devDependencies: runner === "bun" ? {} : { [runner]: "1" } }),
@@ -132,13 +155,19 @@ const project = (runner: "vitest" | "jest" | "bun", options: { readonly junit?: 
       run: (r) =>
         Effect.sync(() => {
           calls.push(r)
-          const coverageDir = arg(r, "--coverage.reportsDirectory=") ?? arg(r, "--coverageDirectory=")
+          const coverageDir = arg(r, "--coverage.reportsDirectory=") ?? arg(r, "--coverageDirectory=") ?? arg(r, "--coverage-dir=")
           if (coverageDir !== undefined) {
-            const file = runner === "vitest" ? r.args[1]! : Object.keys(loads).find((f) => r.args.at(-1)!.includes(f.replaceAll(".", "\\.")))!
+            const file = runner === "vitest" ? r.args[1]! : runner === "bun" ? r.args[1]!.replace(/^\.\//, "") : Object.keys(loads).find((f) => r.args.at(-1)!.includes(f.replaceAll(".", "\\.")))!
             const loaded = loads[file]
-            if (loaded === undefined) return { exitCode: 1, stdout: "", stderr: "failed" }
+            const report = arg(r, "--reporter-outfile=")
+            if (loaded === undefined) {
+              if (report !== undefined) write(report, `<testsuites name="bun test" tests="1" failures="1"></testsuites>`)
+              return { exitCode: 1, stdout: "", stderr: "failed" }
+            }
             write(join(coverageDir, "lcov.info"), lcov(loaded))
-            return { exitCode: 0, stdout: "", stderr: "" }
+            // A bunfig coverage threshold fails a run whose tests all passed.
+            if (report !== undefined) write(report, `<testsuites name="bun test" tests="1" failures="0"></testsuites>`)
+            return { exitCode: options.belowThreshold ? 1 : 0, stdout: "", stderr: "" }
           }
           const junit = arg(r, "--outputFile.junit=") ?? arg(r, "--reporter-outfile=")
           if (junit !== undefined) write(junit, options.junit ?? (runner === "bun" ? BUN_JUNIT : VITEST_JUNIT))
@@ -173,7 +202,8 @@ describe("recording the TypeScript test map", () => {
       "test/b.test.ts": ["src/fx.ts", "src/money.ts", "test/b.test.ts"],
     })
     const mapping = p.calls.filter((c) => c.args.includes("--coverage.enabled=true"))
-    expect(mapping.map((c) => c.args[1])).toEqual(["test/a.test.ts", "test/b.test.ts"])
+    // The runs go side by side, so they finish in any order.
+    expect(mapping.map((c) => c.args[1]).sort()).toEqual(["test/a.test.ts", "test/b.test.ts"])
     expect(mapping.every((c) => c.args.some((a) => a.startsWith(`--coverage.reportsDirectory=${p.out}-testmap/`)))).toBe(true)
     // The suite's own proof stays its own run's.
     expect(readdirSync(p.out, { recursive: true }).map(String)).toEqual(["junit.xml"])
@@ -186,15 +216,60 @@ describe("recording the TypeScript test map", () => {
     expect(p.calls.at(-1)!.args).toEqual(expect.arrayContaining(["--coverage", "--testPathPatterns", "(^|/)test/a\\.test\\.ts$"]))
   })
 
+  test("bun runs each test file by its path, with lcov and a JUnit report of its own", async () => {
+    const p = project("bun")
+    const r = await p.run(runSuite(unit, p.ctx))
+    expect(r.tests?.ids).toEqual(["test/a.test.ts.money.adds", "test/b.test.ts.converts"])
+    expect(r.testMap).toEqual({
+      "test/a.test.ts": ["src/money.ts", "test/a.test.ts"],
+      "test/b.test.ts": ["src/fx.ts", "src/money.ts", "test/b.test.ts"],
+    })
+    const mapping = p.calls.filter((c) => c.args.includes("--coverage"))
+    expect(mapping.map((c) => c.args.slice(0, 5)).sort((x, y) => (x[1]! < y[1]! ? -1 : 1))).toEqual([
+      ["test", "./test/a.test.ts", "--coverage", "--coverage-reporter=lcov", `--coverage-dir=${p.out}-testmap/0`],
+      ["test", "./test/b.test.ts", "--coverage", "--coverage-reporter=lcov", `--coverage-dir=${p.out}-testmap/1`],
+    ])
+    expect(mapping.every((c) => c.args.includes("--reporter=junit") && c.args.some((a) => a.startsWith(`--reporter-outfile=${p.out}-testmap/`)))).toBe(true)
+    expect(readdirSync(p.out, { recursive: true }).map(String)).toEqual(["junit.xml"])
+  })
+
+  test("bun: a run that only missed a coverage threshold counts, one whose tests failed doesn't", async () => {
+    const p = project("bun", { belowThreshold: true, loads: { "test/a.test.ts": { "src/money.ts": true } } })
+    const r = await p.run(runSuite(unit, p.ctx))
+    expect(r.testMap).toEqual({
+      "test/a.test.ts": ["src/money.ts", "test/a.test.ts"],
+      "test/b.test.ts": ["src/money.ts", "test/a.test.ts", "test/b.test.ts"],
+    })
+  })
+
+  test("bun: a test-side file a test imports counts as loaded, though bun's coverage leaves out files named like tests", async () => {
+    const p = project("bun", {
+      extra: { "test/b.test.ts": `import { fx } from "../src/fx.ts"\nimport { shared } from "./shared.test.ts"\n`, "test/shared.test.ts": "export const shared = 1\n" },
+    })
+    const r = await p.run(runSuite(unit, p.ctx))
+    expect(r.testMap?.["test/b.test.ts"]).toEqual(["src/fx.ts", "src/money.ts", "test/b.test.ts", "test/shared.test.ts"])
+  })
+
+  test("bun: a preload runs in each test file's own process, so it doesn't stop the map", async () => {
+    const p = project("bun", { extra: { "bunfig.toml": `[test]\npreload = ["./test/setup.ts"]\n`, "test/setup.ts": `import { money } from "../src/money.ts"\n` } })
+    const r = await p.run(runSuite(unit, p.ctx))
+    expect(r.testMapMissing).toBeUndefined()
+    expect(Object.keys(r.testMap ?? {})).toEqual(["test/a.test.ts", "test/b.test.ts"])
+  })
+
   test("a test file whose own run fails maps to everything any test loaded", async () => {
     const p = project("vitest", { loads: { "test/a.test.ts": { "src/money.ts": true } } })
     const r = await p.run(runSuite(unit, p.ctx))
     expect(r.testMap?.["test/b.test.ts"]).toEqual(["src/money.ts", "test/a.test.ts", "test/b.test.ts"])
   })
 
-  test("no map, and why, for bun, a global setup, tests not named after a file, or no coverage at all", async () => {
+  test("no map, and why, for a global setup, bun settings that hide coverage or a preload it can't follow, tests not named after a file, or no coverage at all", async () => {
     const cases: Array<[ReturnType<typeof project>, string]> = [
-      [project("bun"), "bun test's JUnit XML doesn't name each test's file"],
+      [project("bun", { extra: { "bunfig.toml": `[test]\ncoverageDir = "cov"\n` } }), "bunfig.toml sets coverageDir"],
+      [project("bun", { extra: { "bunfig.toml": `[test]\ncoverageReporter = ["text"]\n` } }), "bunfig.toml sets coverageReporter"],
+      [project("bun", { extra: { "bunfig.toml": `[test]\npreload = ["./test/server.ts"]\n`, "test/server.ts": `Bun.spawn(["bun", "src/server.ts"])\n` } }), "bunfig.toml preloads test/server.ts, which starts processes"],
+      [project("bun", { extra: { "bunfig.toml": `[test]\npreload = ["./src/boot.ts"]\n`, "src/boot.ts": `import { spawn } from "node:child_process"\n` } }), "bunfig.toml preloads src/boot.ts"],
+      [project("bun", { loads: {} }), "no test file's run wrote coverage"],
       [project("vitest", { extra: { "vitest.config.ts": `export default { test: { globalSetup: "./test/db.ts" } }` } }), "vitest.config.ts sets a global setup"],
       [project("vitest", { junit: `<testsuite name="x"><testcase classname="money" name="adds"/></testsuite>` }), "1 test the suite ran isn't named after a test file, such as money.adds"],
       [project("vitest", { loads: {} }), "no test file's run wrote coverage: add @vitest/coverage-v8"],
@@ -225,7 +300,8 @@ describe("running the tests a change affects", () => {
       const p = project(runner, { extra: withNew })
       await p.run(runSuite(unit, { ...p.ctx, recordTestMap: false }, affected))
       const args = p.calls.at(-1)!.args
-      expect(args.slice(0, 3)).toEqual([runner === "vitest" ? "run" : "test", "test/a.test.ts", "test/new.test.ts"])
+      // Bun takes the files by path: a bare argument is a filter that also runs every file whose path contains it.
+      expect(args.slice(0, 3)).toEqual(runner === "vitest" ? ["run", "test/a.test.ts", "test/new.test.ts"] : ["test", "./test/a.test.ts", "./test/new.test.ts"])
       expect(args.some((a) => /shuffle|randomize|seed/.test(a))).toBe(false)
     }
     const j = project("jest", { extra: withNew })
@@ -240,6 +316,11 @@ describe("running the tests a change affects", () => {
     expect(p.calls.at(-1)!.args.slice(0, 3)).toEqual(["run", "test/a.test.ts", "--reporter=junit"])
     await p.run(runSuite(unit, { ...p.ctx, recordTestMap: false }, { ...affected, classes: ["test/gone.test.ts"], files: [] }))
     expect(p.calls.at(-1)!.args.slice(0, 3)).toEqual(["run", "test", "--reporter=junit"])
+    const b = project("bun")
+    await b.run(runSuite(unit, { ...b.ctx, recordTestMap: false }, { ...affected, classes: ["test/a.test.ts", "test/gone.test.ts"], files: [] }))
+    expect(b.calls.at(-1)!.args.slice(0, 3)).toEqual(["test", "./test/a.test.ts", "--reporter=junit"])
+    await b.run(runSuite(unit, { ...b.ctx, recordTestMap: false }, { ...affected, classes: ["test/gone.test.ts"], files: [] }))
+    expect(b.calls.at(-1)!.args.slice(0, 3)).toEqual(["test", "test", "--reporter=junit"])
   })
 })
 
@@ -264,8 +345,65 @@ describe("what a TypeScript change selects", () => {
   })
 
   test("everything runs for what the map can't vouch for", () => {
-    for (const path of ["tsconfig.json", "package.json", "vitest.config.ts", "bun.lock", "src/new.ts", "test/setup.ts", "data/rates.json"]) {
+    for (const path of ["tsconfig.json", "package.json", "vitest.config.ts", "bunfig.toml", "bun.lock", "src/new.ts", "test/setup.ts", "data/rates.json"]) {
       expect(select([modified(path)])).toMatchObject({ kind: "all" })
     }
   })
+})
+
+// ---------- recording with bun itself ----------
+
+describe("bun's test map, with bun itself", () => {
+  const files: Record<string, string> = {
+    "package.json": "{}",
+    "bun.lock": "",
+    // A threshold every run misses: bun exits 1 though every test passed.
+    "bunfig.toml": `[test]\npreload = ["./test/setup.ts"]\ncoverageThreshold = 1\n`,
+    "src/boot.ts": "export const booted = true\n",
+    "src/money.ts": "export const money = (n: number) => n + 1\nexport const other = (n: number) => (n > 0 ? 1 : 2)\n",
+    "src/fx.ts": "import { money } from \"./money.ts\"\nexport const fx = (n: number) => money(n) * 2\n",
+    "src/unused.ts": "export const unused = 1\n",
+    "test/setup.ts": "import { booted } from \"../src/boot.ts\"\nif (!booted) throw new Error(\"not booted\")\n",
+    "test/a.test.ts": "import { expect, test } from \"bun:test\"\nimport { money } from \"../src/money.ts\"\ntest(\"adds\", () => expect(money(1)).toBe(2))\n",
+    "test/b.test.ts": "import { describe, expect, test } from \"bun:test\"\nimport { fx } from \"../src/fx.ts\"\ndescribe(\"fx\", () => { test(\"converts\", () => expect(fx(1)).toBe(4)) })\n",
+    // Bun takes a bare argument as a filter: `test/a.test.ts` would run this too.
+    "pkg/test/a.test.ts": "import { expect, test } from \"bun:test\"\ntest(\"elsewhere\", () => expect(1).toBe(1))\n",
+  }
+  const setup = () => {
+    const root = mkdtempSync(join(tmpdir(), "gauntlet-bun-map-"))
+    const dir = join(root, "repo")
+    for (const [p, t] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, p)), { recursive: true })
+      writeFileSync(join(dir, p), t)
+    }
+    const out = join(root, "outputs", "0-unit")
+    mkdirSync(out, { recursive: true })
+    writeFileSync(join(root, "outputs", ".typescript-install"), "ok")
+    const ctx: GateContext = {
+      dir,
+      outputDir: out,
+      collect: Effect.sync(() => readdirSync(out, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => ({ path: join(e.parentPath, e.name).slice(out.length + 1), content: readFileSync(join(e.parentPath, e.name), "utf8") }))),
+      ir: { zones: [], arch: [] } as never,
+      facts: { addedLines: new Map() } as never,
+      files: Object.keys(files).sort(),
+      legacy: [],
+    }
+    const run = <A, E, R>(e: Effect.Effect<A, E, R>) => Effect.runPromise(e.pipe(Effect.provide(Layer.provideMerge(ProcessRunnerLive, BunServices.layer))) as Effect.Effect<A, E, never>)
+    return { ctx, run }
+  }
+
+  test("each test file maps to what its own run loaded, preload included, and a check runs exactly the selected files", async () => {
+    const p = setup()
+    const r = await p.run(runSuite({ name: "unit", location: "test/**" }, { ...p.ctx, recordTestMap: true }))
+    expect(r.testMapMissing).toBeUndefined()
+    expect(r.testMap).toEqual({
+      // The suite's own run takes its folder as a filter, which this file's path contains too.
+      "pkg/test/a.test.ts": ["pkg/test/a.test.ts", "src/boot.ts", "test/setup.ts"],
+      "test/a.test.ts": ["src/boot.ts", "src/money.ts", "test/a.test.ts", "test/setup.ts"],
+      "test/b.test.ts": ["src/boot.ts", "src/fx.ts", "src/money.ts", "test/b.test.ts", "test/setup.ts"],
+    })
+    const q = setup()
+    const s = await q.run(runSuite({ name: "unit", location: "test/**" }, q.ctx, { files: [], ids: [], seed: 1, classes: ["test/a.test.ts"], affected: true }))
+    expect(s.tests?.ids).toEqual(["test/a.test.ts.adds"])
+  }, 60_000)
 })

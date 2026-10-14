@@ -3,9 +3,9 @@ import { posix } from "node:path"
 
 // The TypeScript pack's test map (spec 0013). A test file is the "test class":
 // a baseline runs each test file the suite ran on its own, with coverage, and
-// maps it to the files that run loaded (any line executed). Vitest and Jest
-// name each test after its file, so integrity can tell a test selection left
-// out from a deleted one; bun's JUnit XML doesn't, so bun records no map.
+// maps it to the files that run loaded (any line executed). Vitest, Jest and
+// bun (ADR 0027) name each test after its file, so integrity can tell a test
+// selection left out from a deleted one.
 //
 // Coverage sees only the test's own process. A test that starts processes or
 // workers, or loads a test helper Gauntlet can't follow, could reach any code:
@@ -38,8 +38,9 @@ export const reachesUnseen = (
   text: (path: string) => string | undefined,
   isMain: (path: string) => boolean,
   files: ReadonlySet<string>,
+  /** Filled with the test-side files it imports, which a runner's coverage may leave out (bun's skips test files). */
+  seen: Set<string> = new Set(),
 ): boolean => {
-  const seen = new Set<string>()
   const queue = [testFile]
   while (queue.length > 0) {
     const file = queue.pop()!
@@ -90,3 +91,38 @@ export const testMapOf = (
 /** Vitest's and Jest's configuration, which a global setup in makes the map unsound: it runs outside every test file's process. */
 export const RUNNER_CONFIG = /^(vitest|vite|jest)\.config\.[cm]?[jt]s$|^vitest\.workspace\.[cm]?[jt]s$|^package\.json$/
 export const GLOBAL_SETUP = /\bglobalSetup\b/
+
+/** What a bun project's bunfig.toml says that matters to its map. */
+export interface Bunfig {
+  /** `[test] preload`: run in every test file's own process, before the test file. */
+  readonly preload: ReadonlyArray<string>
+  /** A coverage setting bun lets win over the command line, so a test file's lcov wouldn't land where Gauntlet reads it. */
+  readonly overrides: string | undefined
+}
+
+/** bunfig.toml's test settings, or why they can't be read. */
+export const bunfigOf = (text: string): Bunfig | string => {
+  let doc: unknown
+  try {
+    doc = Bun.TOML.parse(text)
+  } catch {
+    return "bunfig.toml couldn't be read"
+  }
+  const test = typeof doc === "object" && doc !== null && "test" in doc && typeof doc.test === "object" && doc.test !== null ? doc.test as Record<string, unknown> : {}
+  const list = (v: unknown) => (v === undefined ? [] : Array.isArray(v) ? v.map(String) : [String(v)])
+  const reporters = list(test["coverageReporter"])
+  return {
+    preload: list(test["preload"]),
+    overrides: test["coverageDir"] !== undefined ? "coverageDir" : reporters.length > 0 && !reporters.includes("lcov") ? "coverageReporter" : undefined,
+  }
+}
+
+/**
+ * Whether bun's JUnit report for one test file's run says every test passed. A
+ * bunfig coverage threshold fails a run whose tests all passed; a test that
+ * failed, or a file that didn't load (then bun writes no report), doesn't count.
+ */
+export const bunPassed = (junit: string | undefined): boolean => {
+  const head = junit === undefined ? undefined : /<testsuites\b[^>]*>/.exec(junit)?.[0]
+  return head !== undefined && /\bfailures="0"/.test(head) && /\btests="[1-9]\d*"/.test(head) && !/\berrors="[1-9]/.test(head)
+}

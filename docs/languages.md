@@ -14,7 +14,7 @@ Back to the [README](../README.md).
 
 Each language pack brings its own zone rules, integrity detectors and tamper
 fixtures. A suite marked `affected` runs only the tests a change affects with
-the Kotlin and Java pack and with TypeScript on Vitest or Jest; elsewhere it
+the Kotlin and Java pack and with TypeScript on Vitest, Jest or Bun's test runner; elsewhere it
 runs every test ([policy](policy.md#running-the-tests-a-change-affects)). .NET, Ruby, PHP, Maven and frontend packs are planned.
 
 Integrity names each test by an id from the runner's report. Bun's test
