@@ -20,9 +20,9 @@ integrity {                          // only adds or tightens; defaults always a
   flag    env branching
 }
 import semgrep { command "semgrep scan --sarif --output {sarif}" }
-gates {
+gates {                              // advise: report the gate's findings (surviving mutants), block nothing
   fast   { build, lint ratchet, arch }
-  verify { unit, coverage >= 90% on changed, mutation ratchet >= 80% on changed in zone money }
+  verify { unit, coverage ratchet >= 90% on changed in zone money, mutation advise on changed }
 }
 on fail mutation { fix "Kill the surviving mutants listed in the report. Do not weaken tests." }
 quarantine {                         // a known flaky test, excused by an owner until a date

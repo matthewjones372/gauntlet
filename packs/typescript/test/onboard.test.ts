@@ -11,7 +11,7 @@ describe("typescript onboarding", () => {
       "tsconfig.json": "{}", "biome.json": "{}", "vitest.config.ts": "", "src/a.ts": "", "test/a.test.ts": "",
     }))
     expect(o.fast).toEqual(["build", "lint ratchet"])
-    expect(o.verify).toEqual(["coverage ratchet on changed", "mutation ratchet on changed"])
+    expect(o.verify).toEqual(["coverage ratchet on changed", "mutation advise on changed"])
     expect(o.setup).toEqual([])
     expect(o.protect.tests).toEqual(["test/**"])
     expect(o.protect.config).toEqual(["biome.json", "tsconfig.json", "vitest.config.ts"])

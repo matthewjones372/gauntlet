@@ -35,7 +35,7 @@ export const onboard = (repo: RepoView): Onboarding => {
   }
   // Which test runner to adopt is the person's choice, so it's never installed for them.
   else setup.push("Add vitest or jest (or use bun test) to run tests and gate coverage.")
-  if (deps.has("@stryker-mutator/core")) verify.push("mutation ratchet on changed")
+  if (deps.has("@stryker-mutator/core")) verify.push("mutation advise on changed")
   else {
     setup.push("Add @stryker-mutator/core and its test runner plugin to gate mutation.")
     const plugin = runner._tag === "Some" && runner.value === "vitest" ? ["@stryker-mutator/vitest-runner"] : runner._tag === "Some" && runner.value === "jest" ? ["@stryker-mutator/jest-runner"] : []

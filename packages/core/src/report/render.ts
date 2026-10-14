@@ -1,6 +1,7 @@
 import { prettyCanonicalJson, sha256, type SourceRef } from "@gauntlet/ir"
 import { type Log, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Schema } from "effect"
+import { SURVIVED_RULE } from "../mutants.ts"
 import { MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT } from "../mutation-explained.ts"
 import { checksTheBaseMayExplain, ranAsBase } from "./ran-as-base.ts"
 import { Report, type ReportCheck } from "./schema.ts"
@@ -327,6 +328,14 @@ export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
   if (r.violations.length > 0) {
     lines.push("### New findings", "")
     lines.push(...table(["Check", "Rule", "Where", "Message"], capped(r.violations, (v) =>
+      `| ${v.check} | ${code(v.ruleId)} | ${v.path ? link(v.path, v.line) : ""} | ${cell(v.message)} |`)))
+  }
+
+  const advice = r.advice ?? []
+  if (advice.length > 0) {
+    const survived = advice.some((v) => v.ruleId === SURVIVED_RULE)
+    lines.push("### Advisory findings", "", `These don't block on their own.${survived ? " A surviving mutant is a small change to the code that no test noticed: the line runs in a test, but nothing checks what it does." : ""}`, "")
+    lines.push(...table(["Check", "Rule", "Where", "Message"], capped(advice, (v) =>
       `| ${v.check} | ${code(v.ruleId)} | ${v.path ? link(v.path, v.line) : ""} | ${cell(v.message)} |`)))
   }
 

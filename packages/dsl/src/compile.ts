@@ -590,7 +590,7 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
     }
     const suiteKind = suiteKinds.get(c.name)
     if (suiteKind) {
-      if (c.ratchet || c.op !== undefined || c.scope !== undefined || c.zone !== undefined) {
+      if (c.ratchet || c.advise || c.op !== undefined || c.scope !== undefined || c.zone !== undefined) {
         error("suite-with-modifiers", span, `'${c.name}' is a suite: it passes or fails, so it takes no ratchet, threshold or scope.`,
           `just '${c.name}'`, `Write '${c.name}' on its own. Coverage and mutation thresholds go on the coverage and mutation gates.`)
         return undefined
@@ -617,6 +617,7 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       kind: "gate",
       name: c.name,
       ratchet: c.ratchet,
+      ...(c.advise ? { advise: true as const } : {}),
       ...(threshold ? { threshold } : {}),
       scope,
       ...(c.zone !== undefined ? { zone: c.zone } : {}),

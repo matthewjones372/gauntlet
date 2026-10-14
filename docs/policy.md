@@ -27,7 +27,7 @@ suites { unit "**/*_test.go" }
 
 gates {
   fast   { build, lint ratchet, arch }
-  verify { unit, coverage ratchet >= 80% on changed, mutation ratchet on changed }
+  verify { unit, coverage ratchet >= 80% on changed, mutation advise on changed }
 }
 
 predicate small = diff < 150 lines and no zone touched
@@ -103,19 +103,32 @@ alone can't tell you.
 
 It runs your tests once for every bug it makes, so it's by far the slowest
 check: minutes where your tests take seconds, and far longer across a whole
-project. Keep it quick by running it only on the lines a change touches, and
-only in the zones that matter:
+project. Keep it quick by running it only on the lines a change touches:
 
 ```
-verify { unit, mutation >= 60% on changed in zone money }
+verify { unit, mutation advise on changed }
 ```
 
 With `on changed`, only mutants on lines the change added or edited count: the
-tools mutate whole classes, but a change answers only for its own lines. A
-`mutation ratchet on changed` then works like lint's ratchet: a surviving mutant
-on a changed line that the baseline didn't grandfather blocks the change, and
-the report names its line. Whole-project scoring (`on all`, and `gauntlet
-baseline`) still compares each file's score with the baseline's. See
+tools mutate whole classes, but a change answers only for its own lines. Each
+mutant that survives on a changed line is a finding on that line: in the
+report, in what the agent is told, and as an annotation on the pull request's
+diff (the `gauntlet` check of a single-repository setup posts these). What it
+does depends on the policy:
+
+- `mutation advise on changed` reports the survivors and blocks nothing. The
+  check reads as advisory, and the decision doesn't change. `gauntlet init`
+  drafts this.
+- `mutation >= 60% on changed` blocks when fewer than 60% of the mutants on the
+  changed lines are killed, and lists the survivors either way. Add `in zone
+  money` to hold only the code that matters to it.
+- `mutation ratchet on changed` works like lint's ratchet: a survivor on a
+  changed line that the baseline didn't grandfather blocks the change.
+
+Whole-project scoring (`on all`, and `gauntlet baseline`) still compares each
+file's score with the baseline's. `advise` goes on any gate with findings
+(`lint advise` reports lint findings without blocking), but not with `ratchet`
+or a threshold, which block. See
 [spec 0011](specs/0011-mutation-on-changed-lines.md).
 
 `gauntlet setup` explains this before it adds mutation testing, setup skips

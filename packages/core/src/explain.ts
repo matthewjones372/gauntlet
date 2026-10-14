@@ -30,6 +30,7 @@ const describeCheck = (c: Check): string => {
       if (c.ratchet) parts.push("and no worse than the baseline")
       if (c.scope === "changed") parts.push("on changed code")
       if (c.zone) parts.push(`in zone ${c.zone}`)
+      if (c.advise) parts.push("(findings reported, never blocking)")
       return parts.join(" ")
     }
   }

@@ -100,7 +100,7 @@ describe("Go syntax and files", () => {
     expect(bare.protect).toEqual({ tests: ["**/*_test.go"], fixtures: ["testdata/**"], config: [] })
     const configured = onboard({ files: ["go.mod", "a.go", "a_test.go", ".golangci.yml", ".gremlins.yaml"], read: () => undefined })
     expect(configured.fast).toEqual(["build", "lint ratchet"])
-    expect(configured.verify).toEqual(["coverage ratchet on changed", "mutation ratchet on changed"])
+    expect(configured.verify).toEqual(["coverage ratchet on changed", "mutation advise on changed"])
     expect(configured.setup).toEqual([])
   })
 })

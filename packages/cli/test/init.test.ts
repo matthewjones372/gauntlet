@@ -47,7 +47,7 @@ describe("gauntlet init", () => {
     r.write({ "package.json": JSON.stringify(pkg) })
     r.commit("no stryker")
     const res = await gauntlet(["init", "--repo", r.dir, "--template", "--dry-run"])
-    expect(res.out).not.toContain("mutation ratchet")
+    expect(res.out).not.toContain("mutation advise")
     expect(res.out).toContain("Add @stryker-mutator/core")
     expect(existsSync(join(r.dir, ".gauntlet", "policy.gx"))).toBe(false)
   })

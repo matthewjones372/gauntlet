@@ -150,6 +150,7 @@ LlmReviewCheck:
 MetricCheck:
     name=CheckName
     (ratchet?='ratchet')?
+    (advise?='advise')?
     (op=Cmp value=Quantity)?
     ('on' scope=Name)?
     ('in' 'zone' zone=Name)?;
@@ -244,7 +245,7 @@ IntegrityWord returns string:
 // Words inside a stack layer body, which is closed by '}'.
 LayerWord returns string:
     ID | 'split' | 'reads' | 'affected' | 'zone' | 'budget' | 'gates' | 'paths' | 'rule' | 'module' | 'must' | 'not' | 'depend'
-    | 'on' | 'from' | 'env' | 'vs' | 'baseline' | 'ratchet' | 'in' | 'layer' | 'max' | 'diff'
+    | 'on' | 'from' | 'env' | 'vs' | 'baseline' | 'ratchet' | 'advise' | 'in' | 'layer' | 'max' | 'diff'
     | 'cumulative' | 'ci' | 'only' | 'caution' | 'fix' | 'fail' | 'flag' | 'forbid' | 'review'
     | 'owner' | 'skim' | 'auto' | 'llm' | 'protect' | 'suites' | 'integrity' | 'arch' | 'stack'
     | 'changed' | 'all' | 'no' | 'touched' | 'added' | 'missing' | 'pass';

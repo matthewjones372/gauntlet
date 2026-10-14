@@ -81,7 +81,7 @@ describe("Rust syntax and files", () => {
     expect(bare.fast).toEqual(["build", "lint ratchet"])
     expect(bare.verify).toEqual(["coverage ratchet on changed"])
     expect(bare.protect).toEqual({ tests: ["tests/**"], fixtures: [], config: ["clippy.toml"] })
-    expect(onboard({ files: ["Cargo.toml", "src/lib.rs", ".cargo/mutants.toml"], read: () => undefined }).verify).toEqual(["coverage ratchet on changed", "mutation ratchet on changed"])
+    expect(onboard({ files: ["Cargo.toml", "src/lib.rs", ".cargo/mutants.toml"], read: () => undefined }).verify).toEqual(["coverage ratchet on changed", "mutation advise on changed"])
   })
 })
 

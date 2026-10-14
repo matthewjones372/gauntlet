@@ -52,6 +52,7 @@ const gateLoosenings = (before: PolicyIR, after: PolicyIR): Loosening[] => {
     }
     if (b.kind !== "gate" || a.kind !== "gate") continue
     if (b.ratchet && !a.ratchet) out.push({ what: `${checkId(b)} is no longer a ratchet` })
+    if (!b.advise && a.advise) out.push({ what: `${checkId(b)} only advises: its findings no longer block` })
     if (b.scope === "all" && a.scope === "changed") out.push({ what: `${checkId(b)} now only measures changed code` })
     if (b.threshold && !a.threshold) out.push({ what: `${checkId(b)} loses its threshold (${thresholdText(b.threshold)})` })
     if (b.threshold && a.threshold) {

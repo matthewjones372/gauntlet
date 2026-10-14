@@ -1,6 +1,6 @@
 # Spec 0011: mutation testing on changed lines, as review findings
 
-Status: proposed.
+Status: implemented: §1, §2, §4 and §5 in #91, and §3 (survivors as findings, `advise`) on branch `spec-0011-advise`.
 
 ## Problem
 

@@ -183,6 +183,7 @@ export const draftPolicy = (r: DraftRequest, files: ReadonlyArray<string>): Draf
   }
   if (fast.length + verify.length > 0) {
     if (floors) lines.push(`// Ratchets keep each file from getting worse; the floors apply to new and changed lines only, so old code doesn't block a change.`)
+    if (verify.some((g) => g.startsWith("mutation advise"))) lines.push("// `mutation advise` reports mutants on the changed lines that no test kills, and blocks nothing.")
     lines.push("gates {")
     for (const [tier, gates] of tiers) if (gates.length > 0) lines.push(`  ${tier.padEnd(tierWidth)} { ${gates.join(", ")} }`)
     lines.push("}", "")

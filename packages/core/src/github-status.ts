@@ -125,6 +125,37 @@ export interface GithubStatus {
   readonly approvedVia?: ReadonlyArray<number>
   /** The commit an approval recorded with the same code was given on (spec 0015). */
   readonly carriedFrom?: string
+  /** Findings on the change's lines, for the check run to show on the pull request's diff (spec 0011). */
+  readonly annotations: ReadonlyArray<Annotation>
+}
+
+/** A check run annotation, as GitHub's API takes it. */
+export interface Annotation {
+  readonly path: string
+  readonly start_line: number
+  readonly end_line: number
+  readonly annotation_level: "failure" | "warning"
+  readonly title: string
+  readonly message: string
+}
+
+/** GitHub takes at most 50 annotations in one request; the report lists every finding. */
+export const MAX_ANNOTATIONS = 50
+
+/**
+ * The report's findings that have a line, as annotations: new findings, which
+ * block, first, then those that don't block on their own (surviving mutants,
+ * an `advise` gate's), so a cap never drops one that blocks for one that doesn't.
+ */
+export const annotationsOf = (report: Report): Annotation[] => located(report).slice(0, MAX_ANNOTATIONS)
+
+const located = (report: Report): Annotation[] => {
+  const at = (level: Annotation["annotation_level"]) => (v: Report["violations"][number]): Annotation[] =>
+    v.path !== undefined && v.line !== undefined
+      ? [{ path: v.path, start_line: v.line, end_line: v.line, annotation_level: level, title: `${v.check}: ${v.ruleId}`, message: v.message === "" ? v.ruleId : v.message }]
+      : []
+  // Partial reports (hand-built in tests) may lack sections; a real report always has violations.
+  return [...(report.violations ?? []).flatMap(at("failure")), ...(report.advice ?? []).flatMap(at("warning"))]
 }
 
 /** Logins whose latest review approves exactly this commit. A later push needs a new approval. */
@@ -166,9 +197,13 @@ export const githubStatus = (report: Report, reviews: ReadonlyArray<Review>, tea
   const carriedLine = carried !== undefined ? [`The approval of ${carried.slice(0, 12)} carries over: this commit has the same code, compared with the same base.`, ""] : []
   const carriedOverride = s.honouredOverrides.find((o) => o.headSha !== head)
   const overrideLine = carriedOverride !== undefined ? [`The override recorded for ${carriedOverride.headSha.slice(0, 12)} carries over too.`, ""] : []
+  const annotations = annotationsOf(report)
+  const total = located(report).length
+  const moreLine = total > annotations.length ? [`The diff shows the first ${annotations.length} of ${total} findings; the report lists them all.`, ""] : []
   return {
     ...s,
-    summary: [...verdictLines(report), "", ...ignored, ...viaLine, ...carriedLine, ...overrideLine, s.summary].join("\n"),
+    summary: [...verdictLines(report), "", ...ignored, ...viaLine, ...carriedLine, ...overrideLine, ...moreLine, s.summary].join("\n"),
+    annotations,
     ...(notOwners.length > 0 ? { notOwners } : {}),
     ...(via.length > 0 ? { approvedVia: via } : {}),
     ...(carried !== undefined ? { carriedFrom: carried } : {}),
@@ -190,7 +225,7 @@ export const sameCodeCommits = (comments: ReadonlyArray<PrComment>, head: string
   })
 
 /** Protect-only is pass or fail; approvals don't change it. */
-const protectOnlyStatus = (report: Report, reviews: ReadonlyArray<Review>): GithubStatus => {
+const protectOnlyStatus = (report: Report, reviews: ReadonlyArray<Review>): Omit<GithubStatus, "annotations"> => {
   const approvers = approvalsOn(reviews, report.policy.headSha)
   const first = report.decision.nominations.find((n) => n.blocking)
   return report.decision.blocking
@@ -228,7 +263,7 @@ const otherPolicy = (overrides: ReadonlyArray<OverrideRecord>, head: string, irH
     `\n\nThe override by ${o.approver} for this commit doesn't count: it was recorded against ${recordedAgainst(o)}, but this change is judged with its base's policy (IR ${irHash.slice(0, 12)}). To record it against that policy and approve in one step, ${o.approver} runs \`gauntlet approve <pr> --override "<reason>" --head ${head.slice(0, 12)}\`.`
   ).join("")
 
-const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>, sameCode: ReadonlyArray<string> = []): GithubStatus => {
+const tierStatus = (report: Report, reviews: ReadonlyArray<Review>, teams: Teams, overrides: ReadonlyArray<OverrideRecord>, sameCode: ReadonlyArray<string> = []): Omit<GithubStatus, "annotations"> => {
   const head = report.policy.headSha
   // The zones a change touches, in the check's title, so a list of pull requests shows where to look.
   // A report from an older evidence job may carry no facts.

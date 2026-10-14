@@ -146,6 +146,16 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
       error("cannot-ratchet", span, `'${check.name}' only passes or fails, so there is nothing to ratchet.`, `'${check.name}' without \`ratchet\``,
         "Remove `ratchet`.")
     }
+    // Spec 0011: `advise` reports the gate's findings and blocks nothing, so nothing that blocks goes with it.
+    if (check.advise && spec.produces === "outcome") {
+      error("cannot-advise", span, `'${check.name}' only passes or fails, so it has no findings to advise on.`, `'${check.name}' without \`advise\``,
+        "Remove `advise`.")
+    } else if (check.advise && (check.ratchet || check.threshold)) {
+      const what = check.ratchet ? "ratchet" : `${check.threshold!.op} ${check.threshold!.value.value}${check.threshold!.value.unit ?? ""}`
+      error("advise-blocks-nothing", span, `'${check.name} advise' blocks nothing, so it can't also take '${what}'.`,
+        `'${check.name} advise' or '${check.name} ${check.ratchet ? "ratchet" : what}'`,
+        `Keep \`advise\` to report findings without blocking, or remove it to block on '${what}'.`)
+    }
     if (check.threshold) {
       const { op, value } = check.threshold
       const amount = `${value.value}${value.unit ?? ""}`

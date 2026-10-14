@@ -14,7 +14,7 @@ export const onboard = (repo: RepoView): Onboarding => {
   const setup: string[] = []
   if (has(LINT_CONFIG).length > 0) fast.push("lint ratchet")
   else setup.push("Add a .golangci.yml (golangci-lint v2) to gate lint.")
-  if (has(MUTATION_CONFIG).length > 0) verify.push("mutation ratchet on changed")
+  if (has(MUTATION_CONFIG).length > 0) verify.push("mutation advise on changed")
   else setup.push("Install gremlins and add a .gremlins.yaml to gate mutation.")
   const tests = repo.files.some((f) => f.endsWith("_test.go")) ? ["**/*_test.go"] : []
   return {

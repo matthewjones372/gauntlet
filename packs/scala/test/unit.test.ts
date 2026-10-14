@@ -92,7 +92,7 @@ describe("Scala files, symbols and reruns", () => {
   test("onboarding follows project/plugins.sbt", () => {
     const configured = onboard({ files: ["build.sbt", "project/plugins.sbt", "src/main/scala/A.scala", "src/test/scala/AT.scala"], read: (p) => (p === "project/plugins.sbt" ? fixture("scala-service/project/plugins.sbt") : undefined) })
     expect(configured.fast).toEqual(["build", "lint ratchet"])
-    expect(configured.verify).toEqual(["coverage ratchet on changed", "mutation ratchet on changed"])
+    expect(configured.verify).toEqual(["coverage ratchet on changed", "mutation advise on changed"])
     expect(configured.protect).toEqual({ tests: ["src/test/**"], fixtures: [], config: ["*.sbt", "project/**"] })
     const bare = onboard({ files: ["build.sbt", "src/main/scala/A.scala"], read: () => undefined })
     expect(bare.setup).toHaveLength(3)

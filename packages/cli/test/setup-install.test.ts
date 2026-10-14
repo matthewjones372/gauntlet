@@ -57,7 +57,7 @@ describe("gauntlet setup installs missing tools", () => {
     expect(r.out).toContain("I'll install these for you:\n  uv add --dev mypy ruff pytest coverage mutmut")
     expect(r.out).toContain("Installed.")
     expect(r.policy).toContain("build")
-    expect(r.policy).toContain("mutation ratchet")
+    expect(r.policy).toContain("mutation advise on changed")
     expect(r.out).not.toContain("Checks still left out")
     expect(r.code).toBe(0)
   })

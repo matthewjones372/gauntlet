@@ -10,7 +10,7 @@ describe("python onboarding", () => {
       "uv.lock": "", "src/x/a.py": "", "tests/test_a.py": "", "tests/conftest.py": "",
     }))
     expect(o.fast).toEqual(["build", "lint ratchet"])
-    expect(o.verify).toEqual(["coverage ratchet on changed", "mutation ratchet on changed"])
+    expect(o.verify).toEqual(["coverage ratchet on changed", "mutation advise on changed"])
     expect(o.setup).toEqual([])
     expect(o.protect).toEqual({ tests: ["tests/**"], fixtures: [], config: ["**/conftest.py", "pyproject.toml"] })
     expect(o.suites).toEqual([{ name: "unit", location: "tests/**" }])

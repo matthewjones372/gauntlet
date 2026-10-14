@@ -10,7 +10,7 @@ export const onboard = (repo: RepoView): Onboarding => {
   const fast = ["build", "lint ratchet"]
   const verify = ["coverage ratchet on changed"]
   const setup: string[] = []
-  if (repo.files.includes(".cargo/mutants.toml")) verify.push("mutation ratchet on changed")
+  if (repo.files.includes(".cargo/mutants.toml")) verify.push("mutation advise on changed")
   else setup.push("Install cargo-mutants and add a .cargo/mutants.toml to gate mutation.")
   const tests = directoriesNamed(repo.files, ["tests", "benches"])
   return {

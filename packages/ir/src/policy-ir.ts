@@ -133,6 +133,8 @@ export const Check = Schema.Union([
     kind: Schema.Literal("gate"),
     name: Schema.String,
     ratchet: Schema.Boolean,
+    /** `advise` (spec 0011): the gate's findings are reported and block nothing. Absent otherwise. */
+    advise: Schema.optionalKey(Schema.Literal(true)),
     threshold: Schema.optionalKey(Threshold),
     scope: Schema.Literals(["changed", "all"]),
     zone: Schema.optionalKey(Schema.String),

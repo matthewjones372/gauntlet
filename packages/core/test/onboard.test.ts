@@ -93,6 +93,12 @@ describe("strict drafts: zones, arch and floors inferred from the layout", () =>
       .toContain("verify { unit, coverage ratchet >= 80% on changed, mutation ratchet >= 60% on changed }")
   })
 
+  test("mutation advise gets no floor: it reports survivors and blocks nothing (spec 0011)", () => {
+    const d = strict(["@platform"], { proposals: [{ pack: "jvm", onboarding: proposal({ verify: ["coverage ratchet on changed", "mutation advise on changed"] }) }] })
+    expect(d.text).toContain("verify { unit, coverage ratchet >= 80% on changed, mutation advise on changed }")
+    expect(compile(d.text).gates[1]!.checks.find((c) => c.kind === "gate" && c.name === "mutation")).toEqual({ kind: "gate", name: "mutation", ratchet: false, advise: true, scope: "changed" })
+  })
+
   test("without owners, zones that would reach protected files are left out, so the draft still compiles", () => {
     // Tests beside the code they test, as in Go: auth/LoginTest.kt is protected and inside the security folder.
     const beside = (owners: string[]) => draftPolicy({
