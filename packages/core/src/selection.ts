@@ -58,7 +58,8 @@ export const selectTests = (input: SelectionInput): Selection => {
   const changes = input.changes.filter((c) => mine(c.path) || (c.oldPath !== undefined && mine(c.oldPath)))
   const paths = (c: (typeof changes)[number]) => [c.path, ...(c.oldPath !== undefined ? [c.oldPath] : [])].filter(mine)
   for (const p of changes.flatMap(paths)) {
-    const group = input.protect.find((g) => g.kind !== "tests" && g.kind !== "gauntlet" && g.globs.some((glob) => globMatches(glob, p)))
+    // Scenario files (spec 0012) are read by Gauntlet, never by a test.
+    const group = input.protect.find((g) => g.kind !== "tests" && g.kind !== "gauntlet" && g.kind !== "scenarios" && g.globs.some((glob) => globMatches(glob, p)))
     if (group) return { kind: "all", reason: `the change touches ${p} (${group.kind}), which every test may depend on` }
     if (input.buildConfig.some((glob) => globMatches(glob, p))) return { kind: "all", reason: `the change touches ${p}, the build's configuration` }
   }
@@ -69,8 +70,9 @@ export const selectTests = (input: SelectionInput): Selection => {
   for (const [name, files] of classes) for (const f of files) users.set(f, [...(users.get(f) ?? []), name])
   const selected = new Set<string>()
   const files: string[] = []
+  const scenario = (p: string) => input.protect.some((g) => g.kind === "scenarios" && g.globs.some((glob) => globMatches(glob, p)))
   for (const c of changes) {
-    if (NOT_RUN.test(c.path)) continue
+    if (NOT_RUN.test(c.path) || scenario(c.path)) continue
     const known = paths(c).flatMap((p) => users.get(p) ?? [])
     if (known.length > 0) {
       known.forEach((n) => selected.add(n))

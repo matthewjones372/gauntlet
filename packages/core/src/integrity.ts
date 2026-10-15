@@ -5,6 +5,7 @@ import { Effect, type FileSystem, Option, type Path } from "effect"
 import type { DiffFacts } from "./diff-facts.ts"
 import { describePruning, pruningVerdict, removedTests, sameTest } from "./pruning.ts"
 import { describeRemoval, describeRemovedFile, judgeRemovedTests, type RemovalVerdict, stillDeclared } from "./removed-with-code.ts"
+import { deletedScenarios } from "./scenarios.ts"
 
 // Integrity checks: is the verification itself intact? (ADR 0013)
 // Core implements what needs no language knowledge; packs supply detectors
@@ -305,7 +306,7 @@ const FLAKY_PATTERNS: ReadonlyArray<{ readonly what: string; readonly pattern: R
 export const runIntegrity = (input: IntegrityInput, detectors: ReadonlyArray<IntegrityDetector>): Effect.Effect<IntegrityResult, never, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function*() {
     const core = coreDetector(input, yield* removalVerdicts(input))
-    const findings = [...core.findings]
+    const findings = [...core.findings, ...(yield* deletedScenarios(input))]
     const metrics: Record<string, Metric> = { ...core.metrics }
     const covered = new Set<IntegrityCheck>(core.covered)
     for (const detector of [...detectors].sort((a, b) => (a.name < b.name ? -1 : 1))) {

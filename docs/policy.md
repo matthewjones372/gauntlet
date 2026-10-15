@@ -384,6 +384,58 @@ findings by rule and file, and warnings where it falls short of the policy, such
 as project coverage below the floor changed code must meet, or a build with no
 coverage recorded at all. `--json` gives the same as data.
 
+## Scenarios
+
+A scenario is a person's statement of what the code should do, with an id
+([spec 0012](specs/0012-scenarios.md)). Gauntlet never runs scenarios: it
+checks that each one is bound to tests that ran, passed, can fail, and catch a
+bug on the lines the change touched.
+
+```
+scenarios "specs/**/*.feature"
+
+gates {
+  verify    { unit, mutation advise on changed }
+  behaviour { scenarios }
+}
+```
+
+Scenario files use Gherkin's syntax, and Gauntlet reads a subset of it:
+`Feature`, `Background`, `Scenario` (or `Example`), `Scenario Outline` (or
+`Scenario Template`) with its `Examples` (one scenario, the table kept as
+written), the steps `Given`, `When`, `Then`, `And`, `But` and `*` with their
+data tables and doc strings, tags and `#` comments. Anything else (`Rule`, a
+step outside a scenario) is an error. A scenario's id is its tag of capitals, a
+dash and digits:
+
+```gherkin
+Feature: Currency conversion
+
+  @FX-003
+  Scenario: Converting EUR to USD
+    Given a rate of 1.10 USD per EUR
+    When I convert €1.00
+    Then I get $1.10
+```
+
+A scenario without an id, one with two, or two scenarios with the same id are
+errors from `gauntlet validate` (and the MCP `validate` tool), at the
+scenario's line: the file is wrong before any change is. A check never fails
+for them.
+
+Scenario files are intent, so they're protected the way tests are: the
+`scenarios` line protects its files as a group of that name. The judged
+checkout has the base commit's version, and a change that adds, edits or
+deletes one needs review; the report lists it under "Ran as the base has
+them". Deleting a scenario (its id is in no scenario file at head) is a
+`deleted-tests` forbid, as for a test; moving it to another file isn't. An
+agent writing its own acceptance criteria would be grading its own work.
+
+`scenarios` in a gate tier judges them, and `scenarios advise` reports the
+verdicts without blocking. It reads what the suites and the mutation gate
+found, so `validate` warns when they run in a later tier, and says that
+without a mutation gate no scenario can be shown to catch a bug.
+
 ## Running the tests a change affects
 
 A suite marked `affected` runs only the tests a change can affect
@@ -708,6 +760,7 @@ override or grant. Like `gauntlet approve`, it runs only in your own terminal.
 | --- | --- |
 | **The policy** | In CI the policy, baseline and protected paths come from the base commit. A change to `.gauntlet/` is judged by the old policy and needs an owner. |
 | **Tests, fixtures, test setup and runner configuration** | Protected paths and each language's runner config are restored from the base before anything runs. Editing them can't change the result; the edit is flagged. |
+| **Scenarios** | Scenario files the policy names are judged as the base has them; a change to one needs review, and deleting a scenario is forbidden (spec 0012). |
 | **The evidence** | Each check gets a fresh output directory. Gauntlet reads only what the processes it started wrote there, so a planted result file is ignored. |
 | **Proof of execution** | Every gate records its command, exit code, report hash and, for suites, the executed test count. Missing proof is "not executed", which is missing evidence, never a pass. A suite that runs zero tests fails. |
 | **Verification strength** | A baseline records coverage, mutation score, executed tests, assertions and lint findings. These ratchet: they can't drop. Existing lint findings are grandfathered; new ones fail. |

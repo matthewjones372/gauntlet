@@ -347,7 +347,7 @@ export const runCheck = (request: CheckRequest) =>
       // The CI's reports stand in for running the tests again only when the change couldn't have shaped them:
       // it leaves the CI's workflows and the protected build files alone, and no report is a file in the repository.
       const tracked = new Set(files)
-      const shapesCi = p.facts.files.some((f) => f.path.startsWith(".github/workflows/")) || p.facts.protectedTouched.some((t) => t.kind !== "tests" && t.action !== "kept")
+      const shapesCi = p.facts.files.some((f) => f.path.startsWith(".github/workflows/")) || p.facts.protectedTouched.some((t) => t.kind !== "tests" && t.kind !== "scenarios" && t.action !== "kept")
       const fromCi = request.ciReports && !shapesCi ? request.ciReports.files.filter((f) => !tracked.has(f.path)) : []
       // From the base commit, like the policy: a change can't alter how it's built for its own judgement.
       const ci = request.ci ? Option.flatMap(yield* git.show(request.repo, p.base, CI_CONFIG_PATH).pipe(Effect.orElseSucceed(() => Option.none<string>())), parseCiConfig) : Option.none<CiConfig>()
@@ -417,9 +417,9 @@ export const judgeWithEvidence = (request: JudgeRequest) =>
     const claimed = (tier: string, check: string) => ev.checks.find((c) => c.tier === tier && c.check === check)
     const checks: CheckRecord[] = []
     p.ir.gates.forEach((t, ti) => t.checks.forEach((c, ci) => {
-      const name = c.kind === "budget" ? `budget ${c.budget}` : c.kind === "llm-review" ? "llm review" : c.name
+      const name = c.kind === "budget" ? `budget ${c.budget}` : c.kind === "llm-review" ? "llm review" : c.kind === "scenarios" ? "scenarios" : c.name
       // The base policy says which gates only advise (spec 0011), never the evidence.
-      const base = { tier: t.name, check: name, pointer: `/gates/${ti}/checks/${ci}`, advisory: t.advisory || (c.kind === "gate" && c.advise === true) }
+      const base = { tier: t.name, check: name, pointer: `/gates/${ti}/checks/${ci}`, advisory: t.advisory || ((c.kind === "gate" || c.kind === "scenarios") && c.advise === true) }
       const got = claimed(t.name, name)
       checks.push(got
         ? { ...base, status: got.status, ...(got.reason !== undefined ? { reason: got.reason } : {}), ...(got.proof ? { proof: got.proof } : {}), ...(got.tests ? { tests: got.tests } : {}), ...(got.failures ? { failures: got.failures } : {}), ...(got.flaky ? { flaky: got.flaky } : {}), ...(got.quarantined ? { quarantined: got.quarantined } : {}), ...(got.holdoutGap ? { holdoutGap: true as const } : {}), ...(got.failingOnBase ? { failingOnBase: got.failingOnBase } : {}), ...(got.failedBefore ? { failedBefore: true as const } : {}), ...(got.selection ? { selection: got.selection } : {}), ...(got.pruning ? { pruning: got.pruning } : {}) }

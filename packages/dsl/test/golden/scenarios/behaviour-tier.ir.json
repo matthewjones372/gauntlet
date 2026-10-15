@@ -1,0 +1,102 @@
+{
+  "hash": "b527a083c36cbc0f102c58ddd5fb8c6d777f1aa000bd6f43ec3a0993d8d03f18",
+  "ir": {
+    "arch": [],
+    "budgets": [],
+    "gates": [
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "advise": true,
+            "kind": "gate",
+            "name": "mutation",
+            "ratchet": false,
+            "scope": "changed"
+          },
+          {
+            "kind": "suite",
+            "name": "unit"
+          }
+        ],
+        "name": "verify"
+      },
+      {
+        "advisory": false,
+        "checks": [
+          {
+            "kind": "scenarios"
+          }
+        ],
+        "name": "behaviour"
+      }
+    ],
+    "imports": [],
+    "integrity": {
+      "flag": [
+        "catch-all-near-changed-code",
+        "env-branching",
+        "equality-overrides",
+        "flaky-patterns",
+        "mocks-of-class-under-test",
+        "test-special-case-comments"
+      ],
+      "forbid": [
+        "added-retries",
+        "deleted-tests",
+        "exit-in-tests",
+        "new-skips",
+        "new-suppressions",
+        "test-refs-in-main",
+        "weakened-assertions"
+      ],
+      "ratchet": [
+        "assertions-per-test",
+        "executed-tests",
+        "property-tests",
+        "quarantined-tests",
+        "skipped-tests",
+        "suppressions"
+      ]
+    },
+    "irVersion": 1,
+    "mode": "enforce",
+    "name": "x",
+    "owners": [
+      "@platform"
+    ],
+    "packs": [
+      "jvm"
+    ],
+    "predicates": [],
+    "protect": [
+      {
+        "globs": [
+          ".gauntlet/**"
+        ],
+        "group": "gauntlet",
+        "kind": "gauntlet"
+      },
+      {
+        "globs": [
+          "specs/**/*.feature"
+        ],
+        "group": "scenarios",
+        "kind": "scenarios"
+      }
+    ],
+    "remediation": [],
+    "review": [],
+    "scenarios": [
+      "specs/**/*.feature"
+    ],
+    "suites": [
+      {
+        "kind": "suite",
+        "location": "src/test/**",
+        "name": "unit"
+      }
+    ],
+    "zones": []
+  }
+}

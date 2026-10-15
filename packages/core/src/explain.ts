@@ -25,6 +25,7 @@ const describeCheck = (c: Check): string => {
     case "holdout": return `the ${c.name} holdout passes (CI only; not executed in v1)`
     case "budget": return `perf budget ${c.budget} holds`
     case "llm-review": return `${c.reviews} independent LLM reviews (caution only; not executed in v1)`
+    case "scenarios": return `every scenario's tests ran, passed, can fail and catch a bug on the changed lines${c.advise ? " (verdicts reported, never blocking)" : ""}`
     case "gate": {
       const parts = [c.name]
       if (c.threshold) parts.push(`${c.threshold.op} ${c.threshold.value.value}${c.threshold.value.unit ?? ""}`)

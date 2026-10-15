@@ -15,7 +15,12 @@ entry Policy:
 
 Block:
     Use | Mode | Owners | Protect | Zone | ZoneDefaults | Arch | Suites | Integrity | Import
-    | Budget | Gates | OnFail | Predicate | Review | Stack | Quarantine | Split | Attempts;
+    | Budget | Gates | OnFail | Predicate | Review | Stack | Quarantine | Split | Attempts | Scenarios;
+
+// \`scenarios "specs/**/*.feature"\`: Gherkin files of human-written scenarios, each with an id (spec 0012).
+// They're protected like tests, and the \`scenarios\` check judges the tests bound to each one.
+Scenarios:
+    'scenarios' globs+=STRING (','? globs+=STRING)*;
 
 // \`attempts { unchanged 3, total 8 }\`: how many blocked stops the agent hooks allow
 // before letting the agent stop as exhausted (ADR 0026). Limits left out keep their defaults.
@@ -230,7 +235,7 @@ Cmp returns string:
 
 // Gate checks may be named after a keyword, such as the `arch` gate.
 CheckName returns string:
-    QName | 'arch' | 'stack' | 'protect' | 'suites' | 'integrity';
+    QName | 'arch' | 'stack' | 'protect' | 'suites' | 'integrity' | 'scenarios';
 
 QName returns string:
     Name ('.' Name)*;
@@ -243,12 +248,12 @@ Name returns string:
 // Words inside an integrity list. The three list keywords are left out so a
 // new `ratchet`, `forbid` or `flag` line starts a new list.
 IntegrityWord returns string:
-    ID | 'zones' | 'split' | 'reads' | 'affected' | 'in' | 'on' | 'not' | 'env' | 'from' | 'only' | 'module' | 'baseline' | 'diff' | 'fail' | 'fix'
+    ID | 'zones' | 'scenarios' | 'split' | 'reads' | 'affected' | 'in' | 'on' | 'not' | 'env' | 'from' | 'only' | 'module' | 'baseline' | 'diff' | 'fail' | 'fix'
     | 'changed' | 'all' | 'no' | 'touched' | 'added' | 'missing' | 'pass';
 
 // Words inside a stack layer body, which is closed by '}'.
 LayerWord returns string:
-    ID | 'zones' | 'split' | 'reads' | 'affected' | 'zone' | 'budget' | 'gates' | 'paths' | 'rule' | 'module' | 'must' | 'not' | 'depend'
+    ID | 'zones' | 'scenarios' | 'split' | 'reads' | 'affected' | 'zone' | 'budget' | 'gates' | 'paths' | 'rule' | 'module' | 'must' | 'not' | 'depend'
     | 'on' | 'from' | 'env' | 'vs' | 'baseline' | 'ratchet' | 'advise' | 'in' | 'layer' | 'max' | 'diff'
     | 'cumulative' | 'ci' | 'only' | 'caution' | 'fix' | 'fail' | 'flag' | 'forbid' | 'review'
     | 'owner' | 'skim' | 'auto' | 'llm' | 'protect' | 'suites' | 'integrity' | 'arch' | 'stack'

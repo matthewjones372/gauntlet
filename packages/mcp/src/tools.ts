@@ -2,7 +2,7 @@ import {
   type AuthorConfig, authorConfig, authorContext, Citation, describeCitation, draftProposals, label, languageModelLayer,
 } from "@gauntlet/author"
 import {
-  agentSummary, type BaselineStore, BLOCKED_ACK, checkWorkingTree, coverage, explainPolicy, Git, type Overrides, type PackRegistry, PolicySource, type ProcessRunner,
+  agentSummary, type BaselineStore, BLOCKED_ACK, checkWorkingTree, coverage, explainPolicy, formatScenarioDiagnostics, Git, readScenarioFiles, type Overrides, type PackRegistry, PolicySource, type ProcessRunner,
   recordBlocked, renderAgentSummary, renderCoverage, type Reporter, type ShadowLog, templateDraft, type Workspace,
 } from "@gauntlet/core"
 import { Compiler, DEFAULT_POLICY_FILE, type Diagnostic, formatDiagnostics, POLICY_REFERENCE, PolicyInvalid } from "@gauntlet/dsl"
@@ -135,10 +135,19 @@ export const toolHandlers = (o: ToolOptions) =>
           const diagnostics: ReadonlyArray<Diagnostic> = result._tag === "Success"
             ? result.value.diagnostics
             : result.cause.reasons.flatMap((r) => (r._tag === "Fail" && r.error instanceof PolicyInvalid ? r.error.diagnostics : []))
+          // Spec 0012: the scenario files the policy names must each give every scenario an id of its own.
+          const scenarios = result._tag === "Success" && result.value.ir.scenarios !== undefined && Option.isSome(files)
+            ? yield* readScenarioFiles(o.repo, result.value.ir, files.value)
+            : undefined
+          const scenarioErrors = scenarios?.diagnostics ?? []
+          const shown = [
+            ...(diagnostics.length > 0 ? [formatDiagnostics(diagnostics, source)] : []),
+            ...(scenarioErrors.length > 0 ? [formatScenarioDiagnostics(scenarioErrors, scenarios!.texts)] : []),
+          ]
           return {
-            valid: result._tag === "Success",
+            valid: result._tag === "Success" && scenarioErrors.length === 0,
             ...(result._tag === "Success" ? { irHash: result.value.hash } : {}),
-            diagnostics: diagnostics.length > 0 ? formatDiagnostics(diagnostics, source) : "",
+            diagnostics: shown.join("\n\n"),
           }
         }))),
       check: () =>

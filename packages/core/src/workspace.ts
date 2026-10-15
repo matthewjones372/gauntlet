@@ -80,7 +80,7 @@ export class Workspace extends Context.Service<Workspace, {
 }>()("@gauntlet/core/Workspace") {}
 
 // Stricter kinds win when a path matches more than one group.
-const RANK: Record<Materialised["kind"], number> = { gauntlet: 3, config: 2, fixtures: 2, other: 2, "runner-config": 2, tests: 1 }
+const RANK: Record<Materialised["kind"], number> = { gauntlet: 3, config: 2, fixtures: 2, other: 2, "runner-config": 2, scenarios: 2, tests: 1 }
 
 interface Protection {
   readonly group: string

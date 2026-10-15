@@ -94,6 +94,7 @@ export interface GateRunnerOutput {
 const NOT_IN_V1: Partial<Record<Check["kind"], string>> = {
   holdout: "holdout pending: holdouts run only in CI and are not executed in v1",
   "llm-review": "llm review is not executed in v1",
+  scenarios: "scenario verdicts aren't worked out yet: the scenario files are read and protected (spec 0012 §1, §2), and the verdicts come with §3-§6",
 }
 
 /** How many failing tests a report names per suite. */
@@ -109,7 +110,7 @@ export const gateMetricKey = (gate: { readonly name: string; readonly zone?: str
 /** The gate a recorded metric belongs to: \`coverage in zone money\` is coverage's. */
 export const metricGate = (key: string): string => key.split(" in zone ")[0]!
 
-const checkName = (c: Check) => (c.kind === "budget" ? `budget ${c.budget}` : c.kind === "llm-review" ? "llm review" : c.name)
+const checkName = (c: Check) => (c.kind === "budget" ? `budget ${c.budget}` : c.kind === "llm-review" ? "llm review" : c.kind === "scenarios" ? "scenarios" : c.name)
 const dirName = (tier: number, index: number, c: Check) => `${tier}-${index}-${checkName(c).replace(/[^A-Za-z0-9._-]+/g, "-")}`
 
 /** The directory every holdout glob sits under ("" for the whole project), for the suite runner. */
@@ -263,7 +264,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       for (const { c: check, i } of order) {
         const pointer = `/gates/${t}/checks/${i}`
         // An `advise` gate blocks nothing (spec 0011): advisory, like the advisory tier's checks.
-        const base = { tier: tier.name, check: checkName(check), pointer, advisory: tier.advisory || (check.kind === "gate" && check.advise === true) }
+        const base = { tier: tier.name, check: checkName(check), pointer, advisory: tier.advisory || ((check.kind === "gate" || check.kind === "scenarios") && check.advise === true) }
         const record = (r: Omit<CheckRecord, keyof typeof base>) => {
           recorded[i] = { ...base, ...r }
         }

@@ -34,6 +34,7 @@ const checkId = (c: Check): string => {
     case "holdout": return `holdout ${c.name}`
     case "budget": return `budget ${c.budget}`
     case "llm-review": return "llm review"
+    case "scenarios": return "scenarios"
   }
 }
 
@@ -50,6 +51,7 @@ const gateLoosenings = (before: PolicyIR, after: PolicyIR): Loosening[] => {
       out.push({ what: advisory(after).has(checkId(b)) ? `${checkId(b)} becomes advisory` : `${checkId(b)} is no longer a required gate` })
       continue
     }
+    if (b.kind === "scenarios" && a.kind === "scenarios" && !b.advise && a.advise) out.push({ what: "scenarios only advises: a scenario's verdict no longer blocks" })
     if (b.kind !== "gate" || a.kind !== "gate") continue
     if (b.ratchet && !a.ratchet) out.push({ what: `${checkId(b)} is no longer a ratchet` })
     if (!b.advise && a.advise) out.push({ what: `${checkId(b)} only advises: its findings no longer block` })

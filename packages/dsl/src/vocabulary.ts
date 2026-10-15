@@ -68,15 +68,24 @@ export const BUDGET_METRICS: Record<string, ReadonlyArray<Unit>> = {
 
 export const AGGREGATES = ["avg", "min", "max", "sum"] as const
 
+/**
+ * The top-level blocks, in the order a policy usually has them. \`LISTED_BLOCKS\`
+ * is the list a syntax error shows, which doesn't name \`scenarios\` yet (spec 0012 status).
+ */
 export const TOP_LEVEL_BLOCKS = [
-  "use", "mode", "owners", "protect", "zone", "zones", "arch", "suites", "integrity", "import", "budget",
+  "use", "mode", "owners", "protect", "zone", "zones", "arch", "suites", "scenarios", "integrity", "import", "budget",
   "gates", "on fail", "predicate", "review", "stack", "quarantine", "split", "attempts",
 ] as const
+
+export const LISTED_BLOCKS: ReadonlyArray<string> = TOP_LEVEL_BLOCKS.filter((b) => b !== "scenarios")
 
 /** The limits an `attempts` block can set (ADR 0026). */
 export const ATTEMPT_LIMITS = ["unchanged", "total"] as const
 
 export const ADVISORY_TIER = "advisory"
+
+/** The check that judges scenarios (spec 0012), and the protect group its files are in. */
+export const SCENARIOS = "scenarios"
 
 export const LAYER_PROPERTY_FORMS = [
   "<subject> unchanged (tests, results, perf)",

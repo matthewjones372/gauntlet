@@ -101,7 +101,7 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
       warning("duplicate-check", ref.span, `'${key}' already runs in tier '${previous.tier}' (line ${previous.span.line}).`,
         "each check once", `Remove this '${key}'.`)
     } else checkNames.set(key, { tier: ref.tier, span: ref.span })
-    checkGate(ref.check, ref.span)
+    checkGate(ref.check, ref.span, ref.tier)
   }
   // Zone defaults (spec 0009) are checked once, as written, and must be able to run in a zone.
   for (const ref of of("zone-default")) {
@@ -112,7 +112,7 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
     }
   }
 
-  function checkGate(check: Check, span: Span) {
+  function checkGate(check: Check, span: Span, tier: string) {
     switch (check.kind) {
       case "suite":
         if (!runsSuites) {
@@ -126,12 +126,40 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
         return
       case "budget":
         return
+      case "scenarios":
+        scenariosCheck(span, tier)
+        return
       case "llm-review":
         info("not-executed-in-v1", span, `\`llm review\` is caution-only. ${NOT_EXECUTED}`,
           "Nothing to fix. Remove it if changes should be able to reach auto or skim in v1.")
         return
       case "gate":
         gate(check, span)
+    }
+  }
+
+  /**
+   * Spec 0012: the scenarios check reads what the suites and the mutation gate found, so they
+   * run in its tier or an earlier one; without a mutation gate no scenario can be \`proven\`.
+   */
+  function scenariosCheck(span: Span, tierName: string) {
+    if (ir.scenarios === undefined) {
+      error("scenarios-without-files", span, "The `scenarios` check judges scenario files, and the policy doesn't say where they are.",
+        "a `scenarios \"<glob>\"` line", "Add a line such as: scenarios \"specs/**/*.feature\"")
+      return
+    }
+    const upTo = ir.gates.slice(0, ir.gates.findIndex((t) => t.name === tierName) + 1).flatMap((t) => t.checks)
+    if (!upTo.some((c) => c.kind === "suite")) {
+      warning("scenarios-before-tests", span, "No test suite runs in this tier or before it, so every scenario's tests would be reported as not run.",
+        "a suite such as `unit` in this tier or an earlier one", "Move `scenarios` to the tier that runs the tests, or a later one.")
+    }
+    const mutation = ir.gates.flatMap((t) => t.checks).some((c) => c.kind === "gate" && c.name === "mutation")
+    if (mutation && !upTo.some((c) => c.kind === "gate" && c.name === "mutation")) {
+      warning("scenarios-before-mutation", span, "The mutation gate runs in a later tier, so the scenarios check can't read which tests caught a bug.",
+        "`mutation` in this tier or an earlier one", "Move `scenarios` to the mutation gate's tier, or a later one.")
+    } else if (!mutation) {
+      info("scenarios-without-mutation", span, "Without a mutation gate, no scenario can be shown to catch a bug: each one that passes is `passing`, not `proven`.",
+        "Add `mutation advise on changed` to the tier that runs the tests to tell `proven` from `unchallenged`.")
     }
   }
 
@@ -194,6 +222,11 @@ export const resolve = (draft: Draft, installed: ReadonlyArray<PackSpec>, report
       error("not-zone-scopable", span, `'${check.name}' can't be limited to a zone.`, `'${check.name}' without \`in zone\``, `Remove \`in zone ${check.zone}\`.`)
     }
     return spec
+  }
+
+  if (spans.scenarios !== undefined && !of("check").some((r) => r.check.kind === "scenarios")) {
+    info("scenarios-not-judged", spans.scenarios, "The scenario files are protected, but no gate tier runs the `scenarios` check, so nothing judges them.",
+      "Add `scenarios` (or `scenarios advise`) to a gate tier, for example: behaviour { scenarios }")
   }
 
   // ---------- references ----------

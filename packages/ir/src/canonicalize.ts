@@ -47,6 +47,7 @@ export const canonicalize = (ir: PolicyIR): PolicyIR => ({
   },
   budgets: byName(ir.budgets).map((b) => ({ ...b, thresholds: byJson(b.thresholds) })),
   gates: ir.gates.map((t) => ({ ...t, checks: byJson(t.checks) })),
+  ...(ir.scenarios && ir.scenarios.length > 0 ? { scenarios: strings(ir.scenarios) } : {}),
   ...(ir.zoneDefaults && ir.zoneDefaults.length > 0 ? { zoneDefaults: byJson(ir.zoneDefaults) } : {}),
   remediation: byKey<PolicyIR["remediation"][number]>((r) => r.gate)(ir.remediation),
   imports: byName(ir.imports),

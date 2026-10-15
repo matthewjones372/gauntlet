@@ -14,6 +14,8 @@ zone money {                         // code that needs its owners' review; scop
 }
 arch { module domain must not depend on infra, web }
 suites { unit "src/test/**" }       // add affected after the path to run only the tests a change affects
+scenarios "specs/**/*.feature"       // Gherkin scenarios, each tagged with an id such as @FX-003; protected like tests.
+                                     // A test binds one by naming its id: "FX-003 converts at the quoted rate"
 integrity {                          // only adds or tightens; defaults always apply
   ratchet executed tests, assertions per test
   forbid  new skips, new suppressions
@@ -21,8 +23,9 @@ integrity {                          // only adds or tightens; defaults always a
 }
 import semgrep { command "semgrep scan --sarif --output {sarif}" }
 gates {                              // advise: report the gate's findings (surviving mutants), block nothing
-  fast   { build, lint ratchet, arch }
-  verify { unit, coverage ratchet >= 90% on changed in zone money, mutation advise on changed }
+  fast      { build, lint ratchet, arch }
+  verify    { unit, coverage ratchet >= 90% on changed in zone money, mutation advise on changed }
+  behaviour { scenarios }            // each scenario's tests ran, passed, can fail and catch a bug on the change; scenarios advise blocks nothing
 }
 on fail mutation { fix "Kill the surviving mutants listed in the report. Do not weaken tests." }
 quarantine {                         // a known flaky test, excused by an owner until a date

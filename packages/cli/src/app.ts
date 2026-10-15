@@ -2,6 +2,7 @@ import {
   agentSummary, blockingSet, knownBlock, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, sameCodeCommits, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, pullRequestBase, protectionFor,
   ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, doctorRows, scanProject, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderPruneCode, renderPruneTests, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow, surveyCode, surveyTests,
+  formatScenarioDiagnostics, readScenarioFiles,
   attemptBranch, attemptNote, renderStopHookCorpus, runStopHookCorpus, clearAttempts, commonDir, exhaustedLine, fingerprintLines, fingerprintOf, listAttempts, nextAttempt, readAttempts, reportedBlocked, worktreeOf, writeAttempts,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
@@ -83,13 +84,22 @@ const validate = Command.make("validate", {
     const diagnostics: ReadonlyArray<Diagnostic> = result._tag === "Success"
       ? result.value.diagnostics
       : result.cause.reasons.flatMap((r) => (r._tag === "Fail" && r.error instanceof PolicyInvalid ? r.error.diagnostics : []))
+    // Spec 0012: a scenario without an id, or an id used twice, is the policy's error, found here rather than by a check.
+    const scenarios = result._tag === "Success" && result.value.ir.scenarios !== undefined && Option.isSome(files)
+      ? yield* readScenarioFiles(root, result.value.ir, files.value)
+      : undefined
+    const scenarioErrors = scenarios?.diagnostics ?? []
+    const valid = result._tag === "Success" && scenarioErrors.length === 0
     if (json) {
-      yield* out.out(JSON.stringify({ valid: result._tag === "Success", ...(result._tag === "Success" ? { irHash: result.value.hash } : {}), diagnostics }, null, 2))
+      yield* out.out(JSON.stringify({ valid, ...(result._tag === "Success" ? { irHash: result.value.hash } : {}), diagnostics: [...diagnostics, ...scenarioErrors] }, null, 2))
     } else {
       if (diagnostics.length > 0) yield* out.out(formatDiagnostics(diagnostics, text.value))
-      yield* out.out(result._tag === "Success" ? `${relative} is valid (IR ${result.value.hash.slice(0, 12)}).` : `${relative} is invalid.`)
+      if (scenarioErrors.length > 0) yield* out.out(formatScenarioDiagnostics(scenarioErrors, scenarios!.texts))
+      yield* out.out(valid
+        ? `${relative} is valid (IR ${result.value.hash.slice(0, 12)})${scenarios ? `, with ${scenarios.scenarios.length} scenario${scenarios.scenarios.length === 1 ? "" : "s"}` : ""}.`
+        : result._tag === "Success" ? `${relative} is valid, but its scenario files aren't.` : `${relative} is invalid.`)
     }
-    if (result._tag === "Failure") yield* exitWith(1)
+    if (!valid) yield* exitWith(1)
   })).pipe(Command.withDescription("Check a policy file and explain any problems."))
 
 // ---------- check ----------

@@ -1,0 +1,61 @@
+{
+  "file": ".gauntlet/policy.gx",
+  "nodes": {
+    "": {
+      "line": 1,
+      "column": 10,
+      "endLine": 1,
+      "endColumn": 13,
+      "text": "gauntlet \"x\""
+    },
+    "/protect/1": {
+      "line": 6,
+      "column": 1,
+      "endLine": 6,
+      "endColumn": 10,
+      "text": "scenarios \"specs/**/*.feature\""
+    },
+    "/suites/0": {
+      "line": 5,
+      "column": 10,
+      "endLine": 5,
+      "endColumn": 14,
+      "text": "suites { unit \"src/test/**\" }"
+    },
+    "/gates/0": {
+      "line": 8,
+      "column": 3,
+      "endLine": 8,
+      "endColumn": 9,
+      "text": "verify { unit, mutation advise on changed }"
+    },
+    "/gates/0/checks/0": {
+      "line": 8,
+      "column": 18,
+      "endLine": 8,
+      "endColumn": 44,
+      "text": "verify { unit, mutation advise on changed }"
+    },
+    "/gates/0/checks/1": {
+      "line": 8,
+      "column": 12,
+      "endLine": 8,
+      "endColumn": 16,
+      "text": "verify { unit, mutation advise on changed }"
+    },
+    "/gates/1": {
+      "line": 9,
+      "column": 3,
+      "endLine": 9,
+      "endColumn": 12,
+      "text": "behaviour { scenarios }"
+    },
+    "/gates/1/checks/0": {
+      "line": 9,
+      "column": 15,
+      "endLine": 9,
+      "endColumn": 24,
+      "text": "behaviour { scenarios }"
+    }
+  }
+}
