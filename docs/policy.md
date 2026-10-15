@@ -467,6 +467,19 @@ stated an intent for. The verdicts are in `gauntlet-report.json` under
 `scenarios`, and the agent is told each scenario that blocks or is
 unchallenged, with its steps, so it changes the code rather than the scenario.
 
+A holdout test can bind a scenario too. It's shown by id only, and holdout
+tests aren't mutated, so a scenario bound only by holdouts is `passing`,
+marked holdout; where holdouts don't run (everywhere but the evidence job) it's
+marked pending.
+
+The pull request's report has a **Behaviour** section after **Why**: a count
+("3 of 4 scenarios proven · 1 unbound · changed code with no scenario: 1
+function"), a table with each scenario's tests and how many of the mutants on
+the changed lines they kill, each scenario's steps with its evidence (the
+mutant, where it is, and the message the killing test gave), and a diagram of
+which scenario reaches which changed function. Every path is a link; scenario
+files link to the base commit, since that's the version judged.
+
 ## Running the tests a change affects
 
 A suite marked `affected` runs only the tests a change can affect

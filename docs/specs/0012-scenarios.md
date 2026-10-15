@@ -1,9 +1,11 @@
 # Spec 0012: scenarios, and the evidence for each in the pull request
 
-Status: in progress. §1 and §2 (scenario files, ids, `gauntlet validate`, protection) on branch
-`spec-0012-scenarios`; §3-§6 (binding, verdicts, changed code with no scenario, killers), the JSON
-report's `scenarios` and the agent summary on `spec-0012-scenarios-2`. Depends on spec 0011
-(mutation on changed lines).
+Status: implemented, in three stacked pull requests: §1 and §2 on `spec-0012-scenarios`, §3-§6
+on `spec-0012-scenarios-2`, §7 and "In the pull request" on `spec-0012-scenarios-3`. Not done:
+the real-tool end-to-end test on `examples/fixtures/kotlin-service` (the scripted end-to-end
+tests in `packages/cli/test/scenarios-*.test.ts` cover the same two cases), and naming
+`scenarios` in the syntax error that lists top-level blocks (three protected golden files).
+Depends on spec 0011 (mutation on changed lines).
 
 ## Problem
 
@@ -152,6 +154,10 @@ function, as a finding that never blocks: it's the part of the change nobody sta
 an intent for, and the reviewer should see it first. A changed line with no mutants
 is never claimed either way.
 
+Settled while implementing: a function a scenario's test reaches without killing
+anything has a scenario, an `unchallenged` one, so it isn't listed here too (the
+FX example below lists only `Fx.fee`, not `Fx.lookup`).
+
 ### 6. Killers come from the mutation tools
 
 Spec 0011's shared mutant helper records, for each mutant, the tests that killed it
@@ -169,6 +175,12 @@ A holdout test can bind a scenario. The scenario text is shown (the agent can re
 the scenario file anyway); the bound test is shown by id only, with no failure
 message, as spec 0003 already does for holdout output. Holdout tests aren't
 mutated, so a scenario bound only by holdouts is `passing`, marked "holdout".
+
+Settled while implementing: holdouts run only in the evidence job. Everywhere
+else, a scenario whose id is a word in a holdout's files (read from the base and
+taken out again, as a holdout's run does) is `passing`, marked holdout, with the
+holdout shown as pending: the holdout check is already missing evidence there,
+and the scenario shouldn't block for a test only CI can run.
 
 ## In the pull request
 
@@ -240,6 +252,12 @@ Rules:
   with a link to the full report artifact.
 - **Mutant evidence** shows the tool's description and the killing assertion's
   message, cut to one line. Holdouts show neither (section 7).
+
+Settled while implementing: the report never has the head's text of a scenario
+file (the judged checkout has the base's), so a changed scenario's details show
+the base's text, say it's the one judged, and link to the file in "Files
+changed" for the head's. `passing` rows are shown like `proven` ones, folded;
+Pitest names no killing assertion, so its mutants show only the description.
 
 The same verdicts go in the JSON report under `scenarios`, and in the agent
 summary from the MCP `check` tool, one line per scenario that blocks or is
