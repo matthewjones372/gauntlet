@@ -11,7 +11,7 @@ import type * as Ast from "./generated/ast.ts"
 import { GauntletGeneratedModule, GauntletGeneratedSharedModule } from "./generated/module.ts"
 import type { Span } from "./span.ts"
 import { closest, quoteList } from "./suggest.ts"
-import { TOP_LEVEL_BLOCKS } from "./vocabulary.ts"
+import { LISTED_BLOCKS, TOP_LEVEL_BLOCKS } from "./vocabulary.ts"
 
 // Chevrotain builds error messages through this provider. We encode the raw
 // facts as JSON and turn them into Gauntlet diagnostics below, where we also
@@ -247,7 +247,7 @@ const parserDiagnostic = (
   const expectedNames = rawExpected.includes("ID") ? rawExpected.filter((n) => !NAME_KEYWORDS.has(n)) : rawExpected
   const keywordsExpected = expectedNames.filter((n) => KEYWORDS.has(n) || /^[a-z]+$/.test(n))
   const expectedText = expectedNames.length === 0
-    ? `a top-level block: ${TOP_LEVEL_BLOCKS.join(", ")}`
+    ? `a top-level block: ${LISTED_BLOCKS.join(", ")}`
     : expectedNames.length === 1
       ? describeToken(expectedNames[0]!)
       : `one of ${expectedNames.map(describeToken).join(", ")}`
@@ -283,7 +283,7 @@ const parserDiagnostic = (
     if (image === "gauntlet") return diag("duplicate-header", "A policy has exactly one `gauntlet` header.", "Remove this second `gauntlet` line.")
     const near = closest(image, TOP_LEVEL_BLOCKS)
     return diag("unexpected-statement", `Unexpected ${foundText} at the top level.`,
-      near.length > 0 ? `Did you mean '${near[0]}'?` : `Start each top-level statement with one of: ${TOP_LEVEL_BLOCKS.join(", ")}.`)
+      near.length > 0 ? `Did you mean '${near[0]}'?` : `Start each top-level statement with one of: ${LISTED_BLOCKS.join(", ")}.`)
   }
 
   // A reserved word where a name was expected.

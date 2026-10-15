@@ -19,6 +19,8 @@ export const checkText = (c: Check): string => {
       return `budget ${c.budget}`
     case "llm-review":
       return `llm review ${c.reviews}`
+    case "scenarios":
+      return c.advise ? "scenarios advise" : "scenarios"
   }
 }
 

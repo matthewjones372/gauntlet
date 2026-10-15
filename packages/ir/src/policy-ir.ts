@@ -27,8 +27,11 @@ export type Quantity = typeof Quantity.Type
 export const Threshold = Schema.Struct({ op: Comparator, value: Quantity })
 export type Threshold = typeof Threshold.Type
 
-/** How a protect group is materialised from base (PLAN section 9). */
-export const ProtectKind = Schema.Literals(["tests", "config", "fixtures", "gauntlet", "other"])
+/**
+ * How a protect group is materialised from base (PLAN section 9). \`scenarios\`
+ * is the group a \`scenarios "<glob>"\` line adds (spec 0012): restored from base, like config.
+ */
+export const ProtectKind = Schema.Literals(["tests", "config", "fixtures", "gauntlet", "other", "scenarios"])
 export type ProtectKind = typeof ProtectKind.Type
 
 export const ProtectGroup = Schema.Struct({
@@ -142,8 +145,19 @@ export const GateCheck = Schema.Struct({
 })
 export type GateCheck = typeof GateCheck.Type
 
+/**
+ * \`scenarios\` in a gate tier (spec 0012): each scenario's bound tests ran, passed, can fail
+ * and catch a bug on the changed lines. \`advise\` reports the verdicts and blocks nothing.
+ */
+export const ScenariosCheck = Schema.Struct({
+  kind: Schema.Literal("scenarios"),
+  advise: Schema.optionalKey(Schema.Literal(true)),
+})
+export type ScenariosCheck = typeof ScenariosCheck.Type
+
 export const Check = Schema.Union([
   GateCheck,
+  ScenariosCheck,
   Schema.Struct({ kind: Schema.Literal("suite"), name: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("holdout"), name: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("budget"), budget: Schema.String }),
@@ -260,6 +274,11 @@ export const PolicyIR = Schema.Struct({
    * Omitted when the policy has no \`zones\` block, so those policies keep their hashes.
    */
   zoneDefaults: Schema.optionalKey(Schema.Array(GateCheck)),
+  /**
+   * Where the scenario files are (spec 0012): Gherkin files of scenarios with ids, protected
+   * like tests (as the \`scenarios\` protect group). Omitted without a \`scenarios\` line, so those policies keep their hashes.
+   */
+  scenarios: Schema.optionalKey(Schema.Array(Schema.String)),
   /** How many blocked stops the agent hooks allow before an exhausted exit (ADR 0026). Only the limits the policy states; omitted when none. */
   attempts: Schema.optionalKey(Schema.Struct({ unchanged: Schema.optionalKey(Schema.Number), total: Schema.optionalKey(Schema.Number) })),
 })

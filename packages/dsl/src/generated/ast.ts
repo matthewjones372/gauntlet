@@ -87,6 +87,7 @@ export type GauntletKeywordNames =
     | "require"
     | "review"
     | "rule"
+    | "scenarios"
     | "skim"
     | "split"
     | "stack"
@@ -173,7 +174,7 @@ export function isAttempts(item: unknown): item is Attempts {
     return reflection.isInstance(item, Attempts.$type);
 }
 
-export type Block = Arch | Attempts | Budget | Gates | Import | Integrity | Mode | OnFail | Owners | Predicate | Protect | Quarantine | Review | Split | Stack | Suites | Use | Zone | ZoneDefaults;
+export type Block = Arch | Attempts | Budget | Gates | Import | Integrity | Mode | OnFail | Owners | Predicate | Protect | Quarantine | Review | Scenarios | Split | Stack | Suites | Use | Zone | ZoneDefaults;
 
 export const Block = {
     $type: 'Block'
@@ -282,10 +283,10 @@ export function isCheck(item: unknown): item is Check {
     return reflection.isInstance(item, Check.$type);
 }
 
-export type CheckName = 'arch' | 'integrity' | 'protect' | 'stack' | 'suites' | QName;
+export type CheckName = 'arch' | 'integrity' | 'protect' | 'scenarios' | 'stack' | 'suites' | QName;
 
 export function isCheckName(item: unknown): item is CheckName {
-    return isQName(item) || item === 'arch' || item === 'stack' || item === 'protect' || item === 'suites' || item === 'integrity';
+    return isQName(item) || item === 'arch' || item === 'stack' || item === 'protect' || item === 'suites' || item === 'integrity' || item === 'scenarios';
 }
 
 export type Cmp = '!=' | '<' | '<=' | '==' | '>' | '>=';
@@ -499,10 +500,10 @@ export function isIntegrityPhrase(item: unknown): item is IntegrityPhrase {
     return reflection.isInstance(item, IntegrityPhrase.$type);
 }
 
-export type IntegrityWord = 'added' | 'affected' | 'all' | 'baseline' | 'changed' | 'diff' | 'env' | 'fail' | 'fix' | 'from' | 'in' | 'missing' | 'module' | 'no' | 'not' | 'on' | 'only' | 'pass' | 'reads' | 'split' | 'touched' | 'zones' | string;
+export type IntegrityWord = 'added' | 'affected' | 'all' | 'baseline' | 'changed' | 'diff' | 'env' | 'fail' | 'fix' | 'from' | 'in' | 'missing' | 'module' | 'no' | 'not' | 'on' | 'only' | 'pass' | 'reads' | 'scenarios' | 'split' | 'touched' | 'zones' | string;
 
 export function isIntegrityWord(item: unknown): item is IntegrityWord {
-    return item === 'zones' || item === 'split' || item === 'reads' || item === 'affected' || item === 'in' || item === 'on' || item === 'not' || item === 'env' || item === 'from' || item === 'only' || item === 'module' || item === 'baseline' || item === 'diff' || item === 'fail' || item === 'fix' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'zones' || item === 'scenarios' || item === 'split' || item === 'reads' || item === 'affected' || item === 'in' || item === 'on' || item === 'not' || item === 'env' || item === 'from' || item === 'only' || item === 'module' || item === 'baseline' || item === 'diff' || item === 'fail' || item === 'fix' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface LayerProp extends langium.AstNode {
@@ -522,10 +523,10 @@ export function isLayerProp(item: unknown): item is LayerProp {
     return reflection.isInstance(item, LayerProp.$type);
 }
 
-export type LayerWord = 'added' | 'advise' | 'affected' | 'all' | 'arch' | 'auto' | 'baseline' | 'budget' | 'caution' | 'changed' | 'ci' | 'cumulative' | 'depend' | 'diff' | 'env' | 'fail' | 'fix' | 'flag' | 'forbid' | 'from' | 'gates' | 'in' | 'integrity' | 'layer' | 'llm' | 'max' | 'missing' | 'module' | 'must' | 'no' | 'not' | 'on' | 'only' | 'owner' | 'pass' | 'paths' | 'protect' | 'ratchet' | 'reads' | 'review' | 'rule' | 'skim' | 'split' | 'stack' | 'suites' | 'touched' | 'vs' | 'zone' | 'zones' | string;
+export type LayerWord = 'added' | 'advise' | 'affected' | 'all' | 'arch' | 'auto' | 'baseline' | 'budget' | 'caution' | 'changed' | 'ci' | 'cumulative' | 'depend' | 'diff' | 'env' | 'fail' | 'fix' | 'flag' | 'forbid' | 'from' | 'gates' | 'in' | 'integrity' | 'layer' | 'llm' | 'max' | 'missing' | 'module' | 'must' | 'no' | 'not' | 'on' | 'only' | 'owner' | 'pass' | 'paths' | 'protect' | 'ratchet' | 'reads' | 'review' | 'rule' | 'scenarios' | 'skim' | 'split' | 'stack' | 'suites' | 'touched' | 'vs' | 'zone' | 'zones' | string;
 
 export function isLayerWord(item: unknown): item is LayerWord {
-    return item === 'zones' || item === 'split' || item === 'reads' || item === 'affected' || item === 'zone' || item === 'budget' || item === 'gates' || item === 'paths' || item === 'rule' || item === 'module' || item === 'must' || item === 'not' || item === 'depend' || item === 'on' || item === 'from' || item === 'env' || item === 'vs' || item === 'baseline' || item === 'ratchet' || item === 'advise' || item === 'in' || item === 'layer' || item === 'max' || item === 'diff' || item === 'cumulative' || item === 'ci' || item === 'only' || item === 'caution' || item === 'fix' || item === 'fail' || item === 'flag' || item === 'forbid' || item === 'review' || item === 'owner' || item === 'skim' || item === 'auto' || item === 'llm' || item === 'protect' || item === 'suites' || item === 'integrity' || item === 'arch' || item === 'stack' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
+    return item === 'zones' || item === 'scenarios' || item === 'split' || item === 'reads' || item === 'affected' || item === 'zone' || item === 'budget' || item === 'gates' || item === 'paths' || item === 'rule' || item === 'module' || item === 'must' || item === 'not' || item === 'depend' || item === 'on' || item === 'from' || item === 'env' || item === 'vs' || item === 'baseline' || item === 'ratchet' || item === 'advise' || item === 'in' || item === 'layer' || item === 'max' || item === 'diff' || item === 'cumulative' || item === 'ci' || item === 'only' || item === 'caution' || item === 'fix' || item === 'fail' || item === 'flag' || item === 'forbid' || item === 'review' || item === 'owner' || item === 'skim' || item === 'auto' || item === 'llm' || item === 'protect' || item === 'suites' || item === 'integrity' || item === 'arch' || item === 'stack' || item === 'changed' || item === 'all' || item === 'no' || item === 'touched' || item === 'added' || item === 'missing' || item === 'pass' || (typeof item === 'string' && (/[A-Za-z_](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*/.test(item)));
 }
 
 export interface LlmReviewCheck extends langium.AstNode {
@@ -817,6 +818,21 @@ export type ReviewVerb = 'auto' | 'owner' | 'raise' | 'require' | 'review' | 'sk
 
 export function isReviewVerb(item: unknown): item is ReviewVerb {
     return item === 'owner' || item === 'review' || item === 'skim' || item === 'auto' || item === 'require' || item === 'raise';
+}
+
+export interface Scenarios extends langium.AstNode {
+    readonly $container: Policy;
+    readonly $type: 'Scenarios';
+    globs: Array<string>;
+}
+
+export const Scenarios = {
+    $type: 'Scenarios',
+    globs: 'globs'
+} as const;
+
+export function isScenarios(item: unknown): item is Scenarios {
+    return reflection.isInstance(item, Scenarios.$type);
 }
 
 export interface Split extends langium.AstNode {
@@ -1145,6 +1161,7 @@ export type GauntletAstType = {
     QuarantineEntry: QuarantineEntry
     Review: Review
     ReviewRule: ReviewRule
+    Scenarios: Scenarios
     Split: Split
     Stack: Stack
     StackItem: StackItem
@@ -1682,6 +1699,16 @@ export class GauntletAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: []
+        },
+        Scenarios: {
+            name: Scenarios.$type,
+            properties: {
+                globs: {
+                    name: Scenarios.globs,
+                    defaultValue: []
+                }
+            },
+            superTypes: [Block.$type]
         },
         Split: {
             name: Split.$type,

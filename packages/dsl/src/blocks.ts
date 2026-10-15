@@ -22,7 +22,7 @@ export interface PolicyBlock extends BlockId {
 }
 
 const KINDS: Readonly<Record<string, BlockKind>> = {
-  Use: "use", Mode: "mode", Owners: "owners", Protect: "protect", Zone: "zone", ZoneDefaults: "zones", Arch: "arch", Suites: "suites",
+  Use: "use", Mode: "mode", Owners: "owners", Protect: "protect", Zone: "zone", ZoneDefaults: "zones", Arch: "arch", Suites: "suites", Scenarios: "scenarios",
   Integrity: "integrity", Import: "import", Budget: "budget", Gates: "gates", OnFail: "on fail", Predicate: "predicate",
   Review: "review", Stack: "stack", Quarantine: "quarantine", Split: "split", Attempts: "attempts",
 }

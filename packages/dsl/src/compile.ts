@@ -26,6 +26,7 @@ import { didYouMean, quoteList } from "./suggest.ts"
 import {
   ADVISORY_TIER,
   AGGREGATES,
+  SCENARIOS,
   ATTEMPT_LIMITS,
   BUDGET_METRICS,
   FACT_CONDITIONS,
@@ -76,6 +77,8 @@ export interface Draft {
     readonly gates?: Span
     /** The \`zones { … }\` block of zone defaults. */
     readonly zoneDefaults?: Span
+    /** The \`scenarios "<glob>"\` line (spec 0012). */
+    readonly scenarios?: Span
     readonly review?: Span
     readonly stack?: Span
     readonly integrity?: Span
@@ -310,10 +313,13 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       case "Quarantine":
         if (once("quarantine", block)) quarantine(block)
         break
+      case "Scenarios":
+        if (once("scenarios", block)) scenarios(block)
+        break
     }
   }
 
-  ir.protect = [...protectGroups.values(), { ...IMPLICIT_PROTECT, globs: [...IMPLICIT_PROTECT.globs] }]
+  ir.protect = [...protectGroups.values(), ...scenarioGroup(), { ...IMPLICIT_PROTECT, globs: [...IMPLICIT_PROTECT.globs] }]
   expandZoneDefaults()
 
   return { ir, refs, spans }
@@ -597,6 +603,15 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       refs.push({ kind: "budget-ref", name: c.budget, span: propertySpan(c, "budget") })
       return done({ kind: "budget", budget: c.budget }, `budget ${c.budget}`)
     }
+    if (c.name === SCENARIOS) {
+      // Spec 0012: scenarios pass or fail per scenario; \`advise\` reports the verdicts without blocking.
+      if (c.ratchet || c.op !== undefined || c.scope !== undefined || c.zone !== undefined) {
+        error("scenarios-with-modifiers", span, "`scenarios` judges every scenario the same way, so it takes no ratchet, threshold, scope or zone.",
+          "`scenarios` or `scenarios advise`", "Write `scenarios` to block on a scenario's verdict, or `scenarios advise` to report the verdicts only.")
+        return undefined
+      }
+      return done({ kind: "scenarios", ...(c.advise ? { advise: true as const } : {}) }, SCENARIOS)
+    }
     const suiteKind = suiteKinds.get(c.name)
     if (suiteKind) {
       if (c.ratchet || c.advise || c.op !== undefined || c.scope !== undefined || c.zone !== undefined) {
@@ -640,6 +655,23 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
     }
   }
 
+  // ---------- scenarios (spec 0012) ----------
+
+  function scenarios(block: Ast.Scenarios) {
+    spans.scenarios = headSpan(block, SCENARIOS)
+    const globs = globsOf(block, block.globs, { protect: SCENARIOS })
+    if (globs.length > 0) ir.scenarios = globs
+  }
+
+  /**
+   * Scenario files are intent, so they're protected the way tests are (spec 0012 §2): a group of
+   * their own, restored from base for the run. \`scenarios\` is a keyword, so no \`protect\` group can share its name.
+   */
+  function scenarioGroup(): Mutable<PolicyIR["protect"][number]>[] {
+    if (ir.scenarios === undefined) return []
+    return [at({ group: SCENARIOS, kind: "scenarios" as const, globs: [...ir.scenarios] }, spans.scenarios!)]
+  }
+
   // ---------- zone defaults (spec 0009) ----------
 
   function zoneDefaults(block: Ast.ZoneDefaults) {
@@ -647,6 +679,11 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
     const defaults: GateCheck[] = []
     for (const c of block.checks) {
       const span = nodeSpan(c)
+      if (c.name === SCENARIOS) {
+        error("zone-default-scenarios", span, "`scenarios` judges every scenario whichever zone a change touches, so it can't be a zone default.",
+          "a gate that can be limited to a zone, such as `coverage` or `mutation`", "Remove `scenarios` here; it belongs in a gate tier.")
+        continue
+      }
       if (suiteKinds.has(c.name)) {
         error("zone-default-suite", span, `'${c.name}' is a suite: it runs the same tests whichever zone a change touches, so it can't be a zone default.`,
           "a gate that can be limited to a zone, such as `coverage` or `mutation`", `Remove '${c.name}' here; it belongs in a gate tier.`)

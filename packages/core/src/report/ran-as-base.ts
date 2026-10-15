@@ -33,6 +33,6 @@ export const ranAsBase = (r: Report): ReadonlyArray<RanAsBase> => {
 
 /** Required checks that failed or errored, which a build or tool file running as the base's could explain. */
 export const checksTheBaseMayExplain = (r: Report, files: ReadonlyArray<RanAsBase>): ReadonlyArray<{ readonly check: string; readonly status: "failed" | "errored" }> =>
-  files.some((f) => f.kind !== "policy" && f.kind !== "tests")
+  files.some((f) => f.kind !== "policy" && f.kind !== "tests" && f.kind !== "scenarios")
     ? (r.checks ?? []).filter((c) => !c.advisory && (c.status === "failed" || c.status === "errored")).map((c) => ({ check: c.check, status: c.status as "failed" | "errored" }))
     : []

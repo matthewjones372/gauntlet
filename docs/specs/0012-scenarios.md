@@ -1,6 +1,8 @@
 # Spec 0012: scenarios, and the evidence for each in the pull request
 
-Status: proposed. Depends on spec 0011 (mutation on changed lines).
+Status: in progress. §1 and §2 (scenario files, ids, `gauntlet validate`, protection) on branch
+`spec-0012-scenarios`; the check itself reports "not executed" until §3-§6. Depends on spec 0011
+(mutation on changed lines).
 
 ## Problem
 
@@ -56,6 +58,23 @@ The parser is Gauntlet's own (about the size of the DSL lexer), not
 `@cucumber/gherkin`: the subset is small and a dependency in the compiled binary
 nominates review on every pack.
 
+Settled while implementing:
+
+- Gherkin's synonyms are read as what they stand for (`Example` for `Scenario`,
+  `Scenario Template` for `Scenario Outline`, `Scenarios` for `Examples`), and a
+  step's data table or doc string stays with it, shown as written. `Rule`, and
+  any line Gauntlet can't place, is an error rather than skipped: a scenario
+  quietly half-read would be judged on less than the person wrote.
+- An id tag counts only on a scenario. One on the `Feature` (which Gherkin
+  would pass down to every scenario) is an error, and so is a scenario with two.
+- Two scenarios with the same id: the error is at the second, naming the first.
+- `validate` reads the working tree's scenario files; the policy compiler stays
+  pure. At check time, scenarios that `validate` would reject don't fail the
+  check: one without an id can't be bound and is left out, and of two with the
+  same id the first (by path) is judged.
+- The syntax error that lists the top-level blocks doesn't name `scenarios`
+  yet: three protected golden files hold that list, so the owner adds it.
+
 ### 2. Scenario files are intent, so they're protected
 
 Paths under `scenarios` are protected the way tests are (ADR 0021): the judged
@@ -65,6 +84,13 @@ grading its own work. A deleted scenario is a `deleted-tests` forbid, as for a t
 
 The pull request always shows the base version of a scenario. When the head
 changes it, the report shows both, base first, and says which one was judged.
+
+The `scenarios` line adds a protect group named `scenarios` (a keyword, so no
+other group can take the name), restored from base like `config`: a new
+scenario file is left out of the run and needs review too. A scenario moved to
+another file deletes nothing; only an id in no scenario file at head is a
+`deleted-tests` forbid. A change to a scenario file doesn't make an `affected`
+suite run every test: no test reads them.
 
 ### 3. Tests bind to scenarios by name
 
