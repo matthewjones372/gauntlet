@@ -130,6 +130,12 @@ shows on that line of the pull request's diff.
   block below a score, or be reported on the diff without blocking
   (`mutation advise on changed`).
   [Mutation testing](docs/policy.md#mutation-testing)
+- **Scenarios.** A person writes what the change should do as Gherkin
+  scenarios with ids (`@FX-003`); Gauntlet never runs them. A test binds one by
+  naming its id, and each scenario gets a verdict: its tests ran, passed, can
+  fail, and killed a mutant on the changed lines. Scenario files are protected,
+  and changed code no scenario's test catches is listed.
+  [Scenarios](docs/policy.md#scenarios)
 - **Only the tests a change affects.** The baseline records which files each
   test exercises, and a check runs only the tests that exercise what changed,
   for the JVM (Gradle) and TypeScript (Vitest, Jest, bun) packs. Anything the

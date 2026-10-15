@@ -3,7 +3,7 @@ import { compilerWarningsRun, excusedBySelection, failingToolSaid, type Mutant, 
 import { availableParallelism } from "node:os"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
-import { convertJUnit, decodeLog, type Log, type Result, type Run, renderDetektBaseline, SARIF_SCHEMA, SARIF_VERSION, type TestMap } from "@gauntlet/sarif"
+import { convertJUnit, skippedOf, decodeLog, type Log, type Result, type Run, renderDetektBaseline, SARIF_SCHEMA, SARIF_VERSION, type TestMap } from "@gauntlet/sarif"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { detektDeadCode, enabledDeadCodeRules } from "./deadcode.ts"
 import { gradle, type GradleRun, taskMissing } from "./gradle.ts"
@@ -113,7 +113,7 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     const ids = junit.value.tests.map((t) => t.id)
     const mapped = ctx.recordTestMap && !subset && !ctx.fromCi ? yield* mapTests(ctx, sourceSet, ids) : undefined
     return {
-      ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids },
+      ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids, ...skippedOf(junit.value.tests) },
       ...(mapped && "map" in mapped ? { testMap: mapped.map } : mapped ? { testMapMissing: mapped.why } : {}),
     }
   })
@@ -303,6 +303,7 @@ export const mutation: GateImpl = (_check, ctx) =>
         path: locate(pkg, m.sourceFile), line: m.line, killed: m.detected, message: `${m.status === "NO_COVERAGE" ? "No test covers" : "No test kills"} a mutant in ${m.className}`,
         ...(m.killingTests ? { killedBy: m.killingTests, coveredBy: [...m.killingTests, ...(m.succeedingTests ?? [])] } : {}),
         ...(m.method !== undefined ? { method: pitestMethodName(m.className, m.method) } : {}),
+        ...(m.description !== undefined ? { description: m.description } : {}),
       }
     })
     // Survivors, by line, so an agent knows exactly which assertions are missing.

@@ -118,6 +118,43 @@ export const ReportViolation = Schema.Struct({
   line: Schema.optionalKey(Schema.Number),
 })
 
+const ScenarioMutant = Schema.Struct({
+  path: Schema.String,
+  line: Schema.Number,
+  method: Schema.optionalKey(Schema.String),
+  description: Schema.optionalKey(Schema.String),
+  killedBy: Schema.optionalKey(Schema.String),
+  message: Schema.optionalKey(Schema.String),
+})
+
+/** The scenarios check's verdicts (spec 0012): one per scenario, and the changed code no scenario's test catches. */
+export const ReportScenarios = Schema.Struct({
+  mutation: Schema.Literals(["reported", "not-reported", "not-run", "not-in-policy"]),
+  scenarios: Schema.Array(Schema.Struct({
+    id: Schema.String,
+    name: Schema.String,
+    file: Schema.String,
+    line: Schema.Number,
+    verdict: Schema.Literals(["unbound", "not-run", "failing", "vacuous", "unchallenged", "proven", "unaffected", "passing"]),
+    text: Schema.Array(Schema.String),
+    tests: Schema.Array(Schema.Struct({
+      id: Schema.String,
+      status: Schema.Literals(["passed", "failed", "skipped", "not-run", "left-out"]),
+      holdout: Schema.optionalKey(Schema.Literal(true)),
+      path: Schema.optionalKey(Schema.String),
+      line: Schema.optionalKey(Schema.Number),
+      assertions: Schema.optionalKey(Schema.Number),
+      vacuous: Schema.optionalKey(Schema.String),
+    })),
+    killers: Schema.Literals(["reported", "not-reported", "not-run", "not-in-policy"]),
+    killed: Schema.Array(ScenarioMutant),
+    reachedOnly: Schema.Array(ScenarioMutant),
+    holdout: Schema.optionalKey(Schema.Literal(true)),
+  })),
+  noScenario: Schema.Array(Schema.Struct({ function: Schema.String, path: Schema.String, line: Schema.Number, mutants: Schema.Number })),
+})
+export type ReportScenarios = typeof ReportScenarios.Type
+
 export const ReportImport = Schema.Struct({
   source: Schema.String,
   trust: Schema.Literals(["evidence", "caution"]),
@@ -167,6 +204,8 @@ export const Report = Schema.Struct({
   violations: Schema.Array(ReportViolation),
   /** Findings that don't block on their own (spec 0011): an `advise` gate's, and surviving mutants on changed lines. Absent when there are none. */
   advice: Schema.optionalKey(Schema.Array(ReportViolation)),
+  /** The scenarios check's verdicts (spec 0012). Absent when the policy has no scenarios check, or it didn't run. */
+  scenarios: Schema.optionalKey(ReportScenarios),
   imports: Schema.Array(ReportImport),
   notExecuted: Schema.Array(ReportNotExecuted),
   remediation: Schema.Array(Schema.Struct({ check: Schema.String, fix: Schema.String })),

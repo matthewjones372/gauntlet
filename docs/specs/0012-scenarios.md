@@ -1,7 +1,8 @@
 # Spec 0012: scenarios, and the evidence for each in the pull request
 
 Status: in progress. §1 and §2 (scenario files, ids, `gauntlet validate`, protection) on branch
-`spec-0012-scenarios`; the check itself reports "not executed" until §3-§6. Depends on spec 0011
+`spec-0012-scenarios`; §3-§6 (binding, verdicts, changed code with no scenario, killers), the JSON
+report's `scenarios` and the agent summary on `spec-0012-scenarios-2`. Depends on spec 0011
 (mutation on changed lines).
 
 ## Problem
@@ -118,6 +119,27 @@ findings, spec 0011 mutants), in this order, first match wins:
 `scenarios advise` reports the same verdicts and blocks nothing; `gauntlet init`
 drafts `advise`, like mutation in spec 0011.
 
+Settled while implementing:
+
+- A bound test "exists" when a suite reported it (skipped included), the base's
+  test ids name it, or a pack's reading of the test sources (the one
+  `gauntlet prune tests` uses) finds a test whose name has the id.
+- `vacuous` reads each bound test's source the way `gauntlet prune tests` and
+  the `weakened-assertions` check do: no assertion, or only ones that can't
+  fail. The integrity findings themselves only cover added lines, and a
+  scenario's test that never could fail is as vacuous as one just weakened.
+  A pack that can't read its test sources never makes a scenario `vacuous`.
+- A bound test that `affected` selection (spec 0013) left out didn't need to
+  run: the scenario is `unaffected`, not `not-run`.
+- `unaffected` also covers a mutation run with no mutant on the changed lines.
+- The check runs last in its tier, so it reads that tier's suites and mutation
+  gate; a policy that puts them in a later tier is warned at `validate`.
+- `unchallenged`, changed code with no scenario, and (under `advise`) the
+  verdicts that would block are advisory findings, so they show on the diff
+  like spec 0011's survivors.
+- The trusted job takes the verdicts with the check's outcome from the
+  evidence job, as for every gate: they come from running the change's code.
+
 Without a mutation check in the policy, `unchallenged` can't be told apart from
 `proven`, so neither is claimed: the verdict is `passing` and the report says
 mutation wasn't run.
@@ -134,7 +156,10 @@ is never claimed either way.
 
 Spec 0011's shared mutant helper records, for each mutant, the tests that killed it
 where the tool reports them (Pitest `killingTests` with the full mutation matrix,
-Stryker `killedBy`). A pack whose tool doesn't report killers says so; its
+Stryker `killedBy`). A killer binds a scenario the way a test does: the id is a
+word in the name the tool gives it. With a scenarios check in the policy, the
+mutation gate asks for every killer, as when recording a baseline (spec 0016).
+A pack whose tool doesn't report killers says so; its
 scenarios get `passing`, the "catches a bug" column says "not reported", and the
 diagram draws no edge. Gauntlet never infers a killer.
 

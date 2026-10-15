@@ -93,7 +93,7 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     const file = (yield* reports(ctx, (p) => p === "go-test.json"))[0]
     if (!file) return base(r)
     const report = convertGoTest(suite.name, file.content, module)
-    return { ...base(r), runs: [report.run], tests: { counts: report.counts, ids: report.ids } }
+    return { ...base(r), runs: [report.run], tests: { counts: report.counts, ids: report.ids, ...(report.skipped.length > 0 ? { skipped: report.skipped } : {}) } }
   })
 
 // ---------- lint: golangci-lint, plus the zones' Go rules ----------

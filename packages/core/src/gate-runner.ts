@@ -19,7 +19,11 @@ import { excusedBySelection, type Selection, type SuiteSelections } from "./sele
 import { assessStability, failuresOf, REPEATS, seedFor } from "./stability.ts"
 import { isCompilerWarnings } from "./compiler-warnings.ts"
 import { confirmPruning, describePruning, pruningRun } from "./pruning.ts"
-import type { PreparedWorkspace } from "./workspace.ts"
+import type { Mutant } from "./mutants.ts"
+import { BLOCKING_VERDICTS, describeVerdicts, judgeScenarios, type RanTest, scenarioAdvice } from "./scenario-verdicts.ts"
+import { readScenarioFiles } from "./scenarios.ts"
+import type { SurveyedTest } from "./test-value.ts"
+import { holdoutsOf, type PreparedWorkspace } from "./workspace.ts"
 
 // Runs the policy's gate tiers in order (PLAN section 7). A tier with a
 // failed check stops the tiers after it; their checks are reported as not
@@ -94,7 +98,6 @@ export interface GateRunnerOutput {
 const NOT_IN_V1: Partial<Record<Check["kind"], string>> = {
   holdout: "holdout pending: holdouts run only in CI and are not executed in v1",
   "llm-review": "llm review is not executed in v1",
-  scenarios: "scenario verdicts aren't worked out yet: the scenario files are read and protected (spec 0012 §1, §2), and the verdicts come with §3-§6",
 }
 
 /** How many failing tests a report names per suite. */
@@ -161,6 +164,10 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     const killMaps: KillMap[] = []
     const methodMaps: MethodMap[] = []
     const deselected = new Set<string>()
+    // What the scenarios check reads (spec 0012): every test the suites and holdouts reported, and the mutation gate's mutants.
+    const ranTests: RanTest[] = []
+    let mutation: { state: "not-run" } | { state: "ran"; mutants: Mutant[] } = { state: "not-run" }
+    const judgesScenarios = ir.gates.some((t) => t.checks.some((c) => c.kind === "scenarios"))
     const changed = facts.files.filter((f) => f.status !== "deleted").map((f) => f.path)
     // Main code the change deletes: a whole-project ratchet doesn't hold it to the base's value (spec 0017 §3).
     const isTest = testPathMatcher(ir)
@@ -260,7 +267,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       let tierFailed = false
       // Suites first, so coverage can read their run (tests run once per check); the report keeps the policy's order.
       const recorded: Array<CheckRecord | undefined> = tier.checks.map(() => undefined)
-      const order = tier.checks.map((c, i) => ({ c, i })).sort((a, b) => Number(b.c.kind === "suite") - Number(a.c.kind === "suite") || a.i - b.i)
+      // The scenarios check reads what the rest found, so it runs last (spec 0012).
+      const rank = (c: Check) => (c.kind === "suite" ? 0 : c.kind === "scenarios" ? 2 : 1)
+      const order = tier.checks.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i)
       for (const { c: check, i } of order) {
         const pointer = `/gates/${t}/checks/${i}`
         // An `advise` gate blocks nothing (spec 0011): advisory, like the advisory tier's checks.
@@ -275,6 +284,16 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         }
         if (input.behaviourUnchanged && !input.recording) {
           record({ status: "passed", reason: "the change only edits comments or documentation, so there's nothing for this check to run" })
+          continue
+        }
+        if (check.kind === "scenarios") {
+          const started = yield* Clock.currentTimeMillis
+          yield* progress.start(base.check)
+          const outcome = yield* runScenarios(check)
+          durationsMs[base.check] = (yield* Clock.currentTimeMillis) - started
+          yield* progress.end(base.check, outcome.status, durationsMs[base.check]!)
+          record(outcome)
+          if (outcome.status === "failed") tierFailed = true
           continue
         }
         if (check.kind === "holdout" && input.holdouts) {
@@ -399,7 +418,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const named = (name: string) => `${build.dir}:${name}`
           const r = build.dir === "." ? raw : {
             ...raw,
-            ...(raw.tests ? { tests: { ...raw.tests, ids: raw.tests.ids.map(named) } } : {}),
+            ...(raw.tests ? { tests: { ...raw.tests, ids: raw.tests.ids.map(named), ...(raw.tests.skipped ? { skipped: raw.tests.skipped.map(named) } : {}) } } : {}),
+            ...(raw.mutants ? { mutants: raw.mutants.map((m) => ({ ...m, ...(m.killedBy ? { killedBy: m.killedBy.map(named) } : {}), ...(m.coveredBy ? { coveredBy: m.coveredBy.map(named) } : {}) })) } : {}),
             ...(raw.testMap ? { testMap: Object.fromEntries(Object.entries(raw.testMap).map(([name, files]) => [named(name), files])) } : {}),
             ...(raw.killMap ? { killMap: renameKillMap(raw.killMap, { test: named }) } : {}),
             ...(raw.methodMap ? { methodMap: renameMethodMap(raw.methodMap, { test: named }) } : {}),
@@ -594,6 +614,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         const c = run.tests.counts
         if (c.executed === 0) return { status: "failed", reason: "no tests ran (a silent green fails)", proof, tests: c }
         const failing = [...new Set(failuresOf(run).map((f) => f.id))].sort()
+        const skippedIds = new Set(run.tests.skipped ?? [])
+        for (const id of run.tests.ids) ranTests.push({ id, status: failing.includes(id) ? "failed" : skippedIds.has(id) ? "skipped" : "passed", holdout: true })
         if (failing.length === 0) return { status: "passed", proof, tests: c }
         const suiteNames = new Set(ir.suites.filter((s) => s.kind === "suite").map((s) => s.name))
         const visiblePassed = checks.filter((r) => suiteNames.has(r.check)).every((r) => r.status === "passed")
@@ -636,6 +658,56 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       const left = leftOut(applied)
       const excused = excusedBySelection(Option.match(baseline, { onNone: () => [], onSome: (b) => b.testIds }), left)
       return { ran, of: ran + excused.length, why, ...(left.length > 0 ? { deselected: [...left].sort() } : {}) }
+    }
+
+    /**
+     * The scenarios check (spec 0012): reads the scenario files in the judged checkout (the base's,
+     * since they're protected), the tests bound to each, and what the mutation gate found.
+     */
+    function runScenarios(check: Extract<Check, { kind: "scenarios" }>): Effect.Effect<Omit<CheckRecord, "tier" | "check" | "pointer" | "advisory">, never, FileSystem.FileSystem | Path.Path> {
+      return Effect.gen(function*() {
+        const read = yield* readScenarioFiles(workspace.dir, ir, input.files).pipe(Effect.orElseSucceed(() => undefined))
+        if (read === undefined) return { status: "errored", reason: "the scenario files couldn't be read" }
+        const invalid = read.diagnostics.length > 0 ? `; ${read.diagnostics.length} problem${read.diagnostics.length === 1 ? "" : "s"} in the scenario files (gauntlet validate shows them)` : ""
+        if (read.scenarios.length === 0) return { status: "passed", reason: `no scenarios in ${(ir.scenarios ?? []).join(", ")}${invalid}` }
+        const surveyed = yield* surveyBound(read.scenarios.map((s) => s.id))
+        const baseIds = Option.match(baseline, { onNone: () => [] as ReadonlyArray<string>, onSome: (b) => b.testIds })
+        const policyMutates = ir.gates.some((t) => t.checks.some((c) => c.kind === "gate" && c.name === "mutation" && c.zone === undefined))
+        const judgement = judgeScenarios({
+          scenarios: read.scenarios,
+          ran: ranTests,
+          known: baseIds,
+          leftOut: excusedBySelection(baseIds, [...deselected]),
+          surveyed,
+          mutation: policyMutates ? mutation : { state: "not-in-policy" },
+          changedLines: new Map([...facts.addedLines].map(([p, lines]) => [p, new Set(lines.map((l) => l.line))])),
+        })
+        const blocking = judgement.scenarios.filter((s) => BLOCKING_VERDICTS.has(s.verdict))
+        advice.push(...scenarioAdvice(judgement, check.advise === true))
+        const reason = `${describeVerdicts(judgement)}${invalid}`
+        if (blocking.length > 0 && check.advise !== true) return { status: "failed", reason, scenarios: judgement }
+        return { status: "passed", reason: check.advise === true && blocking.length > 0 ? `${reason}, reported without blocking` : reason, scenarios: judgement }
+      })
+    }
+
+    /** The test files that name a scenario, read by the packs that can (spec 0012): where each test is, and whether it can fail. */
+    function surveyBound(ids: ReadonlyArray<string>) {
+      return Effect.gen(function*() {
+        const surveyors = packs.flatMap((p) => (p.surveyTests ? [p.surveyTests] : []))
+        const isTestPath = testPathMatcher(ir)
+        const held = holdoutsOf(ir).flatMap((h) => h.globs)
+        const out: { path: string; test: SurveyedTest; helpers: ReadonlySet<string> }[] = []
+        for (const file of input.files) {
+          const surveyor = surveyors.find((s) => s.reads(file, isTestPath(file)))
+          if (!surveyor || held.some((g) => globMatches(g, file))) continue
+          const text = yield* fsys.readFileString(`${workspace.dir}/${file}`).pipe(Effect.orElseSucceed(() => ""))
+          if (!ids.some((id) => text.includes(id))) continue
+          const survey = surveyor.survey(file, text)
+          const helpers = new Set(survey.assertingHelpers)
+          for (const test of survey.tests) out.push({ path: file, test, helpers })
+        }
+        return out
+      })
     }
 
     function runOne(check: Check, dir: string): Effect.Effect<Omit<CheckRecord, "tier" | "check" | "pointer" | "advisory">, never, ProcessRunner | FileSystem.FileSystem | Path.Path> {
@@ -731,7 +803,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           facts,
           ...(scope ? { scope } : {}),
           ...(changedLinesOnly ? { changedLinesOnly: true } : {}),
-          ...(input.recording && check.kind === "gate" && check.name === "mutation" ? { recordKillMap: true } : {}),
+          // Spec 0012 §6: the scenarios check needs every killer the tool can name.
+          ...((input.recording || judgesScenarios) && check.kind === "gate" && check.name === "mutation" ? { recordKillMap: true } : {}),
           files: input.files,
           legacy: Option.match(baseline, { onNone: () => [], onSome: (b) => b.legacy }),
           ...(!multi && isWarningsCheck(check) && compiledWarnings.has(".") ? { buildWarnings: compiledWarnings.get(".")! } : {}),
@@ -771,6 +844,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           const told = said.length > 0 && !said.some((l) => run.error!.includes(l))
           return { status: "errored", reason: told ? `${run.error}; the tool said: ${saidWhy}` : run.error, proof }
         }
+        if (check.kind === "gate" && check.name === "mutation" && check.zone === undefined) {
+          mutation = { state: "ran", mutants: [...(mutation.state === "ran" ? mutation.mutants : []), ...(run.mutants ?? [])] }
+        }
         if (run.nothingInScope !== undefined) return { status: "passed", reason: run.nothingInScope, proof }
         if (run.killMap) killMaps.push(run.killMap)
         if (run.methodMap) methodMaps.push(run.methodMap)
@@ -809,6 +885,13 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
                 }
                 : {}),
             })
+          // Each test's outcome, for the scenarios check: a failure that counts, a skip, or a pass.
+          const failedIds = new Set(st.failures.map((f) => f.id))
+          const skippedIds = new Set(run.tests.skipped ?? [])
+          const unprefixed = (id: string) => (multi ? id.replace(/^[^:]*:/, "") : id)
+          for (const id of run.tests.ids) {
+            ranTests.push({ id, status: failedIds.has(id) || failedIds.has(unprefixed(id)) ? "failed" : skippedIds.has(id) ? "skipped" : "passed" })
+          }
           // Name the failures, so whoever fixes the change knows where to look.
           // Each line starts with the test's id, as quarantines and the flaky history name it.
           const onBase = new Set(st.failingOnBase)

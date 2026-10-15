@@ -74,6 +74,12 @@ const testId = (tc: Node, suite: Node, bun: boolean): string => {
   return `${classname}.${name}`
 }
 
+/** The skipped tests' ids, as a suite's test record carries them (spec 0012): none, when none was skipped. */
+export const skippedOf = (tests: ReadonlyArray<TestCase>): { readonly skipped?: ReadonlyArray<string> } => {
+  const skipped = tests.filter((t) => t.status === "skipped").map((t) => t.id)
+  return skipped.length > 0 ? { skipped } : {}
+}
+
 /** Parses one or more JUnit XML documents into a single run named `check`. */
 export const convertJUnit = (check: string, files: ReadonlyArray<{ readonly path: string; readonly content: string }>) =>
   Effect.gen(function*() {

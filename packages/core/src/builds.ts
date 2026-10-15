@@ -86,7 +86,8 @@ export const runFromBuild = (run: GateRun, dir: string): GateRun => {
   const testMap = run.testMap === undefined ? undefined : Object.fromEntries(Object.entries(run.testMap).map(([name, files]) => [name, files.map((f) => fromBuild(dir, f))]))
   const killMap = run.killMap === undefined ? undefined : renameKillMap(run.killMap, { path: uri })
   const methodMap = run.methodMap === undefined ? undefined : renameMethodMap(run.methodMap, { path: uri })
-  return { ...run, runs, ...(metrics ? { metrics } : {}), ...(testMap ? { testMap } : {}), ...(killMap ? { killMap } : {}), ...(methodMap ? { methodMap } : {}) }
+  const mutants = run.mutants?.map((m) => (m.path === undefined ? m : { ...m, path: uri(m.path) }))
+  return { ...run, runs, ...(metrics ? { metrics } : {}), ...(testMap ? { testMap } : {}), ...(killMap ? { killMap } : {}), ...(methodMap ? { methodMap } : {}), ...(mutants ? { mutants } : {}) }
 }
 
 /**
@@ -119,6 +120,7 @@ export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; read
       skipped: a.skipped + t.counts.skipped,
     }), { executed: 0, passed: 0, failed: 0, errored: 0, skipped: 0 }),
     ids: [...new Set(tested.flatMap((t) => t.ids))].sort(),
+    ...(tested.some((t) => t.skipped !== undefined) ? { skipped: [...new Set(tested.flatMap((t) => t.skipped ?? []))].sort() } : {}),
   }
   const metrics: Record<string, Metric> = {}
   for (const p of ran) {
@@ -141,8 +143,10 @@ export const mergeBuildRuns = (parts: ReadonlyArray<{ readonly dir: string; read
   const testMap: TestMap | undefined = maps.length === 0 ? undefined : Object.assign({}, ...maps)
   const killMaps = ran.flatMap((p) => (p.run.killMap ? [p.run.killMap] : []))
   const methodMaps = ran.flatMap((p) => (p.run.methodMap ? [p.run.methodMap] : []))
+  const mutants = ran.flatMap((p) => p.run.mutants ?? [])
   return {
     command,
+    ...(ran.some((p) => p.run.mutants !== undefined) ? { mutants } : {}),
     ...(killMaps.length > 0 ? { killMap: mergeKillMaps(killMaps) } : {}),
     ...(methodMaps.length > 0 ? { methodMap: mergeMethodMaps(methodMaps) } : {}),
     exitCode,

@@ -2,7 +2,7 @@ import { type Mutant, mutationGateRun, failingToolSaid } from "@gauntlet/core"
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
-import { convertJUnit, type Log, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
+import { convertJUnit, skippedOf, type Log, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { isCargoJson, parseRustcDeadCode } from "./deadcode.ts"
 import { convertClippy, parseLcov, parseMutants } from "./reports.ts"
@@ -96,7 +96,7 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     if (xml.length === 0) return base(r)
     const junit = yield* Effect.exit(convertJUnit(suite.name, xml.map((f) => ({ path: f.path, content: f.content }))))
     if (junit._tag === "Failure") return { ...base(r), error: "the JUnit XML couldn't be read" }
-    return { ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids: junit.value.tests.map((t) => t.id) } }
+    return { ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids: junit.value.tests.map((t) => t.id), ...skippedOf(junit.value.tests) } }
   })
 
 // ---------- lint: clippy, plus the zones' Rust rules ----------

@@ -2,7 +2,7 @@ import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gau
 import { failingToolSaid } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
-import { convertJUnit, type Log, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
+import { convertJUnit, skippedOf, type Log, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { parseKondoDeadCode } from "./deadcode.ts"
 import { convertKondo, focusOf, parseLcov, tidyJUnit } from "./reports.ts"
@@ -99,7 +99,7 @@ export const runSuite: SuiteImpl = (suite, ctx, subset?: TestSubset) =>
     if (!xml) return { ...base(r), ...(r.exitCode !== 0 ? { error: `kaocha failed before any test ran: ${reason(r)}` } : {}) }
     const report = yield* Effect.exit(convertJUnit(suite.name, [{ path: xml.path, content: tidyJUnit(xml.content) }]))
     if (report._tag === "Failure") return { ...base(r), error: "the JUnit XML couldn't be read" }
-    return { ...base(r), runs: [report.value.run], tests: { counts: report.value.counts, ids: report.value.tests.map((t) => t.id) } }
+    return { ...base(r), runs: [report.value.run], tests: { counts: report.value.counts, ids: report.value.tests.map((t) => t.id), ...skippedOf(report.value.tests) } }
   })
 
 // ---------- lint: clj-kondo, plus the zones' Clojure rules ----------

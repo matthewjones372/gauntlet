@@ -3,6 +3,7 @@ import type { KillMap, LegacyEntry, MethodMap, Metric, Run, TestMap } from "@gau
 import type { Effect, FileSystem, Path } from "effect"
 import type { DiffFacts } from "./diff-facts.ts"
 import type { TestRecord } from "./integrity.ts"
+import type { Mutant } from "./mutants.ts"
 import type { ProcessRunner } from "./process-runner.ts"
 import type { OutputFile } from "./workspace.ts"
 
@@ -52,8 +53,9 @@ export interface GateContext {
    */
   readonly recordTestMap?: boolean
   /**
-   * The mutation gate, while a baseline is recorded: also report every test
-   * that kills each mutant (spec 0016), even where that makes the tool slower.
+   * The mutation gate, while a baseline is recorded or when the policy judges
+   * scenarios (spec 0012): also report every test that kills each mutant
+   * (spec 0016), even where that makes the tool slower.
    */
   readonly recordKillMap?: boolean
 }
@@ -97,6 +99,8 @@ export interface GateRun {
   readonly testMap?: TestMap
   /** Why there's no \`testMap\` when \`recordTestMap\` asked for one, for the person recording the baseline. */
   readonly testMapMissing?: string
+  /** A mutation gate's mutants, killed or not, with the tests that reached and killed them where the tool says (spec 0012). */
+  readonly mutants?: ReadonlyArray<Mutant>
   /** A mutation gate's record of which tests killed which mutants, when its tool reports killers (spec 0016). */
   readonly killMap?: KillMap
   /** The methods each test executed, when the gate's tool names them (spec 0017), with paths as the build sees them. */

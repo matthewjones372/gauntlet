@@ -28,6 +28,8 @@ export interface IntegrityFinding {
 export interface TestRecord {
   readonly counts: TestCounts
   readonly ids: ReadonlyArray<string>
+  /** Which of \`ids\` were skipped, where the runner says (spec 0012: a skipped test didn't run). */
+  readonly skipped?: ReadonlyArray<string>
 }
 
 export interface DetectorInput {

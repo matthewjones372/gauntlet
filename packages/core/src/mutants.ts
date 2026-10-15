@@ -26,6 +26,10 @@ export interface Mutant {
   readonly coveredBy?: ReadonlyArray<string>
   /** The method it's in, by its source-level name (\`Fx.fee\`), where the tool says (spec 0017). */
   readonly method?: string
+  /** What the tool changed, in its words (\`replaced Long division with multiplication\`), where it says (spec 0012). */
+  readonly description?: string
+  /** What the killing test said when the mutant broke it, where the tool reports it (Stryker's status reason). */
+  readonly killMessage?: string
 }
 
 export interface MutationScope {
@@ -130,6 +134,8 @@ export const mutationGateRun = (tool: string, mutants: ReadonlyArray<Mutant>, ct
   const methodMap = methodMapOf(mutants)
   return {
     runs: r.runs,
+    // Every mutant with a file, for the scenarios check (spec 0012), which reads which tests reached and killed them.
+    mutants: mutants.filter((m) => m.path !== undefined),
     ...(killMap ? { killMap } : {}),
     ...(methodMap ? { methodMap } : {}),
     ...(r.metrics ? { metrics: r.metrics } : {}),

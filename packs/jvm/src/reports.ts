@@ -22,6 +22,8 @@ export interface MutationResult {
   readonly succeedingTests?: ReadonlyArray<string>
   /** The method the mutant is in, as the JVM names it (\`fee\`, \`lambda$fee$0\`, \`<init>\`), when Pitest says. */
   readonly method?: string
+  /** What Pitest changed, in its words (\`replaced Long division with multiplication\`). */
+  readonly description?: string
 }
 
 /**
@@ -71,6 +73,7 @@ export const parseMutations = (xml: string): MutationResult[] => {
     status: String(m.status ?? ""),
     ...("killingTests" in m ? { killingTests: testsIn(m.killingTests), succeedingTests: testsIn(m.succeedingTests) } : {}),
     ...(typeof m.mutatedMethod === "string" && m.mutatedMethod !== "" ? { method: m.mutatedMethod } : {}),
+    ...(typeof m.description === "string" && m.description !== "" ? { description: m.description } : {}),
   }))
 }
 

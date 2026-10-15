@@ -24,8 +24,26 @@ export interface AgentSummary {
   readonly ranAsBase: ReadonlyArray<string>
   /** Findings that don't block on their own, such as surviving mutants on the changed lines (spec 0011): "path:line: message". */
   readonly advice: ReadonlyArray<string>
+  /**
+   * Scenarios that block or are unchallenged (spec 0012), each with its verdict and its text: what
+   * the person meant, so the agent fixes the code, not the scenario (which it can't change anyway).
+   */
+  readonly scenarios: ReadonlyArray<string>
   readonly report: string
 }
+
+const SCENARIO_WHY: Record<string, string> = {
+  unbound: "no test names its id",
+  "not-run": "its tests didn't run",
+  failing: "a test bound to it fails",
+  vacuous: "its tests can't fail: they assert nothing that could",
+  unchallenged: "its tests run the changed code but kill no mutant there",
+}
+
+/** One line per scenario that blocks or is unchallenged, with its steps. */
+const scenarioLines = (report: Report): string[] =>
+  (report.scenarios?.scenarios ?? []).filter((s) => s.verdict in SCENARIO_WHY).map((s) =>
+    `@${s.id} ${s.name} (${s.file}:${s.line}) is ${s.verdict}: ${SCENARIO_WHY[s.verdict]}. ${s.text.filter((l) => l.trim() !== "" && !l.startsWith("  ")).join("; ")}`)
 
 /** How many advisory findings the summary names; the report has the rest. */
 const ADVICE_LIMIT = 10
@@ -43,6 +61,7 @@ export const agentSummary = (report: Report, reportDir: string): AgentSummary =>
   ...(report.stack ? { stack: report.stack.steps.map((s) => ({ title: s.title, files: s.files, lines: s.lines })) } : {}),
   ranAsBase: ranAsBase(report).map((f) => `${f.path}${f.leftOut ? " (left out)" : ""}`),
   advice: (report.advice ?? []).map((v) => `${v.path ? `${v.path}${v.line ? `:${v.line}` : ""}: ` : ""}${v.message} (${v.check})`),
+  scenarios: scenarioLines(report),
   report: `${reportDir}/gauntlet-report.md`,
 })
 
@@ -61,6 +80,16 @@ const adviceLines = (s: AgentSummary) =>
       "These findings don't block on their own. Where a mutant survives, a test runs that line but doesn't check what it does: strengthen that test.",
       ...s.advice.slice(0, ADVICE_LIMIT).map((a) => `- ${a}`),
       ...(s.advice.length > ADVICE_LIMIT ? [`- ... ${s.advice.length - ADVICE_LIMIT} more in the report`] : []),
+    ]
+    : []
+
+// The person's intent, in their words: the agent fixes the code (or a test that names the id), never the scenario.
+const scenarioSummary = (s: AgentSummary) =>
+  s.scenarios.length > 0
+    ? [
+      "These scenarios say what the person meant. Make the code do it, and bind a test to a scenario by putting its id in the test's name (\"FX-003 converts at the quoted rate\"); scenario files are protected, so don't edit them:",
+      ...s.scenarios.slice(0, ADVICE_LIMIT).map((x) => `- ${x}`),
+      ...(s.scenarios.length > ADVICE_LIMIT ? [`- ... ${s.scenarios.length - ADVICE_LIMIT} more in the report`] : []),
     ]
     : []
 
@@ -85,6 +114,7 @@ export const renderAgentSummary = (s: AgentSummary): string =>
       ...s.failedChecks.flatMap((c) => (c.failures ? [`Failing in ${c.check}:`, ...c.failures.map((f) => `  - ${f}`)] : [])),
       ...(s.fixes.length > 0 ? ["How to fix:", ...s.fixes.map((f) => `- ${f.check}: ${f.fix}`)] : []),
       ...ranAsBaseLines(s),
+      ...scenarioSummary(s),
       ...adviceLines(s),
       ...suggestionLines(s),
       NOT_THE_CHECK,
@@ -98,6 +128,7 @@ export const renderAgentSummary = (s: AgentSummary): string =>
       ...s.zones.map((z) => `- Zone ${z.zone}${z.owners.length > 0 ? ` (owner ${z.owners.join(", ")})` : ""}: ${z.files.slice(0, 5).join(", ")}${z.files.length > 5 ? ` and ${z.files.length - 5} more` : ""}`),
       `On GitHub they approve the pull request (Files changed, Review changes, Approve), or, if they opened it, comment \`/gauntlet approve ${s.head.slice(0, 12)}\`.`,
       ...ranAsBaseLines(s),
+      ...scenarioSummary(s),
       ...adviceLines(s),
       ...suggestionLines(s),
       `Full report: ${s.report}`,
@@ -106,6 +137,7 @@ export const renderAgentSummary = (s: AgentSummary): string =>
       `Gauntlet passes this change (tier ${s.tier}).`,
       ...(s.review.length > 0 ? ["It still needs a person's review because:", ...s.review.map((r) => `- ${r}`)] : []),
       ...ranAsBaseLines(s),
+      ...scenarioSummary(s),
       ...adviceLines(s),
       ...suggestionLines(s),
       `Full report: ${s.report}`,
