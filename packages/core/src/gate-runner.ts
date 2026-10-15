@@ -1,4 +1,4 @@
-import { type GateSpec, globMatches } from "@gauntlet/dsl"
+import { type GateSpec, globMatches, namesScenario } from "@gauntlet/dsl"
 import { type Check, type PolicyIR, sha256 } from "@gauntlet/ir"
 import { type Baseline, compareMetrics, compareWithBaseline, convertJUnit, type Metric, type MetricDelta, type Proof, type Result, resultPath, resultRegion, type Run, type KillMap, mergeKillMaps, type MethodMap, mergeMethodMaps, migrateTestIds, renameKillMap, renameMethodMap, type TestMap } from "@gauntlet/sarif"
 import { Clock, Effect, FileSystem, Option, type Path } from "effect"
@@ -673,7 +673,9 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         const surveyed = yield* surveyBound(read.scenarios.map((s) => s.id))
         const baseIds = Option.match(baseline, { onNone: () => [] as ReadonlyArray<string>, onSome: (b) => b.testIds })
         const policyMutates = ir.gates.some((t) => t.checks.some((c) => c.kind === "gate" && c.name === "mutation" && c.zone === undefined))
+        const pendingHoldouts = yield* holdoutsNaming(read.scenarios.map((s) => s.id))
         const judgement = judgeScenarios({
+          pendingHoldouts,
           scenarios: read.scenarios,
           ran: ranTests,
           known: baseIds,
@@ -687,6 +689,24 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         const reason = `${describeVerdicts(judgement)}${invalid}`
         if (blocking.length > 0 && check.advise !== true) return { status: "failed", reason, scenarios: judgement }
         return { status: "passed", reason: check.advise === true && blocking.length > 0 ? `${reason}, reported without blocking` : reason, scenarios: judgement }
+      })
+    }
+
+    /**
+     * Which scenario ids each holdout that didn't run here names in its files (spec 0012 §7),
+     * read from the base commit's files and taken out again, as a holdout's run does.
+     */
+    function holdoutsNaming(ids: ReadonlyArray<string>) {
+      return Effect.gen(function*() {
+        const named = new Map<string, ReadonlyArray<string>>()
+        if (input.holdouts || !workspace.withHoldout) return named
+        for (const h of holdoutsOf(ir)) {
+          const texts = yield* workspace.withHoldout(h.globs, (paths) =>
+            Effect.forEach(paths, (p) => fsys.readFileString(`${workspace.dir}/${p}`).pipe(Effect.orElseSucceed(() => "")))).pipe(Effect.orElseSucceed(() => [] as string[]))
+          const found = ids.filter((id) => texts.some((t) => namesScenario(t, id)))
+          if (found.length > 0) named.set(h.name, found)
+        }
+        return named
       })
     }
 

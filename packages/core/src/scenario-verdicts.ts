@@ -62,7 +62,7 @@ export interface ScenarioResult {
   readonly holdout?: true
 }
 
-/** A function the change touched where no scenario's test killed a mutant (spec 0012 §5). */
+/** A function the change touched where no scenario's test killed or reached a mutant (spec 0012 §5). */
 export interface NoScenario {
   readonly function: string
   readonly path: string
@@ -97,6 +97,11 @@ export interface ScenarioEvidence {
   readonly mutation: { readonly state: "not-in-policy" | "not-run" } | { readonly state: "ran"; readonly mutants: ReadonlyArray<Mutant> }
   /** The lines the change added or edited, per file. */
   readonly changedLines: ReadonlyMap<string, ReadonlySet<number>>
+  /**
+   * Scenario ids named in the files of a holdout that didn't run here (spec 0012 §7), by
+   * holdout: only the evidence job runs holdouts, so elsewhere their tests are pending.
+   */
+  readonly pendingHoldouts?: ReadonlyMap<string, ReadonlyArray<string>>
 }
 
 const onChangedLine = (lines: ReadonlyMap<string, ReadonlySet<number>>, m: Mutant): boolean => {
@@ -176,6 +181,11 @@ export const judgeScenarios = (e: ScenarioEvidence): ScenarioJudgement => {
       id: s.id, name: s.name, file: s.file, line: s.line, verdict, text: stepText(s), tests, killers, killed, reachedOnly, ...extra,
     })
 
+    // A holdout that didn't run here names the id: pending, and it's the holdout check that's missing evidence.
+    const pending = [...(e.pendingHoldouts ?? [])].filter(([, ids]) => ids.includes(s.id)).map(([name]) => name)
+    if (executed.length === 0 && pending.length > 0) {
+      return { ...result("passing", { holdout: true }), tests: [...tests, ...pending.map((name): BoundTest => ({ id: `holdout ${name}`, status: "not-run", holdout: true }))] }
+    }
     if (tests.length === 0) return result("unbound")
     if (executed.length === 0) return result(tests.every((t) => t.status === "left-out") ? "unaffected" : "not-run")
     if (executed.some((t) => t.status === "failed")) return result("failing")
@@ -198,7 +208,8 @@ export const judgeScenarios = (e: ScenarioEvidence): ScenarioJudgement => {
       byFunction.set(key, [...(byFunction.get(key) ?? []), m])
     }
   }
-  const noScenario = [...byFunction].filter(([, ms]) => !ms.some((m) => (m.killedBy ?? []).some(bound)))
+  // A scenario whose tests reach the function stated an intent for it: that's an unchallenged scenario, not code without one.
+  const noScenario = [...byFunction].filter(([, ms]) => !ms.some((m) => [...(m.killedBy ?? []), ...(m.coveredBy ?? [])].some(bound)))
     .map(([fn, ms]): NoScenario => {
       const first = [...ms].sort((a, b) => (a.path! < b.path! ? -1 : a.path! > b.path! ? 1 : a.line - b.line))[0]!
       return { function: fn, path: first.path!, line: first.line, mutants: ms.length }

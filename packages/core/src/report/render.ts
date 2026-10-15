@@ -3,6 +3,7 @@ import { type Log, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif
 import { Schema } from "effect"
 import { SURVIVED_RULE } from "../mutants.ts"
 import { MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT } from "../mutation-explained.ts"
+import { behaviourSection } from "./behaviour.ts"
 import { checksTheBaseMayExplain, ranAsBase } from "./ran-as-base.ts"
 import { Report, type ReportCheck } from "./schema.ts"
 
@@ -62,7 +63,8 @@ export interface RenderOptions {
   readonly pullRequest?: number
 }
 
-type Link = (path: string, line?: number) => string
+/** \`base\`: link to the base commit's file whatever the change did to it, as for a scenario file (spec 0012). */
+export type Link = (path: string, line?: number, side?: "base") => string
 
 /** Files as links to the commit being judged (a deleted one, to the base), or as plain paths. */
 /**
@@ -71,9 +73,10 @@ type Link = (path: string, line?: number) => string
  * R<n>, or L<n> on a deleted file's side); otherwise to the file at the commit
  * judged (a deleted one, at the base); without a repository, plain paths.
  */
-const linker = (r: Report, opts: RenderOptions): Link => (path, line) => {
+export const linker = (r: Report, opts: RenderOptions): Link => (path, line, side) => {
   const text = code(`${path}${line ? `:${line}` : ""}`)
   if (!opts.repoUrl) return text
+  if (side === "base") return `[${text}](${opts.repoUrl}/blob/${r.policy.baseSha}/${path}${line ? `#L${line}` : ""})`
   const deleted = r.facts.files.some((f) => f.path === path && f.status === "deleted")
   if (opts.pullRequest !== undefined) {
     const changed = r.facts.files.some((f) => f.path === path)
@@ -302,6 +305,9 @@ export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
     for (const fix of r.remediation) lines.push(`- **${fix.check}**: ${fix.fix}`)
     lines.push("")
   }
+
+  // Spec 0012: what each scenario's evidence says, after why and before the checks.
+  if (r.scenarios) lines.push(...behaviourSection(r, link, opts))
 
   if (r.checks.length > 0) {
     lines.push("### Checks", "")
