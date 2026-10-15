@@ -20,6 +20,8 @@ export interface MutationResult {
    */
   readonly killingTests?: ReadonlyArray<string>
   readonly succeedingTests?: ReadonlyArray<string>
+  /** The method the mutant is in, as the JVM names it (\`fee\`, \`lambda$fee$0\`, \`<init>\`), when Pitest says. */
+  readonly method?: string
 }
 
 /**
@@ -38,6 +40,24 @@ export const pitestTestName = (raw: string): string => {
   return /^(.+)\([\w.$]+\)$/.exec(raw)?.[1] ?? raw
 }
 
+/**
+ * A mutated method by its source-level name, \`Fx.fee\` (spec 0017): the class's
+ * simple name (a Kotlin file facade without its \`Kt\`, a nested class after its
+ * outer one) and the method the code was written in. A lambda, a default-argument
+ * stub, an accessor or a local class's method is its enclosing method's:
+ * \`lambda$fee$0\`, \`fee$lambda$0\`, \`fee$default\`, \`access$fee\` and \`Fx$fee$1.invoke\` are all \`Fx.fee\`.
+ */
+export const pitestMethodName = (className: string, method: string): string => {
+  const parts = (className.split(".").at(-1) ?? className).split("$")
+  const local = parts.findIndex((p, i) => i > 0 && /^\d+$/.test(p))
+  const outer = local < 0 ? parts : parts.slice(0, local)
+  // A class inside a method (Kotlin's \`Fx$fee$1\`): the method is the enclosing one.
+  const enclosing = local > 1 && /^[a-z_]/.test(outer.at(-1)!) ? outer.pop() : undefined
+  const owner = outer.map((p, i) => (i === 0 && p.endsWith("Kt") && p.length > 2 ? p.slice(0, -2) : p)).join(".")
+  const own = method.replace(/^lambda\$(.+?)\$\d+$/, "$1").replace(/^access\$/, "").replace(/\$.*$/, "").replace(/-.*$/, "")
+  return `${owner}.${enclosing ?? (own === "" ? method : own)}`
+}
+
 const testsIn = (node: unknown): string[] => (typeof node === "string" && node !== "" ? node.split("|").filter((t) => t !== "").map(pitestTestName) : [])
 
 /** Pitest `mutations.xml`. Surviving and uncovered mutants both count against the score. */
@@ -50,6 +70,7 @@ export const parseMutations = (xml: string): MutationResult[] => {
     detected: String(m.detected) === "true",
     status: String(m.status ?? ""),
     ...("killingTests" in m ? { killingTests: testsIn(m.killingTests), succeedingTests: testsIn(m.succeedingTests) } : {}),
+    ...(typeof m.mutatedMethod === "string" && m.mutatedMethod !== "" ? { method: m.mutatedMethod } : {}),
   }))
 }
 

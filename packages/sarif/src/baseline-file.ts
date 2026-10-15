@@ -2,6 +2,7 @@ import { prettyCanonicalJson } from "@gauntlet/ir"
 import { Data, Effect, Schema } from "effect"
 import type { KillMap } from "./kill-map.ts"
 import { compareWithBaseline } from "./match.ts"
+import type { MethodMap } from "./method-map.ts"
 import { type MetricDelta, updateMetrics } from "./metrics.ts"
 import { type LegacyEntry, Log, type Metric, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "./schema.ts"
 
@@ -29,6 +30,12 @@ export interface Baseline {
   readonly testMap?: TestMap
   /** Which tests killed which mutants at the recorded commit (spec 0016), when the mutation tool reports it. */
   readonly killMap?: KillMap
+  /**
+   * The methods each test executed at the recorded commit (spec 0017), for
+   * telling a test removed with its code from one removed while its code
+   * stays. Absent when no build could record them: then names decide.
+   */
+  readonly methodMap?: MethodMap
 }
 
 /** Test class (with its build's \`<folder>:\` prefix, as test ids have it) to the files it executed. */
@@ -41,6 +48,12 @@ const packMap = (map: TestMap) => {
   const tests: Record<string, number[]> = {}
   for (const name of Object.keys(map).sort()) tests[name] = [...new Set(map[name]!.map((f) => index.get(f)!))].sort((a, b) => a - b)
   return { files, tests }
+}
+
+/** A method map as the file stores it: each method once, and each test's methods as indexes into them. */
+const packMethods = (map: MethodMap) => {
+  const { files, tests } = packMap(map)
+  return { methods: files, tests }
 }
 
 const unpackMap = (packed: { readonly files: ReadonlyArray<string>; readonly tests: Readonly<Record<string, ReadonlyArray<number>>> }): TestMap =>
@@ -71,6 +84,7 @@ export const encodeBaseline = (b: Baseline): string => {
         testIds: [...new Set(b.testIds)].sort(),
         ...(b.testMap ? { testMap: packMap(b.testMap) } : {}),
         ...(b.killMap ? { killMap: b.killMap } : {}),
+        ...(b.methodMap ? { methodMap: packMethods(b.methodMap) } : {}),
       },
     },
   }
@@ -99,6 +113,7 @@ export const decodeBaseline = (json: string) =>
       results,
       ...(info.testMap ? { testMap: unpackMap(info.testMap) } : {}),
       ...(info.killMap ? { killMap: info.killMap } : {}),
+      ...(info.methodMap ? { methodMap: unpackMap({ files: info.methodMap.methods, tests: info.methodMap.tests }) } : {}),
     } satisfies Baseline
   })
 
@@ -113,6 +128,8 @@ export interface UpdateRequest {
   readonly testMap?: TestMap
   /** The kill map recorded in this run, if any. */
   readonly killMap?: KillMap
+  /** The methods each test executed in this run, if recorded. */
+  readonly methodMap?: MethodMap
   readonly allowLower: boolean
   /**
    * The policy gained gates: grandfather the findings of tools the old
@@ -176,6 +193,7 @@ export const updateBaseline = (old: Baseline, request: UpdateRequest): UpdateOut
       // A map describes the commit it was recorded at, so an older one never carries over.
       ...(request.testMap ? { testMap: request.testMap } : {}),
       ...(request.killMap ? { killMap: request.killMap } : {}),
+      ...(request.methodMap ? { methodMap: request.methodMap } : {}),
     },
     loweredMetrics: metricUpdate.lowered,
     newlyGrandfathered,

@@ -9,7 +9,7 @@ import { detektDeadCode, enabledDeadCodeRules } from "./deadcode.ts"
 import { gradle, type GradleRun, taskMissing } from "./gradle.ts"
 import { runRules } from "./kotlin/rules.ts"
 import { isKotlin, line, ofType, parseKotlin } from "./kotlin/syntax.ts"
-import { parseCoverage, parseMutations } from "./reports.ts"
+import { parseCoverage, parseMutations, pitestMethodName } from "./reports.ts"
 import { isMainSource, packageOf, pitestExclusions, pitestTargets, sourceIndex } from "./sources.ts"
 import { includesFor, isSource, testMapOf } from "./test-map.ts"
 import { LISTENER_BYTES, LISTENER_CLASS } from "./testmap-listener.ts"
@@ -302,6 +302,7 @@ export const mutation: GateImpl = (_check, ctx) =>
       return {
         path: locate(pkg, m.sourceFile), line: m.line, killed: m.detected, message: `${m.status === "NO_COVERAGE" ? "No test covers" : "No test kills"} a mutant in ${m.className}`,
         ...(m.killingTests ? { killedBy: m.killingTests, coveredBy: [...m.killingTests, ...(m.succeedingTests ?? [])] } : {}),
+        ...(m.method !== undefined ? { method: pitestMethodName(m.className, m.method) } : {}),
       }
     })
     // Survivors, by line, so an agent knows exactly which assertions are missing.
