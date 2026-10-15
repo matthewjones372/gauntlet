@@ -39,7 +39,7 @@ const JestResults = Schema.Struct({
 })
 
 /** Jest's `--json` output as a SARIF run plus counts. Counts come from the test entries, not the summary fields. */
-export const convertJestJson = (check: string, json: string, repoRoot: string): Option.Option<{ run: Run; counts: TestCounts; ids: string[] }> =>
+export const convertJestJson = (check: string, json: string, repoRoot: string): Option.Option<{ run: Run; counts: TestCounts; ids: string[]; skipped: string[] }> =>
   Option.map(Schema.decodeUnknownOption(Schema.fromJsonString(JestResults))(json), (r) => {
     const tests = r.testResults.flatMap((file) => file.assertionResults.map((a) => ({ file: relativeUri(file.name, repoRoot), ...a })))
     const failed = tests.filter((t) => t.status === "failed")
@@ -55,6 +55,7 @@ export const convertJestJson = (check: string, json: string, repoRoot: string): 
       run: { tool: { driver: { name: "jest" } }, results, properties: { gauntlet: { check, tests: counts } } },
       counts,
       ids: tests.map((t) => `${t.file} > ${t.fullName}`).sort(),
+      skipped: skipped.map((t) => `${t.file} > ${t.fullName}`).sort(),
     }
   })
 
@@ -63,6 +64,8 @@ const StrykerReport = Schema.Struct({
     mutants: Schema.Array(Schema.Struct({
       status: Schema.String,
       mutatorName: Schema.optionalKey(Schema.String),
+      replacement: Schema.optionalKey(Schema.String),
+      statusReason: Schema.optionalKey(Schema.String),
       killedBy: Schema.optionalKey(Schema.Array(Schema.String)),
       coveredBy: Schema.optionalKey(Schema.Array(Schema.String)),
       location: Schema.Struct({
@@ -92,6 +95,9 @@ export interface Mutant {
    */
   readonly killedBy?: ReadonlyArray<string>
   readonly coveredBy?: ReadonlyArray<string>
+  /** What Stryker put in the code's place, and what the killing test said (spec 0012). */
+  readonly replacement?: string
+  readonly statusReason?: string
 }
 
 /** Statuses that count towards the score: detected over all that ran. */
@@ -111,6 +117,8 @@ export const parseStryker = (json: string, repoRoot: string): Option.Option<Muta
         mutator: m.mutatorName ?? "mutant",
         ...(m.location.start.column !== undefined ? { column: m.location.start.column } : {}),
         ...(m.location.end ? { endLine: m.location.end.line } : {}),
+        ...(m.replacement !== undefined ? { replacement: m.replacement } : {}),
+        ...(m.statusReason !== undefined ? { statusReason: m.statusReason } : {}),
         // Per-test results: a killed mutant names its killers, and every mutant the tests that ran it.
         ...(r.testFiles ? { killedBy: (m.killedBy ?? []).map(name), coveredBy: (m.coveredBy ?? []).map(name) } : {}),
       }))

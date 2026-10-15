@@ -16,6 +16,8 @@ export interface GoTestReport {
   readonly run: Run
   readonly counts: TestCounts
   readonly ids: string[]
+  /** The skipped tests' ids (spec 0012). */
+  readonly skipped: string[]
 }
 
 /** The package directory relative to the module root: `example.com/svc/money` is `money`. */
@@ -82,6 +84,7 @@ export const convertGoTest = (check: string, stdout: string, module: string): Go
     run: { tool: { driver: { name: "go test" } }, results, properties: { gauntlet: { check, tests: counts } } },
     counts,
     ids: [...[...outcome.keys()], ...failedPackages].sort(),
+    skipped: [...outcome].filter(([, o]) => o.status === "skipped").map(([id]) => id).sort(),
   }
 }
 

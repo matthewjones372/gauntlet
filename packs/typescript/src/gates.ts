@@ -2,7 +2,7 @@ import { type Mutant as Scored, mutationGateRun, failingToolSaid } from "@gauntl
 import type { GateContext, GateImpl, GateRun, SuiteImpl, TestSubset } from "@gauntlet/core"
 import { globMatches } from "@gauntlet/dsl"
 import { prettyCanonicalJson } from "@gauntlet/ir"
-import { convertJUnit, decodeLog, type Log, relativeUri, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
+import { convertJUnit, skippedOf, decodeLog, type Log, relativeUri, type Result, type Run, SARIF_SCHEMA, SARIF_VERSION } from "@gauntlet/sarif"
 import { availableParallelism } from "node:os"
 import { posix } from "node:path"
 import { Effect, FileSystem, Option, Path } from "effect"
@@ -117,13 +117,13 @@ export const runSuite: SuiteImpl = (suite, ctx, subset) =>
     if (jest) {
       const converted = convertJestJson(suite.name, jest.content, ctx.dir)
       if (Option.isNone(converted)) return { ...base(r), error: "jest's JSON results couldn't be read" }
-      ran = { ...base(r), runs: [converted.value.run], tests: { counts: converted.value.counts, ids: converted.value.ids } }
+      ran = { ...base(r), runs: [converted.value.run], tests: { counts: converted.value.counts, ids: converted.value.ids, ...(converted.value.skipped.length > 0 ? { skipped: converted.value.skipped } : {}) } }
     } else {
       const xml = files.filter((f) => f.path.endsWith(".xml"))
       if (xml.length === 0) return base(r)
       const junit = yield* Effect.exit(convertJUnit(suite.name, xml.map((f) => ({ path: f.path, content: f.content }))))
       if (junit._tag === "Failure") return { ...base(r), error: "the JUnit XML couldn't be read" }
-      ran = { ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids: junit.value.tests.map((t) => t.id) } }
+      ran = { ...base(r), runs: [junit.value.run], tests: { counts: junit.value.counts, ids: junit.value.tests.map((t) => t.id), ...skippedOf(junit.value.tests) } }
     }
     if (!ctx.recordTestMap || subset || ctx.fromCi) return ran
     const mapped = yield* mapTests(ctx, chain, ran.tests?.ids ?? [])
@@ -479,6 +479,8 @@ export const mutation: GateImpl = (check, ctx) =>
       message: `${m.status === "NoCoverage" ? "No test covers" : "No test kills"} a ${m.mutator} mutant`,
       // Only a run that didn't stop at the first killer names them all; one killer would make every other test look redundant.
       ...(ctx.recordKillMap && m.killedBy ? { killedBy: m.killedBy, coveredBy: m.coveredBy ?? [] } : {}),
+      ...(m.replacement !== undefined ? { description: `${m.mutator}: replaced with ${m.replacement.split("\n")[0]}` } : {}),
+      ...(DETECTED.has(m.status) && m.statusReason !== undefined ? { killMessage: m.statusReason } : {}),
     }))
     return { ...base(r), exitCode: 0, ...mutationGateRun("stryker", counted, ctx) }
   })

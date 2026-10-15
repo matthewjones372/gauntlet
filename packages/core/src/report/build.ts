@@ -5,7 +5,8 @@ import type { IntegrityResult } from "../integrity.ts"
 import type { Drift } from "../policy-source.ts"
 import { suggestStack } from "../stack.ts"
 import { type CheckOutcome, codeRemoved, type Decision, type NewViolation } from "../review.ts"
-import { REPORT_SCHEMA_VERSION, type Report, type ReportAgent } from "./schema.ts"
+import type { ScenarioJudgement } from "../scenario-verdicts.ts"
+import { REPORT_SCHEMA_VERSION, type Report, type ReportAgent, type ReportScenarios } from "./schema.ts"
 
 /** A check outcome plus the proof and test counts it produced, if any. */
 export interface CheckRecord extends CheckOutcome {
@@ -23,6 +24,8 @@ export interface CheckRecord extends CheckOutcome {
   readonly selection?: { readonly ran: number; readonly of: number; readonly why: ReadonlyArray<string>; readonly deselected?: ReadonlyArray<string> }
   /** The mutation gate confirmed that a change that only removes tests loses no kills (spec 0016). */
   readonly pruning?: "confirmed"
+  /** The scenarios check's verdicts (spec 0012). */
+  readonly scenarios?: ScenarioJudgement
 }
 
 export interface ImportRecord {
@@ -70,6 +73,22 @@ const findings = (vs: ReadonlyArray<NewViolation>) =>
     .sort(by((v) => `${v.check}\0${v.path ?? ""}\0${pad(v.line)}\0${v.ruleId}\0${v.message}`))
     .map((v) => ({ check: v.check, ruleId: v.ruleId, message: v.message, ...opt("path", v.path), ...opt("line", v.line) }))
 
+/** The verdicts in the report's order: worst first (spec 0012), then by id. */
+const VERDICT_ORDER = ["unbound", "not-run", "failing", "vacuous", "unchallenged", "passing", "proven", "unaffected"] as const
+
+export const scenariosOf = (j: ScenarioJudgement): ReportScenarios => ({
+  mutation: j.mutation,
+  scenarios: [...j.scenarios]
+    .sort((a, b) => VERDICT_ORDER.indexOf(a.verdict) - VERDICT_ORDER.indexOf(b.verdict) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((s) => ({
+      id: s.id, name: s.name, file: s.file, line: s.line, verdict: s.verdict, text: [...s.text],
+      tests: s.tests.map((t) => ({ ...t })), killers: s.killers,
+      killed: s.killed.map((m) => ({ ...m })), reachedOnly: s.reachedOnly.map((m) => ({ ...m })),
+      ...(s.holdout ? { holdout: true as const } : {}),
+    })),
+  noScenario: j.noScenario.map((n) => ({ ...n })),
+})
+
 /** Builds the report. Every list is put in a fixed order so equal inputs give equal bytes. */
 export const buildReport = (input: ReportInput): Report => {
   const { ir, sourceMap } = input.policy
@@ -110,6 +129,7 @@ export const buildReport = (input: ReportInput): Report => {
   const failed = new Set(input.checks.filter((c) => c.status === "failed").map((c) => c.check))
   const remediation = ir.remediation.filter((r) => failed.has(r.gate)).map((r) => ({ check: r.gate, fix: r.fix })).sort(by((r) => r.check))
   const stack = input.scope === "protect-only" ? undefined : suggestStack(ir, facts)
+  const judged = input.checks.find((c) => c.scenarios !== undefined)?.scenarios
 
   return {
     schemaVersion: REPORT_SCHEMA_VERSION,
@@ -148,6 +168,7 @@ export const buildReport = (input: ReportInput): Report => {
     },
     violations: findings(input.violations),
     ...(input.advice && input.advice.length > 0 ? { advice: findings(input.advice) } : {}),
+    ...(judged ? { scenarios: scenariosOf(judged) } : {}),
     imports: [...input.imports].sort(by((i) => i.source)).map((i) => ({
       source: i.source,
       trust: i.trust,

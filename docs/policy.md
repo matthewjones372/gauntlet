@@ -433,8 +433,39 @@ agent writing its own acceptance criteria would be grading its own work.
 
 `scenarios` in a gate tier judges them, and `scenarios advise` reports the
 verdicts without blocking. It reads what the suites and the mutation gate
-found, so `validate` warns when they run in a later tier, and says that
-without a mutation gate no scenario can be shown to catch a bug.
+found, so it runs last in its tier, `validate` warns when they run in a later
+tier, and says that without a mutation gate no scenario can be shown to catch
+a bug.
+
+A test is bound to a scenario when the scenario's id is a word in the test's
+name as the runner reports it: `FX-003 converts at the quoted rate` binds
+FX-003, `converts_FX003` doesn't. A test can name several scenarios, and a
+scenario can have several tests. The mutation tool's killers are matched the
+same way. Each scenario gets one verdict, the first that applies:
+
+| Verdict | When | Blocks under `scenarios` |
+|---|---|---|
+| `unbound` | no test names the id | yes |
+| `not-run` | a bound test exists (in the sources or the base's tests) but none executed: filtered, skipped, no report | yes |
+| `failing` | a bound test failed | yes |
+| `vacuous` | every bound test that ran can't fail: no assertion, or only ones like `assertTrue(true)` (read as `gauntlet prune tests` reads them) | yes |
+| `unchallenged` | a bound test reaches a mutant on a changed line, and no bound test kills one | no, a finding |
+| `proven` | bound tests passed, and one killed a mutant on a changed line | |
+| `unaffected` | passed, but no bound test reached a changed line (or `affected` selection left its tests out) | |
+| `passing` | passed, with no mutation gate in the policy or a tool that doesn't name killers | |
+
+Killers come from the mutation tool: Pitest's full mutation matrix and
+StrykerJS's `killedBy` (with Vitest or Jest). With a scenarios check, the
+mutation gate asks for every killer, as it does when recording a baseline, so
+Pitest runs slower. A tool that names no killers leaves its scenarios
+`passing`; Gauntlet never infers one.
+
+**Changed code with no scenario** is a changed function with at least one
+mutant on a changed line, none of which a scenario's test kills. It's a
+finding that never blocks, one per function: the part of the change nobody
+stated an intent for. The verdicts are in `gauntlet-report.json` under
+`scenarios`, and the agent is told each scenario that blocks or is
+unchallenged, with its steps, so it changes the code rather than the scenario.
 
 ## Running the tests a change affects
 

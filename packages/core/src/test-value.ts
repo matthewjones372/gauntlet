@@ -104,7 +104,8 @@ export interface MutationFindings {
   readonly alreadyKilled: ReadonlyArray<{ readonly test: string; readonly killed: number; readonly by: ReadonlyArray<string> }>
 }
 
-const testsNothingWhy = (t: SurveyedTest, helpers: ReadonlySet<string>): string | undefined => {
+/** Why a test can't fail on a wrong result, or undefined when it can (shared with the scenarios check, spec 0012). */
+export const testsNothingWhy = (t: SurveyedTest, helpers: ReadonlySet<string>): string | undefined => {
   if (t.property) return undefined
   if (t.assertions - t.tautologies > 0) return undefined
   if (t.calls.some((c) => helpers.has(c))) return undefined
