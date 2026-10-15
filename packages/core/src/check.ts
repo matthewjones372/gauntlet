@@ -244,7 +244,7 @@ const judge = (
       readHead: read(p.head),
       isTestPath: testPathMatcher(p.ir),
       ...compared,
-      ...Option.match(p.baseline, { onNone: () => ({}), onSome: (b) => (b.killMap ? { killMap: b.killMap } : {}) }),
+      ...Option.match(p.baseline, { onNone: () => ({}), onSome: (b) => ({ ...(b.killMap ? { killMap: b.killMap } : {}), ...(b.methodMap ? { methodMap: b.methodMap } : {}) }) }),
       ...(executed.checks.some((c) => c.check === "mutation" && c.status === "passed" && c.pruning === "confirmed") ? { pruningConfirmed: true } : {}),
       headFiles: yield* git.listTree(repo, p.head),
       dir,

@@ -1,6 +1,6 @@
 import { type GateSpec, globMatches } from "@gauntlet/dsl"
 import { type Check, type PolicyIR, sha256 } from "@gauntlet/ir"
-import { type Baseline, compareMetrics, compareWithBaseline, convertJUnit, type Metric, type MetricDelta, type Proof, type Result, resultPath, resultRegion, type Run, type KillMap, mergeKillMaps, migrateTestIds, renameKillMap, type TestMap } from "@gauntlet/sarif"
+import { type Baseline, compareMetrics, compareWithBaseline, convertJUnit, type Metric, type MetricDelta, type Proof, type Result, resultPath, resultRegion, type Run, type KillMap, mergeKillMaps, type MethodMap, mergeMethodMaps, migrateTestIds, renameKillMap, renameMethodMap, type TestMap } from "@gauntlet/sarif"
 import { Clock, Effect, FileSystem, Option, type Path } from "effect"
 import { buildSlug, buildsOf, factsForBuild, hasBuilds, mergeBuildRuns, ownedBy, ownerDir, runFromBuild, toBuild } from "./builds.ts"
 import { judgeBudget, parseBudgetResults } from "./budget.ts"
@@ -85,6 +85,8 @@ export interface GateRunnerOutput {
   readonly testMapMissing?: ReadonlyArray<string>
   /** Which tests killed which mutants, from mutation gates whose tools report killers (spec 0016). */
   readonly killMap?: KillMap
+  /** The methods each test executed, from mutation gates whose tools name them (spec 0017). */
+  readonly methodMap?: MethodMap
   /** The map's test classes that selection left out of the suites that ran (spec 0013). */
   readonly deselected?: ReadonlyArray<string>
 }
@@ -156,6 +158,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
     const testMaps: TestMap[] = []
     const testMapMissing: string[] = []
     const killMaps: KillMap[] = []
+    const methodMaps: MethodMap[] = []
     const deselected = new Set<string>()
     const changed = facts.files.filter((f) => f.status !== "deleted").map((f) => f.path)
     // Main code the change deletes: a whole-project ratchet doesn't hold it to the base's value (spec 0017 §3).
@@ -343,6 +346,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
       ...(testMap ? { testMap } : {}),
       ...(testMapMissing.length > 0 ? { testMapMissing } : {}),
       ...(killMaps.length > 0 ? { killMap: mergeKillMaps(killMaps) } : {}),
+      ...(methodMaps.length > 0 ? { methodMap: mergeMethodMaps(methodMaps) } : {}),
       ...(deselected.size > 0 ? { deselected: [...deselected].sort() } : {}),
     }
 
@@ -397,6 +401,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
             ...(raw.tests ? { tests: { ...raw.tests, ids: raw.tests.ids.map(named) } } : {}),
             ...(raw.testMap ? { testMap: Object.fromEntries(Object.entries(raw.testMap).map(([name, files]) => [named(name), files])) } : {}),
             ...(raw.killMap ? { killMap: renameKillMap(raw.killMap, { test: named }) } : {}),
+            ...(raw.methodMap ? { methodMap: renameMethodMap(raw.methodMap, { test: named }) } : {}),
           }
           if (raw.tests) testedBuilds.add(build.dir)
           const fingerprinted = yield* fingerprintRuns(r.runs, workspace.dir, {
@@ -767,6 +772,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         }
         if (run.nothingInScope !== undefined) return { status: "passed", reason: run.nothingInScope, proof }
         if (run.killMap) killMaps.push(run.killMap)
+        if (run.methodMap) methodMaps.push(run.methodMap)
 
         if (check.kind === "suite") {
           if (!run.tests || files.length === 0) return { status: "failed", reason: "no test report was produced (a silent green fails)", proof }

@@ -114,6 +114,8 @@ export const RunProperties = Schema.Struct({
     testIds: Schema.optionalKey(Schema.Array(Schema.String)),
     /** What each test class executed when the baseline was recorded (spec 0013): each path once, classes by index. */
     testMap: Schema.optionalKey(Schema.Struct({ files: Schema.Array(Schema.String), tests: Schema.Record(Schema.String, Schema.Array(Schema.Number)) })),
+    /** The methods each test executed when the baseline was recorded (spec 0017): each method once, tests' methods by index. */
+    methodMap: Schema.optionalKey(Schema.Struct({ methods: Schema.Array(Schema.String), tests: Schema.Record(Schema.String, Schema.Array(Schema.Number)) })),
     /** Which tests killed which mutants when the baseline was recorded (spec 0016): mutants once, tests' kills by index. */
     killMap: Schema.optionalKey(Schema.Struct({
       mutants: Schema.Array(Schema.Struct({ path: Schema.String, line: Schema.Number })),

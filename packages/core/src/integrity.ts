@@ -1,9 +1,10 @@
 import { globMatches } from "@gauntlet/dsl"
 import type { FlagCheck, ForbidCheck, PolicyIR, RatchetCheck } from "@gauntlet/ir"
-import { compareMetrics, type KillMap, type Metric, type TestCounts } from "@gauntlet/sarif"
-import { Effect, type FileSystem, type Option, type Path } from "effect"
+import { compareMetrics, type KillMap, type MethodMap, methodOf, type Metric, type TestCounts } from "@gauntlet/sarif"
+import { Effect, type FileSystem, Option, type Path } from "effect"
 import type { DiffFacts } from "./diff-facts.ts"
-import { describePruning, pruningVerdict, removedTests } from "./pruning.ts"
+import { describePruning, pruningVerdict, removedTests, sameTest } from "./pruning.ts"
+import { describeRemoval, describeRemovedFile, judgeRemovedTests, type RemovalVerdict, stillDeclared } from "./removed-with-code.ts"
 
 // Integrity checks: is the verification itself intact? (ADR 0013)
 // Core implements what needs no language knowledge; packs supply detectors
@@ -63,6 +64,8 @@ export interface IntegrityInput extends DetectorInput {
   readonly baseTestIds?: ReadonlyArray<string>
   /** Which tests killed which mutants at base, when the baseline recorded it (spec 0016). */
   readonly killMap?: KillMap
+  /** The methods each test executed at base, when the baseline recorded them (spec 0017). */
+  readonly methodMap?: MethodMap
   /** The policy's mutation gate confirmed that this change, if it only removes tests, loses no kills (spec 0016). */
   readonly pruningConfirmed?: boolean
 }
@@ -124,7 +127,7 @@ export const codeUnderTest = (testPath: string, removedMain: ReadonlyArray<strin
 }
 
 /** Checks core implements, and what each needs to run. */
-const coreDetector = (input: IntegrityInput): { findings: IntegrityFinding[]; metrics: Record<string, Metric>; covered: IntegrityCheck[]; removedWithCode: number } => {
+const coreDetector = (input: IntegrityInput, verdicts: ReadonlyMap<string, RemovalVerdict>): { findings: IntegrityFinding[]; metrics: Record<string, Metric>; covered: IntegrityCheck[]; removedWithCode: number } => {
   const findings: IntegrityFinding[] = []
   const metrics: Record<string, Metric> = {}
   const covered: IntegrityCheck[] = []
@@ -139,15 +142,30 @@ const coreDetector = (input: IntegrityInput): { findings: IntegrityFinding[]; me
   // Deleted tests: test files removed by the change, and test ids that ran at base but not now.
   // A test removed together with the code it tested (removing a feature) is
   // flagged for review rather than forbidden; any other removal is forbidden.
+  // The map of the methods each test ran decides which those are (spec 0017 §1);
+  // without it, or for a test it doesn't name, a test file named after a deleted
+  // source file is.
   const removedTestFiles = facts.files.flatMap((f) =>
     f.status === "deleted" && input.isTestPath(f.path) ? [f.path]
     : f.status === "renamed" && f.oldPath !== undefined && input.isTestPath(f.oldPath) && !input.isTestPath(f.path) ? [f.oldPath]
     : [])
   const removedMain = facts.files.filter((f) => f.status === "deleted" && !input.isTestPath(f.path)).map((f) => f.path)
   const withCode = new Map<string, string>()
+  const now = new Set(input.headTests?.ids ?? [])
+  const gone = input.baseTestIds && input.headTests ? input.baseTestIds.filter((id) => !now.has(id)) : []
+  const normal = (id: string) => id.toLowerCase().replaceAll("_", "-")
   for (const path of removedTestFiles) {
+    // The file's tests that no longer run, and what the map says about each.
+    const mine = gone.filter((id) => normal(id).includes(testFileName(path)))
+    const judged = mine.flatMap((id) => verdicts.get(id) ?? [])
+    const against = mine.find((id) => { const v = verdicts.get(id); return v !== undefined && v.kind !== "with-its-code" })
     const code = codeUnderTest(path, removedMain)
-    if (code !== undefined) {
+    if (against !== undefined) {
+      findings.push({ check: "deleted-tests", kind: "forbid", message: `Test file ${path} was deleted. ${describeRemoval(against, verdicts.get(against)!)}`, path, detector: "core" })
+    } else if (mine.length > 0 && judged.length === mine.length) {
+      withCode.set(path, path)
+      findings.push({ check: "deleted-tests", kind: "flag", message: describeRemovedFile(path, judged), path, detector: "core" })
+    } else if (code !== undefined) {
       withCode.set(path, code)
       findings.push({ check: "deleted-tests", kind: "flag", message: `Test file ${path} was removed along with ${code}, the code it tested. Check the feature was meant to go.`, path, detector: "core" })
     } else {
@@ -156,12 +174,14 @@ const coreDetector = (input: IntegrityInput): { findings: IntegrityFinding[]; me
   }
   let removedWithCode = 0
   if (input.baseTestIds && input.headTests) {
-    const now = new Set(input.headTests.ids)
     const names = [...withCode.keys()].map(testFileName)
-    for (const id of input.baseTestIds) {
-      if (now.has(id)) continue
-      const normal = id.toLowerCase().replaceAll("_", "-")
-      if (names.some((n) => normal.includes(n))) {
+    for (const id of gone) {
+      const verdict = verdicts.get(id)
+      if (verdict !== undefined) {
+        const along = verdict.kind === "with-its-code"
+        if (along) removedWithCode++
+        findings.push({ check: "deleted-tests", kind: along ? "flag" : "forbid", message: describeRemoval(id, verdict), detector: "core" })
+      } else if (names.some((n) => normal(id).includes(n))) {
         removedWithCode++
         findings.push({ check: "deleted-tests", kind: "flag", message: `Test ${id} no longer runs: its test file was removed along with the code it tested.`, detector: "core" })
       } else {
@@ -284,7 +304,7 @@ const FLAKY_PATTERNS: ReadonlyArray<{ readonly what: string; readonly pattern: R
  */
 export const runIntegrity = (input: IntegrityInput, detectors: ReadonlyArray<IntegrityDetector>): Effect.Effect<IntegrityResult, never, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function*() {
-    const core = coreDetector(input)
+    const core = coreDetector(input, yield* removalVerdicts(input))
     const findings = [...core.findings]
     const metrics: Record<string, Metric> = { ...core.metrics }
     const covered = new Set<IntegrityCheck>(core.covered)
@@ -339,6 +359,34 @@ export const runIntegrity = (input: IntegrityInput, detectors: ReadonlyArray<Int
       metrics,
       notExecuted: [...notExecuted].sort(),
     }
+  })
+
+/**
+ * What the base's method map says about each test that no longer runs (spec
+ * 0017 §1), reading at head the files the methods they ran are in. Empty
+ * without a map, or when the tests that ran aren't known by name.
+ */
+const removalVerdicts = (input: IntegrityInput) =>
+  Effect.gen(function*() {
+    const map = input.methodMap
+    if (map === undefined || input.baseTestIds === undefined || input.headTests === undefined) return new Map<string, RemovalVerdict>()
+    const now = new Set(input.headTests.ids)
+    const removed = input.baseTestIds.filter((id) => !now.has(id))
+    if (removed.length === 0) return new Map<string, RemovalVerdict>()
+    // A file's text at head: none when the change deletes it, its new path's when it renames it.
+    const texts = new Map<string, string | undefined>()
+    // Only the methods the removed tests ran are judged, so only their files are read.
+    const leaving = new Set(removed.map(sameTest))
+    const ran = Object.entries(map).filter(([name]) => leaving.has(sameTest(name))).flatMap(([, methods]) => methods)
+    for (const path of [...new Set(ran.map((k) => methodOf(k).path))].sort()) {
+      const change = input.facts.files.find((f) => f.path === path || f.oldPath === path)
+      const at = change === undefined ? path : change.status === "deleted" ? undefined : change.path
+      texts.set(path, at === undefined ? undefined : Option.getOrUndefined(yield* input.readHead(at)))
+    }
+    return judgeRemovedTests(removed, map, (key) => {
+      const m = methodOf(key)
+      return !stillDeclared(texts.get(m.path), m.name)
+    })
   })
 
 /** Whether a path holds tests, according to the policy. */

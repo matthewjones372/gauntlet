@@ -1,5 +1,5 @@
 import type { Check, PolicyIR } from "@gauntlet/ir"
-import type { KillMap, LegacyEntry, Metric, Run, TestMap } from "@gauntlet/sarif"
+import type { KillMap, LegacyEntry, MethodMap, Metric, Run, TestMap } from "@gauntlet/sarif"
 import type { Effect, FileSystem, Path } from "effect"
 import type { DiffFacts } from "./diff-facts.ts"
 import type { TestRecord } from "./integrity.ts"
@@ -99,6 +99,8 @@ export interface GateRun {
   readonly testMapMissing?: string
   /** A mutation gate's record of which tests killed which mutants, when its tool reports killers (spec 0016). */
   readonly killMap?: KillMap
+  /** The methods each test executed, when the gate's tool names them (spec 0017), with paths as the build sees them. */
+  readonly methodMap?: MethodMap
 }
 
 type GateServices = ProcessRunner | FileSystem.FileSystem | Path.Path

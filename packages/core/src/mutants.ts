@@ -1,4 +1,4 @@
-import type { KillMap, KillMapTest, Metric, Run } from "@gauntlet/sarif"
+import { type KillMap, type KillMapTest, type Metric, type MethodMap, methodKey, mergeMethodMaps, type Run } from "@gauntlet/sarif"
 import type { GateContext } from "./gate.ts"
 
 // Spec 0011: every pack's mutation gate scores through this, so packs agree on
@@ -24,6 +24,8 @@ export interface Mutant {
   readonly killedBy?: ReadonlyArray<string>
   /** Every test that ran it, killers included, where the tool reports them. */
   readonly coveredBy?: ReadonlyArray<string>
+  /** The method it's in, by its source-level name (\`Fx.fee\`), where the tool says (spec 0017). */
+  readonly method?: string
 }
 
 export interface MutationScope {
@@ -98,6 +100,21 @@ export const killMapOf = (mutants: ReadonlyArray<Mutant>): KillMap | undefined =
   return { mutants: located.map((m) => ({ path: m.path, line: m.line })), tests }
 }
 
+/**
+ * The methods each test ran, from the mutants it reached, killed or not
+ * (spec 0017 §1): with Pitest's full mutation matrix, every test that runs a
+ * mutant's code is named on it. Undefined when no mutant names its method
+ * and the tests that reached it.
+ */
+export const methodMapOf = (mutants: ReadonlyArray<Mutant>): MethodMap | undefined => {
+  const tests: Record<string, string[]> = {}
+  for (const m of mutants) {
+    if (m.path === undefined || m.method === undefined || m.coveredBy === undefined) continue
+    for (const t of new Set([...m.coveredBy, ...(m.killedBy ?? [])])) (tests[t] ??= []).push(methodKey(m.path, m.method))
+  }
+  return Object.keys(tests).length === 0 ? undefined : mergeMethodMaps([tests])
+}
+
 /** What a gate's context limits mutants to: its files and, with `on changed`, the lines the change added or edited. */
 export const mutationScopeOf = (ctx: GateContext): MutationScope => ({
   ...(ctx.scope !== undefined ? { scope: ctx.scope } : {}),
@@ -110,9 +127,11 @@ export const mutationScopeOf = (ctx: GateContext): MutationScope => ({
 export const mutationGateRun = (tool: string, mutants: ReadonlyArray<Mutant>, ctx: GateContext) => {
   const r = mutationResult(tool, mutants, mutationScopeOf(ctx))
   const killMap = killMapOf(mutants)
+  const methodMap = methodMapOf(mutants)
   return {
     runs: r.runs,
     ...(killMap ? { killMap } : {}),
+    ...(methodMap ? { methodMap } : {}),
     ...(r.metrics ? { metrics: r.metrics } : {}),
     ...(r.nothingInScope ? { nothingInScope: r.nothingInScope } : {}),
     ...(r.lineScoped ? { lineScoped: true as const } : {}),

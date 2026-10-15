@@ -455,7 +455,20 @@ Other packs record no map yet, so their `affected` suites run every test.
 
 ## Removing a feature
 
-Deleting a test is forbidden: it's the oldest way to make a check pass. But removing a feature removes its tests too. When a change deletes a test file together with the source file it's named after (`FxTest.kt` with `Fx.kt`, `fx.test.ts` with `fx.ts`, `fx_test.go` with `fx.go`, `test_fx.py` with `fx.py`), it's flagged instead: the change needs a person's review, not a fix. Those tests don't count against the executed-tests ratchet either. A test deleted while its code stays is still forbidden.
+Deleting a test is forbidden: it's the oldest way to make a check pass. But removing a feature removes its tests too, and such a test is flagged instead: the change needs a person's review, not a fix. Those tests don't count against the executed-tests ratchet either. A test deleted while its code stays is still forbidden.
+
+Which tests went with their code is the baseline's map of the methods each test executed ([spec 0017](specs/0017-removing-code-and-its-tests.md) §1). A test that ran at base and no longer runs (its file deleted, or the test case removed from a file that stays) went with its code when:
+
+- it executed at least one method that the change removes, and
+- every method it executed that's still there is still executed by a test that still runs.
+
+So a test case can go with the function it tested out of a file that stays, and a test named for the behaviour (`CheckoutFlowTest` for `Basket.kt`) can go with its code. A test that was the last test of a method that stays is still forbidden, however it's named. For each test the report names the removed code it covered and why it qualified ("Test svc.FxTest.feeRoundsUp no longer runs: it only tested Fx.fee, which this change removes"), or why it didn't ("it was the last test of Money.plus, which stays"). A deleted test file is flagged when every one of its tests went with its code.
+
+A method is still there when its name is still a word in its file at head (a renamed file is read at its new path); a constructor while its class's name is, and a JVM accessor (`getRate`) while its property (`rate`) is. That reading errs towards keeping a method, so doubt never lets a test go. A function renamed and its test deleted reads as removed code, so the new function's own coverage and the review are what catch it.
+
+The JVM pack records the map with `gauntlet baseline` from Pitest's full mutation matrix, which the kill map already turns on (see "Tests that add no value"): every mutant names its method and every test that ran it, so the policy needs a mutation gate. A method Pitest makes no mutant in isn't in the map. The other packs record no map: their coverage tools don't report per-test methods without a run per test.
+
+Without the map (another pack, a baseline recorded before it, a policy without a mutation gate), or for a test the map doesn't name, names decide: a test file deleted together with the source file it's named after (`FxTest.kt` with `Fx.kt`, `fx.test.ts` with `fx.ts`, `fx_test.go` with `fx.go`, `test_fx.py` with `fx.py`) is flagged, and so are its tests.
 
 Removing code doesn't trip a whole-project coverage or mutation ratchet
 (`coverage ratchet`, `mutation ratchet` without `on changed`): the change is
