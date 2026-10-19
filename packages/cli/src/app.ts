@@ -16,7 +16,7 @@ import { GauntletTools, mcpServer } from "@gauntlet/mcp"
 import { Clock, Data, Effect, FileSystem, Layer, Option, Path, Ref, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { agentFromEnv } from "./agent.ts"
-import { describeChanges } from "./apply.ts"
+import { changedSuites, describeChanges } from "./apply.ts"
 import { exportCorpus } from "./corpus-export.ts"
 import { AuthorRuntime, type AuthorRuntimeShape, renderDropped } from "./author.ts"
 import { Ask, ExitStatus, exitWith, LaunchAgent, Output, Stdin, style, withGateProgress } from "./output.ts"
@@ -349,6 +349,11 @@ interface BaselineArgs {
   readonly adoptNewGates?: boolean
   /** Setup's baseline: don't mutate the whole project for a mutation check on changed lines. */
   readonly skipChangedMutation?: boolean
+  /**
+   * Suites the policy just applied removes or changes (apply). Fewer tests may
+   * run, so lower values are the owner's to confirm rather than refused.
+   */
+  readonly changedSuites?: ReadonlyArray<string>
 }
 
 /** Records (or raises) the baseline on trunk; `gauntlet baseline` and `gauntlet apply` both run it. */
@@ -413,17 +418,30 @@ const runBaseline = (args: BaselineArgs) =>
     if (Option.isNone(existing)) {
       next = { ...emptyBaseline(meta.commit, meta.irHash, meta.gauntletVersion), metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, legacy, ...(recorded.testMap ? { testMap: recorded.testMap } : {}), ...(recorded.killMap ? { killMap: recorded.killMap } : {}), ...(recorded.methodMap ? { methodMap: recorded.methodMap } : {}) }
     } else {
-      const outcome = updateBaseline(existing.value, { ...meta, metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, ...(recorded.testMap ? { testMap: recorded.testMap } : {}), ...(recorded.killMap ? { killMap: recorded.killMap } : {}), ...(recorded.methodMap ? { methodMap: recorded.methodMap } : {}), allowLower: args.allowLower, ...(args.adoptNewGates ? { adoptNewTools: true } : {}) })
+      const update = (allowLower: boolean) => updateBaseline(existing.value, { ...meta, metrics: recorded.metrics, results: recorded.results, testIds: recorded.testIds, ...(recorded.testMap ? { testMap: recorded.testMap } : {}), ...(recorded.killMap ? { killMap: recorded.killMap } : {}), ...(recorded.methodMap ? { methodMap: recorded.methodMap } : {}), allowLower, ...(args.adoptNewGates ? { adoptNewTools: true } : {}) })
+      let outcome = update(args.allowLower)
       if (outcome.lowers) {
         const lines = [
           ...outcome.loweredMetrics.map((m) => `- ${m.metric}${m.file ? ` (${m.file})` : ""}: ${m.base} -> ${m.head}`),
           ...outcome.newlyGrandfathered.map((r) => `- new finding ${r.ruleId}: ${r.message.text}`),
         ]
-        if (!args.allowLower) {
+        const suites = args.changedSuites ?? []
+        let confirmed = args.allowLower
+        // Fewer tests running can lower values, never add findings, so only lower values are offered.
+        if (!args.allowLower && suites.length > 0 && outcome.newlyGrandfathered.length === 0) {
+          yield* output.err([`The policy changes ${suites.length === 1 ? "suite" : "suites"} ${suites.join(", ")}, so fewer tests may run, and the baseline would get lower:`, ...lines].join("\n"))
+          const reply = yield* (yield* Ask).question(style.bold("Record the lower baseline? It loosens the bar, so only the policy's owner should. [y/N] "))
+          if (Option.isSome(reply) && /^(y|yes)$/i.test(reply.value.trim())) {
+            outcome = update(true)
+            confirmed = true
+            yield* output.err("Lowering the baseline, as the changed suites need.")
+          }
+        }
+        if (!confirmed) {
           yield* output.err(["The baseline was not updated, because it would get worse:", ...lines, "", ...lowerActions(outcome.loweredMetrics.map((m) => m.metric), outcome.newlyGrandfathered.length > 0)].join("\n"))
           return yield* exitWith(1)
         }
-        yield* output.err(["Lowering the baseline (--allow-lower):", ...lines, "Commit it in its own PR; changing .gauntlet/ needs an owner."].join("\n"))
+        if (args.allowLower) yield* output.err(["Lowering the baseline (--allow-lower):", ...lines, "Commit it in its own PR; changing .gauntlet/ needs an owner."].join("\n"))
       }
       next = { ...outcome.baseline, legacy: [...outcome.baseline.legacy, ...legacy] }
     }
@@ -770,13 +788,15 @@ const applyProposal = (root: string, from: string, dryRun: boolean) =>
     const before = Option.isSome(current)
       ? yield* compiler.compile({ file: DEFAULT_POLICY_FILE, text: current.value }).pipe(Effect.map((c) => c.ir), Effect.option)
       : Option.none()
-    const changes = describeChanges(compiled.value.ir, Option.getOrUndefined(before))
+    const old = Option.getOrUndefined(before)
+    const changes = describeChanges(compiled.value.ir, old)
+    const suites = changedSuites(compiled.value.ir, old)
     if (changes.length === 0) {
       yield* output.out(`${from} matches ${DEFAULT_POLICY_FILE}; nothing to change.`)
     } else {
       yield* output.out([`This will be applied to ${DEFAULT_POLICY_FILE}:`, ...changes.map((c) => `  - ${c}`)].join("\n"))
     }
-    if (dryRun) return true
+    if (dryRun) return { changedSuites: suites }
     yield* fs.makeDirectory(path.dirname(target), { recursive: true })
     yield* fs.writeFileString(target, text.value)
     yield* fs.remove(path.resolve(root, from)).pipe(Effect.orElseSucceed(() => undefined))
@@ -795,7 +815,7 @@ const applyProposal = (root: string, from: string, dryRun: boolean) =>
       })
       if (result._tag === "Files") yield* writeGenerated(root, result.files, false)
     }
-    return true
+    return { changedSuites: suites }
   })
 
 const init = Command.make("init", {
@@ -1498,8 +1518,12 @@ const apply = Command.make("apply", {
       yield* endAdoption(root)
       yield* output.out(style.ok("Closed the adoption window: protected tests are guarded again."))
     }
+    // Suites the proposal changes: the baseline recorded next may count fewer tests, for the owner to confirm.
+    let suites: ReadonlyArray<string> = []
     if (yield* fs.exists(path.resolve(root, from))) {
-      if (!(yield* applyProposal(root, from, args.dryRun))) return
+      const applied = yield* applyProposal(root, from, args.dryRun)
+      if (!applied) return
+      suites = applied.changedSuites
     } else if (Option.isSome(args.from)) {
       return yield* fail(`There's no ${from} to apply.`)
     } else if (!(yield* fs.exists(path.join(root, DEFAULT_POLICY_FILE)))) {
@@ -1524,7 +1548,7 @@ const apply = Command.make("apply", {
       yield* output.out(changes === "applied"
         ? "The changes can set up tools that weren't there, so the baseline is recorded again for the gates they let run."
         : "The policy changed since the baseline was recorded, so it's recorded again for the new gates.")
-      const recorded = yield* runBaseline({ repo: root, update: true, allowLower: false, adoptNewGates: true, importDetekt: Option.none(), trunk: yield* setupTrunk(root), commitHint: false, skipChangedMutation: true })
+      const recorded = yield* runBaseline({ repo: root, update: true, allowLower: false, adoptNewGates: true, changedSuites: suites, importDetekt: Option.none(), trunk: yield* setupTrunk(root), commitHint: false, skipChangedMutation: true })
       if (!recorded) return
       if (yield* commitIfChanged(root, [BASELINE_PATH], "Update Gauntlet baseline for the new gates")) yield* output.out("Committed the baseline.")
       yield* switchOnHooks(root)
