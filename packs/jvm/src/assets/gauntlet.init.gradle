@@ -92,7 +92,14 @@ allprojects { p ->
             pitest.targetClasses.set(targets.split(",") as List)
             pitest.failWhenNoMutations.set(false)
         }
-        // Spec 0011: methods no changed line is in, and generated ones, aren't mutated.
+        // Spec 0019: Gauntlet's filter on Pitest's classpath keeps only the mutants on the changed lines.
+        def filter = System.getenv("GAUNTLET_PITEST_FILTER")
+        def feature = System.getenv("GAUNTLET_PITEST_FEATURE")
+        if (filter != null && filter != "" && feature != null && feature != "") {
+            p.dependencies.add("pitest", p.files(filter))
+            p.afterEvaluate { pitest.features.set(pitest.features.getOrElse([]) + [feature]) }
+        }
+        // Spec 0011 §4: methods the compiler generated aren't mutated.
         def skipped = System.getenv("GAUNTLET_PITEST_EXCLUDED_METHODS")
         if (skipped != null && skipped != "") p.afterEvaluate {
             pitest.excludedMethods.set(pitest.excludedMethods.getOrElse([] as Set) + (skipped.split(",") as List))
