@@ -44,9 +44,11 @@ const propertyName = (decl: Node) =>
     ?? decl.namedChildren.find((c) => c?.type === "identifier")?.text
 
 /**
- * Pitest's `excludedMethods` for a change (spec 0011): every method of the changed Kotlin files that no changed line
- * is in, plus generated methods, so Pitest mutates only what the change touched. Pitest matches by name across
- * classes, so a name any changed file touches is kept. With a changed Java file nothing is skipped.
+ * Pitest's `excludedMethods` for a change (spec 0011 §4, spec 0019 §2): the methods the Kotlin compiler generates, data
+ * classes' and plain property accessors, which sit on their declaration's line, so a changed declaration would bring
+ * them into the changed lines. Untouched methods aren't listed: Gauntlet's line filter drops their mutants. Pitest
+ * matches by name across classes, so a name any changed file writes and touches is kept. With a changed Java file
+ * nothing is skipped.
  */
 export const pitestExclusions = (
   files: ReadonlyArray<{ readonly path: string; readonly text: string }>,
@@ -64,9 +66,7 @@ export const pitestExclusions = (
     const root = parseKotlin(f.text).rootNode
     for (const fn of ofType(root, "function_declaration")) {
       const name = fn.namedChildren.find((c) => c?.type === "identifier")?.text
-      if (!name) continue
-      all.add(name)
-      if (touched(fn)) kept.add(name)
+      if (name && touched(fn)) kept.add(name)
     }
     for (const decl of [...ofType(root, "property_declaration"), ...ofType(root, "class_parameter")]) {
       const name = propertyName(decl)
@@ -81,3 +81,29 @@ export const pitestExclusions = (
   }
   return [...all].filter((n) => !kept.has(n)).sort()
 }
+
+/** Gauntlet's Pitest filter's entries for the changed lines (spec 0019 §1): `svc/domain/Money.kt:12`, by the package each file declares. */
+export const pitestLines = (
+  files: ReadonlyArray<{ readonly path: string; readonly text: string }>,
+  changed: ReadonlyMap<string, ReadonlySet<number>>,
+): string[] => {
+  const out = new Set<string>()
+  for (const f of files) {
+    const pkg = packageOf(f.text)
+    const at = `${pkg === "" ? "" : `${pkg.replaceAll(".", "/")}/`}${f.path.split("/").pop()!}`
+    for (const l of changed.get(f.path) ?? []) out.add(`${at}:${l}`)
+  }
+  return [...out].sort()
+}
+
+/**
+ * The Pitest tasks of the modules with changed main sources (spec 0019 §3), by the path before `src/main/`:
+ * `app/src/main/...` is `:app:pitest`, `src/main/...` the root project's `:pitest`.
+ */
+export const pitestTasks = (paths: ReadonlyArray<string>): string[] =>
+  [...new Set(paths.flatMap((p) => {
+    const m = MAIN_SOURCE.exec(p)
+    if (!m) return []
+    const module = p.slice(0, m.index)
+    return [module === "" ? ":pitest" : `:${module.replaceAll("/", ":")}:pitest`]
+  }))].sort()
