@@ -284,10 +284,12 @@ export const mutation: GateImpl = (_check, ctx) =>
     if (inScope !== undefined && inScope.length === 0) {
       return { command: [], exitCode: 0, runs: [], nothingInScope: "no main classes in scope to mutate" }
     }
-    const env: Record<string, string> = { GAUNTLET_PITEST_THREADS: String(availableParallelism()), ...(ctx.recordKillMap ? { GAUNTLET_PITEST_MATRIX: "true" } : {}) }
-    // Spec 0019 §4: container fixtures that opt into Testcontainers' reuse share one container across Pitest's JVMs,
-    // unless the environment already says otherwise.
-    if (process.env.TESTCONTAINERS_REUSE_ENABLE === undefined) env.TESTCONTAINERS_REUSE_ENABLE = "true"
+    // Spec 0019 §4: container fixtures that opt into Testcontainers' reuse share one container across Pitest's JVMs.
+    const env: Record<string, string> = {
+      GAUNTLET_PITEST_THREADS: String(availableParallelism()),
+      TESTCONTAINERS_REUSE_ENABLE: "true",
+      ...(ctx.recordKillMap ? { GAUNTLET_PITEST_MATRIX: "true" } : {}),
+    }
     if (inScope) {
       const sources = yield* readFiles(ctx, inScope)
       env.GAUNTLET_PITEST_TARGETS = sources.flatMap((f) => pitestTargets(f.path, f.text)).join(",")

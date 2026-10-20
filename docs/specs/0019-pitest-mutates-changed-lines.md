@@ -56,13 +56,14 @@ task instead, as before.
 
 ### 4. Pitest's JVMs share reusable containers
 
-The Pitest run gets `TESTCONTAINERS_REUSE_ENABLE=true`, unless the environment
-already sets it, so it can be turned off. Pitest starts a JVM per batch of
+The Pitest run gets `TESTCONTAINERS_REUSE_ENABLE=true`. Pitest starts a JVM per batch of
 mutants, and a Testcontainers fixture that opts in with `withReuse(true)` then
 shares one container across them instead of starting its own each time (on
 petshop's Postgres fixture, 7 to 9 seconds a JVM without reuse, 5.5 to 5.8 with
-it). A fixture without `withReuse` ignores the variable. The unit and coverage
-runs don't get it.
+it). A fixture without `withReuse` ignores the variable, so a project opts out by
+not opting in. The variable is set whatever the environment says: a gate whose
+behaviour hangs on the caller's environment can differ under test. The unit and
+coverage runs don't get it.
 
 ## Not covered
 
