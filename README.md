@@ -3,369 +3,149 @@
   <img src="assets/gauntlet-logo/gauntlet-lockup-light.svg" width="280" alt="gauntlet">
 </picture>
 
-# Trust AI-written code. Verify the verifier.
+# Gauntlet: checks for AI-written code
 
 [![Release](https://img.shields.io/github/v/release/matthewjones372/gauntlet?include_prereleases&sort=semver)](https://github.com/matthewjones372/gauntlet/releases)
 [![CI](https://github.com/matthewjones372/gauntlet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/matthewjones372/gauntlet/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/matthewjones372/gauntlet)](LICENSE)
 
-An AI coding agent working in your repository doesn't only change the code
-you're about to judge. It can change the tests, the test configuration, the
-coverage settings and the report files too: everything that decides whether
-the code is correct.
+Gauntlet runs your project's checks and flags attempts to weaken them. It fits
+between an AI coding agent finishing a task and you merging its pull request.
 
-CI can tell you the tests passed. It can't tell you whether the agent changed
-the tests first. Gauntlet is built for that gap.
+An agent can make tests pass by fixing the code or changing the tests.
+Gauntlet runs your build and tests, detects deleted or
+weakened assertions, and protects the configuration used to judge the change.
 
-## The problem
+It works with your existing tests, CI and code review.
 
-This is real output from the Kotlin example in this repository. The change
-gets currency conversion wrong by a factor of ten, and replaces the one
-assertion that would have caught it.
+## Where it fits in your workflow
 
-```diff
- // src/main/kotlin/svc/settlement/Fx.kt
--    fun convert(amount: Money): Money = Money(amount.minor * rateBasisPoints / 10_000, target)
-+    fun convert(amount: Money): Money = Money(amount.minor * rateBasisPoints / 1_000, target)
+You set the rules once: which checks must pass, which files are protected, and
+which parts of the code need a person's approval.
 
- // src/test/kotlin/svc/settlement/FxTest.kt
-     @Test
-     fun converts() {
--        assertEquals(Money(110, "USD"), Fx(11_000, "USD").convert(Money(100, "EUR")))
-+        assertTrue(true)
-     }
-```
+1. **Give Claude Code a task.** It edits the code using your existing tools.
+2. **Gauntlet checks before the agent finishes.** In enforce mode, a failing
+   check sends it back to fix the cause. A change that needs protected
+   configuration or policy edits goes to you instead.
+3. **Open a pull request.** With the GitHub integration, Gauntlet posts a
+   summary of the checks, suspicious edits and any required review.
+4. **Review and merge.** Changes to areas you've marked as sensitive, such as
+   payments or authentication, need their owner's approval. Require the `gauntlet` status
+   check in your branch ruleset to enforce it before merging.
 
-```text
-Agent changes the implementation.
-Agent changes the test.
-CI passes.
-The code is still wrong.
-```
+For example, if an agent replaces a currency-conversion assertion with
+`assertTrue(true)`, ordinary tests may still pass. Gauntlet detects the
+weakened assertion. In its GitHub-only `--protect-only` mode, it also restores
+and runs the original test, so the currency-conversion bug still fails.
 
-Every test passes, because the one test that could fail now asserts `true`.
-€1.00 now converts to $11.00 instead of $1.10, and nothing in the pipeline
-says so.
+<p align="center"><img src="assets/screenshots/pr-report.png" width="720" alt="Gauntlet's pull request report: checks, files needing review, and an approval request for the payments owner."></p>
 
-Here's what Gauntlet told the agent when it tried to finish:
+Claude Code is the only supported agent integration today. You can also run
+Gauntlet yourself from the CLI or use it only on GitHub, without agent hooks.
 
-```text
-Gauntlet would block this change:
-- unit failed: 1 of 4 tests failed
-- assertTrue(true) can't fail. (src/test/kotlin/svc/settlement/FxTest.kt:11)
-Failing in unit:
-  - svc.settlement.FxTest.converts(): org.opentest4j.AssertionFailedError:
-    expected: <Money(minor=110, currency=USD)> but was: <Money(minor=1100, currency=USD)>
-```
+## Get started
 
-The test file is protected, so Gauntlet put the original back before running
-anything. The original test ran and failed on the real bug. The edit itself
-was reported too: an assertion that can't fail replaced one that could.
+### With Claude Code
 
-## The boundary
-
-Gauntlet treats the checks that judge a change as something the change isn't
-allowed to touch. Every check in it is designed against one question:
-
-> Can the agent delete or weaken this check and still pass?
-
-The answer has to be no.
-
-**The agent can write the code. It cannot redefine what "done" means.**
-
-## Why CI isn't enough
-
-| Tool | What it tells you |
-| --- | --- |
-| CI | Did the configured checks pass? |
-| Tests | Did the tests pass? |
-| Coverage | Was the code exercised? |
-| Mutation testing | Are the tests strong enough? |
-| AI review | Does the change look reasonable? |
-| Gauntlet | Can I trust the verification itself? |
-
-Every row above assumes the checks are the ones you meant to run. With an
-agent in the loop, that's the assumption that breaks. The thing being
-evaluated can edit the evaluation.
-
-Gauntlet isn't trying to replace those tools. It runs most of them. Its job is
-narrower: stop the agent being evaluated from changing the machinery used to
-evaluate it.
-
-This isn't a made-up edge case. Research on coding agents has found them
-modifying tests, over-mocking and gaming their reward signals, all ways of
-producing a passing result that means less than it looks. None of it
-evaluates Gauntlet, but it's the problem Gauntlet is built for.
-[References](#research), and what each study found in
-[docs/research.md](docs/research.md).
-
-## How it works
-
-- **The checks come from the base branch.** Fixtures, test setup and runner
-  configuration are put back to their base versions before anything runs, so
-  editing them can't change the result. A protected test the change edits (a
-  changed requirement changes its tests) runs as edited and always needs
-  review; `--protect-only` restores tests too.
-- **Gauntlet produces its own evidence.** Checks run in a fresh worktree, and
-  Gauntlet reads only what the processes it started wrote. A planted report is
-  ignored, and a check that can't prove it ran never counts as a pass.
-- **Weakening is detected.** Deleted, skipped and weakened tests, new
-  suppressions and similar edits are found in the diff.
-- **Strength can't quietly drop.** Coverage, mutation score and test counts
-  ratchet against a baseline.
-- **Decisions are deterministic.** Same inputs, same decision. No model
-  involved.
-
-On GitHub, the job that runs the pull request's code gets no secrets, and a
-separate job that never runs it makes the decision.
-
-## What it checks
-
-Beyond the boundary, a policy picks the checks a change has to pass. Each one
-is something Gauntlet runs itself, and a finding on a line the change touched
-shows on that line of the pull request's diff.
-
-- **Tests, coverage and mutation on the changed lines.** Mutation testing
-  scores only the mutants on lines the change wrote. Surviving mutants can
-  block below a score, or be reported on the diff without blocking
-  (`mutation advise on changed`).
-  [Mutation testing](docs/policy.md#mutation-testing)
-- **Scenarios.** A person writes what the change should do as Gherkin
-  scenarios with ids (`@FX-003`); Gauntlet never runs them. A test binds one by
-  naming its id, and each scenario gets a verdict: its tests ran, passed, can
-  fail, and killed a mutant on the changed lines. Scenario files are protected,
-  and changed code no scenario's test catches is listed.
-  [Scenarios](docs/policy.md#scenarios)
-- **Only the tests a change affects.** The baseline records which files each
-  test exercises, and a check runs only the tests that exercise what changed,
-  for the JVM (Gradle) and TypeScript (Vitest, Jest, bun) packs. Anything the
-  map can't vouch for runs everything.
-  [Affected tests](docs/policy.md#running-the-tests-a-change-affects)
-- **Lint, compiler warnings and dead code**, with today's findings
-  grandfathered and new ones failing. The dead-code check uses each
-  ecosystem's own tool: Knip, `deadcode`, vulture, rustc's lints, scalac's
-  `-Wunused`, detekt and clj-kondo.
-  [Compiler warnings](docs/policy.md#compiler-warnings),
-  [dead code](docs/policy.md#dead-code)
-- **Architecture and zones.** Layers that mustn't depend on each other, and
-  code (payments, auth) where a change needs its owner.
-- **Performance budgets** for a benchmark's latency, held to a limit and to the
-  baseline. [Budgets](docs/policy.md#performance-budgets)
-- **Tests that add no value, and removing a feature.** `gauntlet prune tests`
-  lists tests that can't fail or that no mutant needs. A change that only
-  removes tests is checked against the record of which tests kill which
-  mutants. A test deleted along with the code it tested is flagged rather than
-  forbidden, and project-wide ratchets leave removed code out. `gauntlet prune
-  code` lists code that could go: dead-code findings, and code no test runs
-  that nothing names.
-  [Tests that add no value](docs/policy.md#tests-that-add-no-value),
-  [removing a feature](docs/policy.md#removing-a-feature)
-
-### The owner's decisions
-
-Gauntlet makes a decision a person's when it should be, and keeps it to one
-step:
-
-- `gauntlet approve <pr>` approves a change, and with `--override "<reason>"`
-  accepts what blocks it, recorded against the commit. An agent can't run it.
-- An approval or override follows the code: a new commit with the same diff,
-  such as a merge from main that brought nothing new, keeps it.
-- `gauntlet grant` lets the agent change one protected file for one pull
-  request, reviewed rather than hidden.
-- A stack of pull requests is approved from the top, and each one moves onto
-  main as the one below it merges.
-
-[The owner's decisions](docs/policy.md#the-owners-decisions)
-
-## Holdouts
-
-A test the agent can read is a target. It can make that test pass without
-making the code right: return the value the test expects, special-case its
-input, or edit it. Protecting the test stops the editing. It doesn't stop the
-overfitting.
-
-A holdout is a behavioural check the agent never sees. Passing it means the
-code works on cases it wasn't shown. That's a different kind of evidence from
-a test sitting next to the code in the agent's own working copy.
-
-Today a policy can name holdout files, which you write. Gauntlet leaves them
-out of every checkout it runs checks in, blocks Claude Code's file tools from
-them, and runs them only in CI, from the base branch. A change that passes the
-visible tests but fails a holdout fails as a **holdout gap**. The files still
-live in the repository, so they're hidden from the agent, not secret; a source
-outside the repository is planned. Details are in
-[the policy docs](docs/policy.md#holdouts).
-
-## Try it
-
-In your project, on its main branch:
+In your project folder, on its main branch:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/matthewjones372/gauntlet/main/install.sh | sh
 gauntlet setup
 ```
 
-Then open Claude Code there, type `/gauntlet-setup`, answer its questions and
-run the `gauntlet apply` it gives you. Claude Code now runs Gauntlet before it
-says a task is done. It starts in shadow mode, which reports and blocks
-nothing until you switch it on.
+You can also [install manually](docs/faq.md#other-things-worth-knowing).
 
-### What setup looks like
+Open Claude Code in the same folder and type `/gauntlet-setup`. It looks at
+your build and tests, helps you choose the rules, and gives you a
+`gauntlet apply` command to run yourself.
 
-An example session in a Kotlin payments service (`/gauntlet-setup` in Claude
-Code, shortened):
+Setup starts in shadow mode. Checks run and report what would be blocked,
+but don't block anything. Tune the rules, then switch the policy to
+`mode enforce` when you're ready.
 
-```text
-> /gauntlet-setup
+To check pull requests too:
 
-● Here's what you already have: you build with Gradle and test with JUnit 5.
-  Kover already requires 80% line coverage, detekt runs with your config, and
-  CI runs the tests on every pull request. There's no mutation testing.
-
-  Decision 1 of 6 · Owner
-  Who approves sensitive changes and edits to the policy?
-  > @maria
-
-  ✅ Owner: @maria.
-
-  Decision 2 of 6 · Zones
-  A zone is code where a change needs @maria's review. I found:
-    • src/main/kotlin/payments/   money: Transfer, Ledger, FxRate
-    • src/main/kotlin/auth/       tokens and permissions
-  For payments I recommend also banning floating-point money (Double, Float).
-  > Yes, both zones, and the money rule
-
-  ✅ Zones: payments (no floating-point money) and auth.
-
-  Decision 3 of 6 · Layers
-  domain/ never imports web/ today. Keep it that way?
-  > Yes
-
-  Decision 4 of 6 · Tests and coverage
-  Kover already requires 80%, so I recommend 80% for new and changed code.
-  > 80%
-
-  Decision 5 of 6 · Mutation testing
-  Mutation testing makes small deliberate bugs in your code and runs your
-  tests against each one; a bug no test catches is a test that doesn't really
-  check anything. It runs your tests once per bug, so it's the slowest check.
-  I recommend it only on changed lines in payments, with surviving mutants
-  shown on the pull request without blocking, or leaving it out.
-  > Changed lines in payments, shown without blocking
-
-  Decision 6 of 6 · When to block
-  Start in shadow mode (reports, blocks nothing), or block failing changes now?
-  > Shadow mode
-
-  This will be applied:
-    • owner @maria
-    • zones payments (no floating-point money) and auth, both need @maria
-    • domain must not depend on web
-    • 80% coverage on changed code; mutation on changed code in payments,
-      surviving mutants shown on the pull request
-    • shadow mode
-  Apply it now?
-  > Apply it now
-
-● Applied on the branch gauntlet/setup: the policy, a baseline of today's
-  coverage and findings, and Claude Code's hooks. Everything passes. Open a
-  pull request for it: gh pr create --fill
+```bash
+gauntlet connect github
 ```
 
-From then on Claude Code runs Gauntlet before it says a task is done, and
-every pull request gets a `gauntlet` check with a plain-English summary. A
-change that touches `payments` says so in colour, lists what needs a look,
-and waits for @maria to tick **Approve this change** in the report.
+Commit the generated configuration and require the `gauntlet` status check
+in your GitHub branch ruleset. Teammates install the CLI, pull the setup and
+accept Claude Code's prompt to trust the project's MCP server and hooks.
 
-<p align="center"><img src="assets/screenshots/pr-report.png" width="720" alt="Gauntlet's report on a pull request: a warning that the change needs careful review by @maria because it touches the payments zone, the file as a link, and the Approve this change box."></p>
+### GitHub only
 
-### Joining a project that uses Gauntlet
-
-Setup commits everything (the policy, Claude Code's hooks and Gauntlet's MCP
-server), so a teammate installs the `gauntlet` command once with the line
-above, pulls, opens Claude Code in the repository and says yes when it asks to
-trust the project's MCP server and hooks. Until they install it, Claude Code
-says Gauntlet isn't installed when it finishes, and the pull request check
-still runs.
-
-Just want the GitHub check, no agent setup?
+After installing, run:
 
 ```bash
 gauntlet init
 gauntlet connect github --protect-only
 ```
 
-Commit `.gauntlet` and `.github`, require the `gauntlet` check in your branch
-ruleset, and open a pull request that replaces an assertion with
-`assertTrue(true)`. It fails.
+Commit `.gauntlet` and `.github`, then require the `gauntlet` status
+check in your branch ruleset. This checks for weakened verification without
+setting up agent hooks, review rules or a baseline. Unlike shadow mode,
+`--protect-only` fails changes that don't pass its checks.
 
-Starting a new project? `gauntlet new kotlin-service my-service --owner @you`
-creates a Kotlin service with a strict policy already in enforce mode
-([next steps](docs/getting-started.md#a-new-project)). For any
-other language, create the project with your usual tool, commit it, then run
-`gauntlet setup`. In a new or an existing project, setup offers to install the
-tools its checks need (a linter, coverage, mutation testing), and if part of
-the project uses a language or build tool Gauntlet doesn't support yet, it says
-so and how to ask for it or add it.
+[Full setup guide](docs/getting-started.md) · [Start a new project](docs/getting-started.md#a-new-project)
 
-Kotlin and Java (Gradle), TypeScript and JavaScript, Python, Go, Rust, Scala
-and Clojure are supported. On Windows, use WSL 2. Step by step:
-[Getting started](docs/getting-started.md).
+## What you can enforce
 
-## Is it tested?
+Your policy chooses which checks to run and what should block a change.
 
-`gauntlet selftest` applies ten kinds of tampering to a copy of your own
-project (a deleted test, a weakened assertion, a planted result file, a
-lowered threshold and so on) and checks the policy catches each one.
+| Rule | What it means in practice |
+| --- | --- |
+| Test protection | Detect deleted, skipped or weakened tests and new suppressions. Protect test setup, fixtures and build configuration. |
+| Coverage and test strength | Require coverage on changed code. Stop coverage, mutation scores or test counts falling below a recorded baseline. |
+| Human review | Require approval for changes to sensitive areas, protected tests or policy. |
+| Lint and compiler checks | Allow existing lint, compiler and dead-code findings, but fail new ones. |
+| Architecture and performance | Enforce dependency rules between modules and performance budgets for benchmarks. |
 
-The [tamper corpus](docs/evidence.md#the-tamper-corpus) measures the detectors
-in public: 56 committed cases across the seven language packs. All 35
-tamperings are detected. 7 of the 21 cases that should stay silent don't: a
-test renamed with its body unchanged reads as a deleted test. That's reported
-as it is.
+[Policy reference](docs/policy.md) covers these rules, plus scenario-linked
+tests, hidden behavioural checks (holdouts), and running only affected tests.
 
-Gauntlet is built under its own policy. Its Stop hook blocked the agent that
-was writing it more than once.
+## How checks run
 
-## Status
+Gauntlet uses the base branch's policy and protected configuration, runs
+checks in a fresh worktree, and accepts report files only from processes it
+started. A planted result file doesn't count as a pass. Decisions are
+deterministic: no model or API key is needed to judge a change.
 
-Release candidate (v0.1.0-rc.36). Claude Code is the only agent integration so
-far; Codex, Cursor, Copilot and Gemini are planned. .NET, Ruby, PHP, Maven and
-native Windows aren't done yet. The roadmap is
-[PLAN.md](PLAN.md).
+Protected tests can change when requirements change. By default, an edited
+protected test runs as edited and requires review. `--protect-only` restores
+the original tests too. On GitHub, the job running pull request code has no
+secrets. A separate job posts the decision without running that code.
+
+Passing Gauntlet doesn't prove the code is correct. You still need tests that
+cover the requirements and people to review the change. Local hooks can also
+be disabled unless you configure managed settings. See the
+[integration and threat model](docs/integrations.md).
+
+To test the protection on your own project, `gauntlet selftest` tries changes
+such as deleting a test, weakening an assertion and planting a report. The
+[public tamper corpus](docs/evidence.md#the-tamper-corpus) records detector
+results and known false positives. [Related research](docs/research.md)
+explains the problem but does not evaluate Gauntlet.
+
+## Support and status
+
+Release candidate (v0.1.0-rc.36). Supports Kotlin and Java (Gradle), TypeScript and
+JavaScript, Python, Go, Rust, Scala and Clojure. Tool support varies by
+[language pack](docs/languages.md). On Windows, use WSL 2.
+
+Claude Code hooks are available today. Codex, Cursor, Copilot and Gemini
+integrations, plus .NET, Ruby, PHP, Maven and native Windows support, are
+planned. See the [roadmap](PLAN.md).
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md): Claude Code, the GitHub-only path, who it's for
-- [The policy](docs/policy.md): writing `.gauntlet/policy.gx`, zones, ratchets, holdouts, review levels
-- [Claude Code and GitHub](docs/integrations.md): hooks, MCP, the two-job workflow
-- [Evidence and testing the verifier](docs/evidence.md): report files, selftest, the tamper corpus
-- [Supported languages](docs/languages.md)
-- [FAQ](docs/faq.md)
-- [Development](docs/development.md): architecture, building, adding a language pack
-- [Design decisions](docs/adr/) and [specs](docs/specs/)
-
-## Research
-
-These papers motivate the problem. None of them evaluates Gauntlet. What each
-one found is summarised in [docs/research.md](docs/research.md).
-
-1. Morampudi, A., Irrinki, U., Grandhi, R., Pagadala, V. and Maddula, M.
-   *A survey of reward hacking in agentic large language model systems.*
-   Discover Artificial Intelligence 6 (2026).
-   [doi:10.1007/s44163-026-01980-z](https://doi.org/10.1007/s44163-026-01980-z)
-2. Wang, B., Zhang, C., Liu, D. et al. *The Verification Horizon: No Silver
-   Bullet for Coding Agent Rewards.* 2026.
-   [arXiv:2606.26300](https://arxiv.org/abs/2606.26300)
-3. Hora, A. and Robbes, R. *Are Coding Agents Generating Over-Mocked Tests? An
-   Empirical Study.* MSR 2026.
-   [arXiv:2602.00409](https://arxiv.org/abs/2602.00409)
-4. Alami, D. *Specification gaming in LLM-generated code: detecting cognitive
-   camouflage by adversarial execution.* 2026, preprint (not peer reviewed).
-   [SSRN 6512960](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6512960)
-5. Deshpande, D., Kannappan, A. and Qian, R. *Benchmarking Reward Hack Detection
-   in Code Environments via Contrastive Analysis.* ICML 2026.
-   [arXiv:2601.20103](https://arxiv.org/abs/2601.20103)
+- [Getting started](docs/getting-started.md): setup, joining a project and new projects
+- [Policy reference](docs/policy.md): checks, protected files and review rules
+- [Integrations](docs/integrations.md): Claude Code, subagents and GitHub
+- [Evidence](docs/evidence.md): reports, selftest and detector testing
+- [Supported languages](docs/languages.md) and [FAQ](docs/faq.md)
+- [Development](docs/development.md), [design decisions](docs/adr/) and [specs](docs/specs/)
 
 ## License
 
