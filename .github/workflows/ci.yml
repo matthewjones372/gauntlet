@@ -89,6 +89,11 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.4.2"
+      # StrykerJS runs on Node: install one rather than rely on whatever the runner image ships.
+      - if: matrix.pack == 'typescript'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: lts/*
       - if: contains(fromJSON('["jvm", "scala", "clojure"]'), matrix.pack)
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
