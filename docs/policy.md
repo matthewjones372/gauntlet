@@ -807,6 +807,8 @@ refuses if anything was pushed since; without it, it shows the head and asks.
 It runs only in your own terminal, signed in to `gh` as an owner: it refuses in
 a coding agent's session, and Claude Code's hook refuses the agent's approving
 commands, since an agent often works under its owner's GitHub account.
+It runs `gh` and git in the current directory, or in the local checkout
+`--repo <dir>` names; `--repo` takes a directory, not `owner/name`.
 
 An override names the policy CI judges the change with, the pull request's
 base's, even when the pull request edits `.gauntlet/policy.gx`; `gauntlet

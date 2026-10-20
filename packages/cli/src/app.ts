@@ -21,14 +21,14 @@ import { exportCorpus } from "./corpus-export.ts"
 import { AuthorRuntime, type AuthorRuntimeShape, renderDropped } from "./author.ts"
 import { Ask, ExitStatus, exitWith, LaunchAgent, Output, Stdin, style, withGateProgress } from "./output.ts"
 import { withStopSignals } from "./stop-signals.ts"
-import { Forge, notTheOwner, OwnerSession } from "./owner.ts"
+import { checkoutProblem, Forge, notTheOwner, OwnerSession } from "./owner.ts"
 import { GAUNTLET_VERSION } from "./version.ts"
 
 // The CLI. Handlers stay thin: parse flags, call a core program, print, set
 // the exit code. Failures Gauntlet can't recover from print a message and
 // exit 2; they are never reported as a pass.
 
-const repoFlag = Flag.String("repo").pipe(Flag.withDefault("."), Flag.withDescription("repository root (default: current directory)"))
+const repoFlag = Flag.String("repo").pipe(Flag.withDefault("."), Flag.withDescription("a local checkout of the repository, not owner/name (default: current directory)"))
 const jsonFlag = Flag.Boolean("json").pipe(Flag.withDefault(false), Flag.withDescription("print JSON instead of text"))
 const policyRefFlag = Flag.optional(Flag.String("policy-ref").pipe(Flag.withDescription("CI: load policy, baseline and protected files from this ref (the PR base)")))
 const baseFlag = Flag.optional(Flag.String("base").pipe(Flag.withDescription("local: compare with this ref instead of the default branch")))
@@ -255,6 +255,8 @@ const ownerTarget = (args: { readonly pr: string; readonly head: Option.Option<s
     const n = prNumber(args.pr)
     if (n === undefined) return yield* new OwnerRefused({ message: `'${args.pr}' isn't a pull request number.` })
     const root = yield* absolute(args.repo)
+    const problem = checkoutProblem(args.repo, root)
+    if (problem !== undefined) return yield* new OwnerRefused({ message: problem })
     const forge = yield* Forge
     const pr = yield* forge.pullRequest(root, n)
     if (pr.state !== "OPEN") return yield* new OwnerRefused({ message: `#${n} is ${pr.state.toLowerCase()}: only an open pull request can be decided.` })
