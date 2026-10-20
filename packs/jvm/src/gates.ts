@@ -10,7 +10,8 @@ import { gradle, type GradleRun, taskMissing } from "./gradle.ts"
 import { runRules } from "./kotlin/rules.ts"
 import { isKotlin, line, ofType, parseKotlin } from "./kotlin/syntax.ts"
 import { parseCoverage, parseMutations, pitestMethodName } from "./reports.ts"
-import { isMainSource, packageOf, pitestExclusions, pitestTargets, sourceIndex } from "./sources.ts"
+import { FILTER_BYTES, FILTER_CLASS, FILTER_FEATURE } from "./pitest-filter.ts"
+import { isMainSource, packageOf, pitestExclusions, pitestLines, pitestTargets, pitestTasks, sourceIndex } from "./sources.ts"
 import { includesFor, isSource, testMapOf } from "./test-map.ts"
 import { LISTENER_BYTES, LISTENER_CLASS } from "./testmap-listener.ts"
 
@@ -283,14 +284,25 @@ export const mutation: GateImpl = (_check, ctx) =>
     if (inScope !== undefined && inScope.length === 0) {
       return { command: [], exitCode: 0, runs: [], nothingInScope: "no main classes in scope to mutate" }
     }
-    const env: Record<string, string> = { GAUNTLET_PITEST_THREADS: String(availableParallelism()), ...(ctx.recordKillMap ? { GAUNTLET_PITEST_MATRIX: "true" } : {}) }
+    // Spec 0019 §4: container fixtures that opt into Testcontainers' reuse share one container across Pitest's JVMs.
+    const env: Record<string, string> = {
+      GAUNTLET_PITEST_THREADS: String(availableParallelism()),
+      TESTCONTAINERS_REUSE_ENABLE: "true",
+      ...(ctx.recordKillMap ? { GAUNTLET_PITEST_MATRIX: "true" } : {}),
+    }
     if (inScope) {
       const sources = yield* readFiles(ctx, inScope)
       env.GAUNTLET_PITEST_TARGETS = sources.flatMap((f) => pitestTargets(f.path, f.text)).join(",")
       const lines = mutationScopeOf(ctx).changedLines
-      if (lines) env.GAUNTLET_PITEST_EXCLUDED_METHODS = pitestExclusions(sources, lines).join(",")
+      if (lines) {
+        env.GAUNTLET_PITEST_EXCLUDED_METHODS = pitestExclusions(sources, lines).join(",")
+        Object.assign(env, yield* changedLinesFilter(ctx, pitestLines(sources, lines)))
+      }
     }
-    const r = yield* gradle(ctx, ["pitest"], env)
+    // Spec 0019 §3: only the touched modules' tasks, or the root task when Gradle can't find one of them.
+    const tasks = inScope ? pitestTasks(inScope) : []
+    const touched = tasks.length > 0 ? yield* gradle(ctx, tasks, env) : undefined
+    const r = touched && !(touched.exitCode !== 0 && tasks.some((t) => taskMissing(touched.stderr, t))) ? touched : yield* gradle(ctx, ["pitest"], env)
     if (r.error) return base(r)
     const xml = yield* reports(ctx, (p) => p.startsWith("pitest/") && p.endsWith("mutations.xml"))
     if (xml.length === 0) {
@@ -308,6 +320,27 @@ export const mutation: GateImpl = (_check, ctx) =>
     })
     // Survivors, by line, so an agent knows exactly which assertions are missing.
     return { ...base(r), ...mutationGateRun("pitest", mutants, ctx) }
+  })
+
+/**
+ * Gauntlet's Pitest filter (spec 0019 §1), beside the check's output directory: its class and ServiceLoader entry,
+ * which the init script puts on Pitest's classpath, and the file of lines it keeps.
+ */
+const changedLinesFilter = (ctx: GateContext, lines: ReadonlyArray<string>) =>
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const dir = path.join(path.dirname(ctx.outputDir), "gauntlet-pitest")
+    const file = path.join(path.dirname(ctx.outputDir), "gauntlet-pitest-lines.txt")
+    const written = yield* Effect.exit(Effect.gen(function*() {
+      yield* fs.makeDirectory(path.join(dir, "gauntlet"), { recursive: true })
+      yield* fs.makeDirectory(path.join(dir, "META-INF/services"), { recursive: true })
+      yield* fs.writeFile(path.join(dir, "gauntlet/ChangedLines.class"), Uint8Array.from(atob(FILTER_BYTES), (c) => c.charCodeAt(0)))
+      yield* fs.writeFileString(path.join(dir, "META-INF/services/org.pitest.mutationtest.build.MutationInterceptorFactory"), `${FILTER_CLASS}\n`)
+      yield* fs.writeFileString(file, lines.map((l) => `${l}\n`).join(""))
+    }))
+    // Without the filter Pitest mutates whole classes, and core's filter by line still scores the same.
+    return written._tag === "Success" ? { GAUNTLET_PITEST_FILTER: dir, GAUNTLET_PITEST_FEATURE: `+${FILTER_FEATURE}(file[${file}])` } : {}
   })
 
 // ---------- coverage: the project's Kover, or Kover's agent (Kotlin) or JaCoCo (Java) ----------
