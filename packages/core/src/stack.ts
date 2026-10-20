@@ -1,6 +1,7 @@
 import type { PolicyIR } from "@gauntlet/ir"
 import { buildsOf, hasBuilds, ownerDir } from "./builds.ts"
 import type { DiffFacts } from "./diff-facts.ts"
+import { aboutMutants, type OverBudget } from "./mutation-budget.ts"
 
 // A big change spread over several parts of the repository is hard to review
 // in one go. Gauntlet suggests splitting it into stacked pull requests: one per
@@ -20,11 +21,15 @@ export interface StackStep {
   readonly lines: number
   /** It touches a zone, the policy or protected files, so an owner signs it off. */
   readonly needsOwner: boolean
+  /** Split for a mutation budget (spec 0020): about how many mutants the step brings. */
+  readonly mutants?: number
 }
 
 export interface StackSuggestion {
   readonly lines: number
   readonly steps: ReadonlyArray<StackStep>
+  /** Set when the split is for a mutation budget the change is over (spec 0020), whatever its size in lines. */
+  readonly mutation?: { readonly estimate: number; readonly budget: number }
 }
 
 const POLICY = "Gauntlet's policy and settings"
@@ -95,25 +100,92 @@ const foldSmall = (steps: ReadonlyArray<StackStep>): StackStep[] => {
   return out
 }
 
-/** Stacked pull requests for a big change over several parts, or undefined when one is fine. */
-export const suggestStack = (ir: PolicyIR, facts: DiffFacts): StackSuggestion | undefined => {
+/**
+ * Stacked pull requests for a big change over several parts, or undefined when
+ * one is fine. A change over a mutation budget (spec 0020) is split so each
+ * pull request stays within it, whatever its size in lines.
+ */
+export const suggestStack = (ir: PolicyIR, facts: DiffFacts, mutation?: OverBudget): StackSuggestion | undefined => {
+  if (mutation !== undefined) return mutationStack(ir, facts, mutation)
   if (facts.linesChanged < (ir.split?.lines ?? STACK_LINES)) return undefined
-  const byPart = new Map<string, DiffFacts["files"][number][]>()
-  for (const f of facts.files) byPart.set(partOf(ir, f.path), [...(byPart.get(partOf(ir, f.path)) ?? []), f])
+  const byPart = partsOf(ir, facts)
   if (byPart.size < 2) return undefined
-  const owned = new Set([
-    ...facts.zonesTouched.flatMap((z) => z.files),
-    ...facts.protectedTouched.filter((p) => p.action !== "kept").map((p) => p.path),
-  ])
-  const steps = order(ir, [...byPart.keys()]).map((part): StackStep => {
-    const files = byPart.get(part)!
-    return {
-      title: part,
-      files: files.map((f) => f.path).sort(),
-      lines: files.reduce((n, f) => n + f.added + f.removed, 0),
-      needsOwner: part === POLICY || files.some((f) => owned.has(f.path)),
-    }
-  })
+  const owned = ownedFiles(facts)
+  const steps = order(ir, [...byPart.keys()]).map((part) => stepOf(part, byPart.get(part)!, owned))
   const folded = foldSmall(steps)
   return folded.length < 2 ? undefined : { lines: facts.linesChanged, steps: folded }
+}
+
+type ChangedFile = DiffFacts["files"][number]
+
+const partsOf = (ir: PolicyIR, facts: DiffFacts) => {
+  const byPart = new Map<string, ChangedFile[]>()
+  for (const f of facts.files) byPart.set(partOf(ir, f.path), [...(byPart.get(partOf(ir, f.path)) ?? []), f])
+  return byPart
+}
+
+const ownedFiles = (facts: DiffFacts): ReadonlySet<string> =>
+  new Set([...facts.zonesTouched.flatMap((z) => z.files), ...facts.protectedTouched.filter((p) => p.action !== "kept").map((p) => p.path)])
+
+const stepOf = (title: string, files: ReadonlyArray<ChangedFile>, owned: ReadonlySet<string>, mutants?: number): StackStep => ({
+  title,
+  files: files.map((f) => f.path).sort(),
+  lines: files.reduce((n, f) => n + f.added + f.removed, 0),
+  needsOwner: title === POLICY || files.some((f) => owned.has(f.path)),
+  ...(mutants !== undefined ? { mutants } : {}),
+})
+
+/**
+ * The split for a mutation budget: the parts in review order, a part over the
+ * budget broken into its files (its other files, tests among them, go with the
+ * first), then consecutive pieces joined while they stay within the budget.
+ * Gauntlet's settings stay a pull request of their own.
+ */
+const mutationStack = (ir: PolicyIR, facts: DiffFacts, over: OverBudget): StackSuggestion => {
+  const mutantsOf = new Map(over.estimate.files.map((f) => [f.path, f.mutants]))
+  const count = (files: ReadonlyArray<ChangedFile>) => files.reduce((n, f) => n + (mutantsOf.get(f.path) ?? 0), 0)
+  const byPart = partsOf(ir, facts)
+  const pieces: Array<{ readonly title: string; readonly files: ReadonlyArray<ChangedFile> }> = []
+  for (const part of order(ir, [...byPart.keys()])) {
+    const files = byPart.get(part)!
+    const mutated = files.filter((f) => mutantsOf.has(f.path)).sort((a, b) => (a.path < b.path ? -1 : 1))
+    if (part === POLICY || count(files) <= over.budget || mutated.length < 2) {
+      pieces.push({ title: part, files })
+      continue
+    }
+    const rest = files.filter((f) => !mutantsOf.has(f.path))
+    mutated.forEach((f, i) => pieces.push({ title: f.path, files: i === 0 ? [f, ...rest] : [f] }))
+  }
+  const owned = ownedFiles(facts)
+  const steps: StackStep[] = []
+  let current: { readonly title: string; readonly files: ReadonlyArray<ChangedFile> } | undefined
+  const flush = () => {
+    if (current) steps.push(stepOf(current.title, current.files, owned, count(current.files)))
+    current = undefined
+  }
+  for (const piece of pieces) {
+    if (piece.title === POLICY) {
+      flush()
+      steps.push(stepOf(piece.title, piece.files, owned, count(piece.files)))
+    } else if (current && current.title !== POLICY && count(current.files) + count(piece.files) <= over.budget) {
+      current = { title: `${current.title}, ${piece.title}`, files: [...current.files, ...piece.files] }
+    } else {
+      flush()
+      current = piece
+    }
+  }
+  flush()
+  return { lines: facts.linesChanged, steps, mutation: { estimate: over.estimate.mutants, budget: over.budget } }
+}
+
+/** The advisory finding's text for a change over its mutation budget: the estimate, the budget and the split. */
+export const splitAdvice = (stack: StackSuggestion): string => {
+  const { estimate, budget } = stack.mutation!
+  const steps = stack.steps.map((s, i) => {
+    const n = s.mutants ?? 0
+    // Only a piece with one mutated file can be over on its own: a part over the budget is broken into its files.
+    const alone = n > budget ? ", over the budget on its own" : ""
+    return `${i + 1}. ${s.title} (${aboutMutants(n)}${alone})`
+  })
+  return `About ${estimate} mutants on the changed lines, over the policy's budget of ${budget}. Split the change into pull requests of up to ${budget} each: ${steps.join("; ")}.`
 }

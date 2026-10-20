@@ -56,6 +56,11 @@ const gateLoosenings = (before: PolicyIR, after: PolicyIR): Loosening[] => {
     if (b.ratchet && !a.ratchet) out.push({ what: `${checkId(b)} is no longer a ratchet` })
     if (!b.advise && a.advise) out.push({ what: `${checkId(b)} only advises: its findings no longer block` })
     if (b.scope === "all" && a.scope === "changed") out.push({ what: `${checkId(b)} now only measures changed code` })
+    // Spec 0020: a blocking gate over its mutant budget isn't run, so a new or lower budget skips more changes.
+    if (!a.advise && a.max !== undefined && (b.max === undefined || a.max < b.max)) {
+      const budget = b.max === undefined ? `gets a budget of ${a.max} mutants` : `budget falls from ${b.max} to ${a.max} mutants`
+      out.push({ what: `${checkId(b)} ${budget}: a change over it isn't mutated` })
+    }
     if (b.threshold && !a.threshold) out.push({ what: `${checkId(b)} loses its threshold (${thresholdText(b.threshold)})` })
     if (b.threshold && a.threshold) {
       if (b.threshold.op !== a.threshold.op || (b.threshold.value.unit ?? "") !== (a.threshold.value.unit ?? "") || easier(b.threshold.op, b.threshold.value.value, a.threshold.value.value)) {

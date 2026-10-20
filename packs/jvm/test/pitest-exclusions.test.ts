@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { pitestExclusions } from "../src/sources.ts"
 
-// Spec 0011: open-source Pitest can't mutate only some lines, but it can skip
-// methods by name. With `on changed`, every method of a changed class that no
-// changed line is in is skipped, and so is code the compiler generated.
+// Spec 0011 §4: with `on changed`, code the compiler generated is skipped by
+// name. Untouched methods are left to Gauntlet's line filter (spec 0019).
 
 const ACCOUNT = `package bank
 
@@ -36,11 +35,12 @@ const at = (...lines: number[]) => new Map([["src/main/kotlin/bank/Account.kt", 
 const files = [{ path: "src/main/kotlin/bank/Account.kt", text: ACCOUNT }]
 
 describe("Pitest exclusions", () => {
+  // Spec 0019 §2: the others are skipped by Gauntlet's Pitest filter, which drops their mutants by line, not by name here.
   test("a change inside one function keeps that function and skips the others", () => {
     const skipped = pitestExclusions(files, at(15))
     expect(skipped).not.toContain("withdraw")
-    expect(skipped).toContain("deposit")
-    expect(skipped).toContain("opening")
+    expect(skipped).not.toContain("deposit")
+    expect(skipped).not.toContain("opening")
   })
 
   test("a changed custom getter or setter is kept under its JVM name", () => {

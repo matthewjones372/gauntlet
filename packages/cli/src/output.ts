@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Option, Ref } from "effect"
 import { createInterface } from "node:readline/promises"
-import { GateProgress, type GateProgressShape, MUTATION_COST, MUTATION_FASTER, SLOW_MUTATION_MS } from "@gauntlet/core"
+import { GateProgress, type GateProgressShape, MUTATION_COST, MUTATION_FASTER, SLOW_MUTATION_MS, took } from "@gauntlet/core"
 
 /** Where commands print. Tests capture it; the binary writes to stdout and stderr. */
 export class Output extends Context.Service<Output, {
@@ -53,10 +53,6 @@ export const answers = (...replies: ReadonlyArray<string>) => {
   const queue = [...replies]
   return Layer.succeed(Ask, { question: () => Effect.sync(() => Option.fromNullishOr(queue.shift())) })
 }
-
-/** A duration for people: 850ms, 12s, 3m 05s. */
-const took = (ms: number) =>
-  ms < 1000 ? `${ms}ms` : ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60_000)}m ${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}s`
 
 /** Why a slow mutation run was slow, and how to speed it up; nothing for a quick one. */
 export const slowMutationNote = (check: string, ms: number): string =>

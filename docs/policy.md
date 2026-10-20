@@ -271,6 +271,38 @@ or a threshold, which block. See
 the whole-project run, and a check whose mutation step takes over three
 minutes says so and how to speed it up.
 
+### A mutant budget
+
+A big change brings a lot of mutants, and each one runs the tests. Give the
+gate a budget so a change can't take an hour:
+
+```
+verify { unit, mutation advise on changed max 150 mutants }
+```
+
+Before the gate runs, Gauntlet estimates the mutants from the diff: two for
+each changed line that looks like code (not blank, a comment, brackets or an
+import) in a source file that isn't a test. Over the budget:
+
+- with `advise`, the gate runs on a sample of the changed lines, picked by the
+  head commit so the same commit always picks the same ones, as many as the
+  budget holds; its reason says "sampled 140 of about 412 mutants";
+- with a threshold or a ratchet, the gate isn't run. That's missing evidence, so
+  the change goes to review;
+- either way the report has a finding that names a split into pull requests of
+  up to the budget each, by part of the repository (and by file for a part
+  that's over on its own), and the stacked pull request suggestion uses it
+  whatever the change's size in lines.
+
+A new or lower budget on a blocking gate is a loosening, since more changes go
+unmutated. See [spec 0020](specs/0020-mutation-budget.md).
+
+In the single-repository workflow, a policy whose mutation only advises runs it
+in a `mutation` job of its own, beside the evidence job: the `gauntlet` check
+doesn't wait for it, and a `gauntlet mutation` check (neutral) carries the
+survivors as annotations when it finishes. `gauntlet check` prints the time
+each gate took, and the pull request's comment ends with the evidence job's.
+
 ## Stacked pull requests
 
 A change of 400 lines or more that spans several parts of the repository
@@ -775,6 +807,8 @@ refuses if anything was pushed since; without it, it shows the head and asks.
 It runs only in your own terminal, signed in to `gh` as an owner: it refuses in
 a coding agent's session, and Claude Code's hook refuses the agent's approving
 commands, since an agent often works under its owner's GitHub account.
+It runs `gh` and git in the current directory, or in the local checkout
+`--repo <dir>` names; `--repo` takes a directory, not `owner/name`.
 
 An override names the policy CI judges the change with, the pull request's
 base's, even when the pull request edits `.gauntlet/policy.gx`; `gauntlet

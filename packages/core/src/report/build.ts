@@ -3,6 +3,7 @@ import type { MetricDelta, Proof, Result, TestCounts } from "@gauntlet/sarif"
 import type { DiffFacts } from "../diff-facts.ts"
 import type { IntegrityResult } from "../integrity.ts"
 import type { Drift } from "../policy-source.ts"
+import { overBudget } from "../mutation-budget.ts"
 import { suggestStack } from "../stack.ts"
 import { type CheckOutcome, codeRemoved, type Decision, type NewViolation } from "../review.ts"
 import type { ScenarioJudgement } from "../scenario-verdicts.ts"
@@ -128,7 +129,9 @@ export const buildReport = (input: ReportInput): Report => {
 
   const failed = new Set(input.checks.filter((c) => c.status === "failed").map((c) => c.check))
   const remediation = ir.remediation.filter((r) => failed.has(r.gate)).map((r) => ({ check: r.gate, fix: r.fix })).sort(by((r) => r.check))
-  const stack = input.scope === "protect-only" ? undefined : suggestStack(ir, facts)
+  // A change over a mutation budget in one file has no split to show; its finding says so (spec 0020).
+  const suggested = input.scope === "protect-only" ? undefined : suggestStack(ir, facts, overBudget(ir, facts))
+  const stack = suggested && suggested.steps.length > 1 ? suggested : undefined
   const judged = input.checks.find((c) => c.scenarios !== undefined)?.scenarios
 
   return {
@@ -177,7 +180,13 @@ export const buildReport = (input: ReportInput): Report => {
     })),
     notExecuted,
     remediation,
-    ...(stack ? { stack: { lines: stack.lines, steps: stack.steps.map((st) => ({ title: st.title, files: [...st.files], lines: st.lines, needsOwner: st.needsOwner })) } } : {}),
+    ...(stack ? {
+      stack: {
+        lines: stack.lines,
+        steps: stack.steps.map((st) => ({ title: st.title, files: [...st.files], lines: st.lines, needsOwner: st.needsOwner, ...opt("mutants", st.mutants) })),
+        ...(stack.mutation ? { mutation: { ...stack.mutation } } : {}),
+      },
+    } : {}),
     decision: {
       ...opt("scope", input.scope),
       tier: decision.tier,

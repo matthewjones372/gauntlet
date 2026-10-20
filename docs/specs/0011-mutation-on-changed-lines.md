@@ -63,4 +63,8 @@ build script). History reuse is left out: Pitest marks it experimental.
 
 - Choosing operators per language or learning "not useful" rules (Google's arid-node
   filter). A later spec, once findings have feedback.
-- A cap on mutants per change.
+- A cap on mutants per change: spec 0020.
+- Mutating only the changed lines in the tool itself. Pitest still mutates whole
+  classes here, and core filters afterwards. Spec 0019 adds a Pitest filter so the
+  JVM pack generates only the changed lines' mutants, and runs only the touched
+  modules' `pitest` tasks; §4's name-based skips stay for generated code alone.

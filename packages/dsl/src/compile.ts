@@ -644,6 +644,27 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       if (!value) return undefined
       threshold = { op: c.op as Comparator, value }
     }
+    // Spec 0020: `max <n> mutants` caps what a change may bring to the mutation gate.
+    let max: number | undefined
+    if (c.max !== undefined) {
+      const span = propertySpan(c, "max")
+      const written = `max ${c.max.value}${c.max.unit === undefined ? "" : ` ${c.max.unit}`}`
+      if (c.name !== "mutation") {
+        error("max-not-mutation", span, `'${c.name}' takes no budget: only the mutation gate counts mutants.`, `'${c.name}' without \`${written}\``, "Remove the budget.")
+        return undefined
+      }
+      if (scope !== "changed") {
+        error("max-needs-changed", span, "A mutant budget caps each change, so it needs `on changed`.", "`on changed` before the budget",
+          `Write: mutation${c.advise ? " advise" : ""} on changed ${written}`)
+        return undefined
+      }
+      if (c.max.unit !== "mutants" || !Number.isInteger(c.max.value) || c.max.value < 1) {
+        error("wrong-mutant-budget", span, "A mutant budget is a whole number of mutants from 1.", "a budget such as `max 150 mutants`",
+          `Write: max ${Math.max(1, Math.round(c.max.value))} mutants`)
+        return undefined
+      }
+      max = c.max.value
+    }
     return {
       kind: "gate",
       name: c.name,
@@ -651,6 +672,7 @@ export const compile = (ast: Ast.Policy, report: Report): Draft => {
       ...(c.advise ? { advise: true as const } : {}),
       ...(threshold ? { threshold } : {}),
       scope,
+      ...(max !== undefined ? { max } : {}),
       ...(c.zone !== undefined ? { zone: c.zone } : {}),
     }
   }

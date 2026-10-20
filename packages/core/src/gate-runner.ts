@@ -20,6 +20,8 @@ import { assessStability, failuresOf, REPEATS, seedFor } from "./stability.ts"
 import { isCompilerWarnings } from "./compiler-warnings.ts"
 import { confirmPruning, describePruning, pruningRun } from "./pruning.ts"
 import type { Mutant } from "./mutants.ts"
+import { aboutMutants, estimateMutants, type MutationEstimate, sampledFacts, sampleLines, SPLIT_RULE } from "./mutation-budget.ts"
+import { splitAdvice, suggestStack } from "./stack.ts"
 import { BLOCKING_VERDICTS, describeVerdicts, judgeScenarios, type RanTest, scenarioAdvice } from "./scenario-verdicts.ts"
 import { readScenarioFiles } from "./scenarios.ts"
 import type { SurveyedTest } from "./test-value.ts"
@@ -63,6 +65,11 @@ export interface GateRunnerInput {
   readonly fromCi?: { readonly files: ReadonlyArray<{ readonly path: string; readonly content: string }>; readonly source: string }
   /** What each \`affected\` suite runs in each build (spec 0013); ignored while recording. */
   readonly selections?: SuiteSelections
+  /**
+   * Gauntlet's GitHub workflow runs \`advise\` mutation in a job of its own (spec 0020 §6):
+   * \`skip\` records those gates as not executed and runs the rest, \`only\` runs them and nothing else.
+   */
+  readonly advisedMutation?: "skip" | "only"
 }
 
 export interface GateRunnerOutput {
@@ -112,6 +119,9 @@ export const gateMetricKey = (gate: { readonly name: string; readonly zone?: str
 
 /** The gate a recorded metric belongs to: \`coverage in zone money\` is coverage's. */
 export const metricGate = (key: string): string => key.split(" in zone ")[0]!
+
+/** A mutation gate that only advises (spec 0011), which Gauntlet's workflow can run beside the verdict (spec 0020 §6). */
+export const isAdvisedMutation = (c: Check): boolean => c.kind === "gate" && c.name === "mutation" && c.advise === true
 
 const checkName = (c: Check) => (c.kind === "budget" ? `budget ${c.budget}` : c.kind === "llm-review" ? "llm review" : c.kind === "scenarios" ? "scenarios" : c.name)
 const dirName = (tier: number, index: number, c: Check) => `${tier}-${index}-${checkName(c).replace(/[^A-Za-z0-9._-]+/g, "-")}`
@@ -278,6 +288,12 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           recorded[i] = { ...base, ...r }
         }
 
+        // Spec 0020 §6: in the mutation job only the advise mutation gates run; beside it, they don't.
+        if (input.advisedMutation === "only" && !isAdvisedMutation(check)) continue
+        if (input.advisedMutation === "skip" && isAdvisedMutation(check)) {
+          record({ status: "not-executed", reason: "advise mutation runs in its own job, beside this one, and never holds the verdict" })
+          continue
+        }
         if (stoppedBy !== undefined) {
           record({ status: "not-executed", reason: `tier '${stoppedBy}' failed, so later tiers didn't run` })
           continue
@@ -738,6 +754,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         let spec: GateSpec | undefined
         let scope: ReadonlyArray<string> | undefined
         let changedLinesOnly = false
+        // Spec 0020: an advise gate over its mutant budget runs on the lines the head commit samples.
+        let sample: { readonly estimate: MutationEstimate; readonly facts: DiffFacts } | undefined
         // A change that only removes tests: the mutation gate confirms the tests that stay kill as much (spec 0016).
         let pruning: ReturnType<typeof pruningRun> = undefined
         let multiRerun: ((ctx: GateContext, subset: TestSubset, label: string) => Effect.Effect<GateRun, never, ProcessRunner | FileSystem.FileSystem | Path.Path>) | undefined
@@ -805,6 +823,19 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           // Recording a baseline, a zone's gate measures the zone as it is: every file in it (spec 0009 §3).
           const pool = input.recording && zone ? input.files : [...changed, ...facts.files.map((f) => f.path)]
           scope = pruning?.kind === "confirm" ? [...pruning.files] : changedOnly || zone ? [...new Set(pool)].filter(inScope).sort() : undefined
+          if (check.name === "mutation" && changedOnly && check.max !== undefined) {
+            const estimate = estimateMutants(ir, facts, check)
+            if (estimate.mutants > check.max) {
+              const split = suggestStack(ir, facts, { gate: check, budget: check.max, estimate })!
+              advice.push({ check: checkName(check), ruleId: SPLIT_RULE, message: splitAdvice(split) })
+              if (!check.advise) {
+                return { status: "not-executed", reason: `${aboutMutants(estimate.mutants)} on the changed lines, over the policy's budget of ${check.max}: split the change (see the suggested split)` }
+              }
+              const lines = sampleLines(estimate, check.max, facts.head)
+              scope = [...lines.keys()]
+              sample = { estimate, facts: sampledFacts(facts, lines) }
+            }
+          }
           start = multi
             ? (ctx) => acrossBuilds(check, targetsFor((p) => p.gates[check.name] !== undefined), dir, ctx, (bctx, t) => t.pack.gates[check.name]!(check, bctx))
             : (ctx) => impl(check, ctx)
@@ -820,7 +851,7 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
           outputDir: made.value,
           collect: multi ? collectBuilds(dir) : workspace.collect(dir).pipe(Effect.orElseSucceed(() => [])),
           ir,
-          facts,
+          facts: sample?.facts ?? facts,
           ...(scope ? { scope } : {}),
           ...(changedLinesOnly ? { changedLinesOnly: true } : {}),
           // Spec 0012 §6: the scenarios check needs every killer the tool can name.
@@ -867,7 +898,8 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
         if (check.kind === "gate" && check.name === "mutation" && check.zone === undefined) {
           mutation = { state: "ran", mutants: [...(mutation.state === "ran" ? mutation.mutants : []), ...(run.mutants ?? [])] }
         }
-        if (run.nothingInScope !== undefined) return { status: "passed", reason: run.nothingInScope, proof }
+        const sampled = (counted: number) => sample && `sampled ${counted} of ${aboutMutants(sample.estimate.mutants)} (lines chosen by the head commit)`
+        if (run.nothingInScope !== undefined) return { status: "passed", reason: sample ? `${sampled(0)}; ${run.nothingInScope}` : run.nothingInScope, proof }
         if (run.killMap) killMaps.push(run.killMap)
         if (run.methodMap) methodMaps.push(run.methodMap)
 
@@ -1008,7 +1040,12 @@ export const runGates = (input: GateRunnerInput): Effect.Effect<GateRunnerOutput
               advice.push(...survivors.map((v) => finding(gate.name, v)))
               if (gate.advise) {
                 const where = run.lineScoped ? " on the changed lines" : ""
-                return { status: "passed", ...(survivors.length > 0 ? { reason: `${survivors.length} mutant${survivors.length === 1 ? "" : "s"}${where} survive${survivors.length === 1 ? "s" : ""}, reported without blocking` } : {}), proof }
+                const survive = `${survivors.length} mutant${survivors.length === 1 ? "" : "s"}${where} survive${survivors.length === 1 ? "s" : ""}, reported without blocking`
+                if (sample) {
+                  const counted = Object.values(value.perFileTotal ?? {}).reduce((n, x) => n + x, 0)
+                  return { status: "passed", reason: `${sampled(counted)}; ${survivors.length > 0 ? survive : "none survive"}`, proof }
+                }
+                return { status: "passed", ...(survivors.length > 0 ? { reason: survive } : {}), proof }
               }
             } else if (gate.ratchet && Option.isSome(baseline)) {
               // A zone's ratchet starts from the zone's own value; a baseline recorded before zones had one

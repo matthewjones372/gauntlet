@@ -212,7 +212,13 @@ export const Report = Schema.Struct({
   /** For a big change over several parts: stacked pull requests to split it into, in review order. A suggestion only. */
   stack: Schema.optionalKey(Schema.Struct({
     lines: Schema.Number,
-    steps: Schema.Array(Schema.Struct({ title: Schema.String, files: Schema.Array(Schema.String), lines: Schema.Number, needsOwner: Schema.Boolean })),
+    steps: Schema.Array(Schema.Struct({
+      title: Schema.String, files: Schema.Array(Schema.String), lines: Schema.Number, needsOwner: Schema.Boolean,
+      /** About how many mutants the step brings, when the split is for a mutation budget (spec 0020). */
+      mutants: Schema.optionalKey(Schema.Number),
+    })),
+    /** The change is over a mutation gate's budget (spec 0020): the estimate and the budget the split keeps each step within. */
+    mutation: Schema.optionalKey(Schema.Struct({ estimate: Schema.Number, budget: Schema.Number })),
   })),
   decision: ReportDecision,
 })
