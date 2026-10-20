@@ -26,6 +26,14 @@ export const checkText = (c: Check): string => {
 
 const MODE = { shadow: "shadow (reports only, never blocks)", enforce: "enforce (failing changes are blocked)" } as const
 
+/**
+ * The suites `before` has that `after` removes or changes. Fewer tests may run
+ * under them, so the baseline recorded next can be lower. Holdouts don't run
+ * when a baseline is recorded, so they're left out.
+ */
+export const changedSuites = (after: PolicyIR, before?: PolicyIR): string[] =>
+  (before?.suites ?? []).filter((s) => s.kind === "suite" && !after.suites.some((a) => JSON.stringify(a) === JSON.stringify(s))).map((s) => s.name)
+
 /** One line per difference between `before` (none for a first policy) and `after`. */
 export const describeChanges = (after: PolicyIR, before?: PolicyIR): string[] => {
   const lines: string[] = []

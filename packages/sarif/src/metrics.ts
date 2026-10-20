@@ -144,6 +144,11 @@ export interface MetricUpdate {
  * anything worse keeps the old value unless `allowLower` is set, in which case
  * it is taken and reported as lowered. Metrics that weren't recorded this
  * time stay as they were: missing evidence never lowers the bar.
+ *
+ * A file the baseline never measured (the tool now covers a module it didn't)
+ * is recorded as it is, not held to the project's value, and the
+ * project's value is judged without such files when it can be worked out
+ * without them.
  */
 export const updateMetrics = (
   base: Readonly<Record<string, Metric>>,
@@ -159,8 +164,10 @@ export const updateMetrics = (
       metrics[name] = r
       continue
     }
-    const comparison = compareMetrics({ [name]: b }, { [name]: r })
-    const regressions = comparison.regressions
+    const first = Object.keys(r.perFile ?? {}).filter((f) => b.perFile?.[f] === undefined)
+    const without = b.perFile !== undefined && first.length > 0 ? valueWithout(r, first) : undefined
+    const comparison = compareMetrics({ [name]: b }, { [name]: without !== undefined ? { ...r, value: without } : r })
+    const regressions = comparison.regressions.filter((d) => d.file === undefined || !first.includes(d.file))
     if (regressions.length === 0 || allowLower) metrics[name] = r
     lowered.push(...regressions)
   }
