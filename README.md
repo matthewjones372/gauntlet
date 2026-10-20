@@ -130,7 +130,7 @@ explains the problem but does not evaluate Gauntlet.
 
 ## Support and status
 
-Release candidate. Supports Kotlin and Java (Gradle), TypeScript and
+Release candidate (v0.1.0-rc.36). Supports Kotlin and Java (Gradle), TypeScript and
 JavaScript, Python, Go, Rust, Scala and Clojure. Tool support varies by
 [language pack](docs/languages.md). On Windows, use WSL 2.
 
