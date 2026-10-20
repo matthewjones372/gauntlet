@@ -565,6 +565,7 @@ export interface MetricCheck extends langium.AstNode {
     readonly $container: GateTier | ZoneDefaults;
     readonly $type: 'MetricCheck';
     advise: boolean;
+    max?: Quantity;
     name: CheckName;
     op?: Cmp;
     ratchet: boolean;
@@ -576,6 +577,7 @@ export interface MetricCheck extends langium.AstNode {
 export const MetricCheck = {
     $type: 'MetricCheck',
     advise: 'advise',
+    max: 'max',
     name: 'name',
     op: 'op',
     ratchet: 'ratchet',
@@ -1508,6 +1510,10 @@ export class GauntletAstReflection extends langium.AbstractAstReflection {
                 advise: {
                     name: MetricCheck.advise,
                     defaultValue: false,
+                    optional: true
+                },
+                max: {
+                    name: MetricCheck.max,
                     optional: true
                 },
                 name: {

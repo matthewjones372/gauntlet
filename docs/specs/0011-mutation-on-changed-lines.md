@@ -63,4 +63,4 @@ build script). History reuse is left out: Pitest marks it experimental.
 
 - Choosing operators per language or learning "not useful" rules (Google's arid-node
   filter). A later spec, once findings have feedback.
-- A cap on mutants per change.
+- A cap on mutants per change: spec 0020.

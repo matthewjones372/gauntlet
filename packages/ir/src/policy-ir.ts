@@ -139,6 +139,8 @@ export const GateCheck = Schema.Struct({
   advise: Schema.optionalKey(Schema.Literal(true)),
   threshold: Schema.optionalKey(Threshold),
   scope: Schema.Literals(["changed", "all"]),
+  /** \`max <n> mutants\` (spec 0020): the most mutants the change may bring before the gate is split or sampled. Absent otherwise. */
+  max: Schema.optionalKey(Finite),
   zone: Schema.optionalKey(Schema.String),
   /** The zone got this check from the \`zones { … }\` defaults (spec 0009), not from a gate of its own. */
   zoneDefault: Schema.optionalKey(Schema.Literal(true)),

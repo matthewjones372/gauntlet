@@ -2324,6 +2324,28 @@ export const GauntletGrammar = (): Grammar => loadedGauntletGrammar ?? (loadedGa
             "elements": [
               {
                 "$type": "Keyword",
+                "value": "max"
+              },
+              {
+                "$type": "Assignment",
+                "feature": "max",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@63"
+                  },
+                  "arguments": []
+                }
+              }
+            ],
+            "cardinality": "?"
+          },
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "Keyword",
                 "value": "in"
               },
               {
