@@ -1,5 +1,7 @@
 import { CODING_AGENT_MARKERS } from "@gauntlet/author"
 import { Context, Data, Effect, Option, Schema } from "effect"
+import { existsSync, statSync } from "node:fs"
+import { dirname, join } from "node:path"
 
 // The owner's commands (spec 0015): `gauntlet approve` and `gauntlet grant`
 // make decisions only an owner may make. They run in the owner's own terminal,
@@ -47,6 +49,31 @@ export interface ForgeShape {
   readonly push: (repo: string, refspec: string) => Effect.Effect<void, ForgeFailed>
 }
 
+const insideGit = (dir: string): boolean => existsSync(join(dir, ".git")) || (dirname(dir) !== dir && insideGit(dirname(dir)))
+
+/**
+ * Why `dir`, resolved from `--repo <given>`, can't be where the owner's
+ * commands run gh and git, or undefined. Checked before anything is spawned:
+ * a missing working directory makes the spawn fail as if gh itself were missing.
+ */
+export const checkoutProblem = (given: string, dir: string): string | undefined => {
+  if (!existsSync(dir)) {
+    return /^[\w.-]+\/[\w.-]+$/.test(given)
+      ? `--repo takes a local checkout directory, not owner/name: ${given} doesn't exist here.`
+      : `--repo takes a local checkout directory: ${dir} doesn't exist.`
+  }
+  if (!statSync(dir).isDirectory()) return `--repo takes a local checkout directory: ${dir} isn't a directory.`
+  if (!insideGit(dir)) return `--repo takes a local checkout directory: ${dir} isn't a git checkout.`
+  return undefined
+}
+
+/** What a failed spawn means: Bun blames the command for a missing working directory too. */
+const spawnFailure = (cwd: string, command: string, e: unknown): string => {
+  if ((e as { readonly code?: unknown }).code !== "ENOENT") return `${command} couldn't run: ${String(e)}`
+  if (!existsSync(cwd)) return `${command} couldn't run: its working directory ${cwd} doesn't exist.`
+  return command.includes("/") ? `${command} couldn't run: there's no such file.` : `${command} couldn't run: ${command} isn't on PATH.`
+}
+
 const run = (cwd: string, cmd: ReadonlyArray<string>) =>
   Effect.tryPromise({
     try: async () => {
@@ -54,7 +81,7 @@ const run = (cwd: string, cmd: ReadonlyArray<string>) =>
       const [stdout, stderr, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited])
       return { code, stdout, stderr }
     },
-    catch: (e) => new ForgeFailed({ message: `${cmd[0]} couldn't run: ${String(e)}` }),
+    catch: (e) => new ForgeFailed({ message: spawnFailure(cwd, cmd[0]!, e) }),
   }).pipe(Effect.flatMap((r) => r.code === 0 ? Effect.succeed(r.stdout) : Effect.fail(new ForgeFailed({ message: `${cmd.join(" ")} failed: ${r.stderr.trim() || r.stdout.trim()}` }))))
 
 const decodePr = Schema.decodeUnknownOption(Schema.fromJsonString(PullRequest))
