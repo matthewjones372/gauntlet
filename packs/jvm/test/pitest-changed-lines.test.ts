@@ -82,6 +82,29 @@ describe("Pitest on the changed lines", () => {
     expect(r.metrics?.mutation?.value).toBe(0)
   })
 
+  // Spec 0019 §4: Pitest's JVMs share containers whose fixtures opt into reuse, unless the environment says otherwise.
+  const withReuse = async (value: string | undefined) => {
+    const saved = process.env.TESTCONTAINERS_REUSE_ENABLE
+    if (value === undefined) delete process.env.TESTCONTAINERS_REUSE_ENABLE
+    else process.env.TESTCONTAINERS_REUSE_ENABLE = value
+    try {
+      const g = setUp()
+      await g.run(mutation({ kind: "gate", name: "mutation" } as never, g.ctx))
+      return g.calls[0]!.env!
+    } finally {
+      if (saved === undefined) delete process.env.TESTCONTAINERS_REUSE_ENABLE
+      else process.env.TESTCONTAINERS_REUSE_ENABLE = saved
+    }
+  }
+
+  test("the Pitest run turns on Testcontainers' reuse", async () => {
+    expect((await withReuse(undefined)).TESTCONTAINERS_REUSE_ENABLE).toBe("true")
+  })
+
+  test("an environment that sets Testcontainers' reuse keeps its own value", async () => {
+    expect((await withReuse("false")).TESTCONTAINERS_REUSE_ENABLE).toBeUndefined()
+  })
+
   test("without on changed, Pitest mutates whole classes with no filter", async () => {
     const g = setUp({ changedLinesOnly: false })
     await g.run(mutation({ kind: "gate", name: "mutation" } as never, g.ctx))

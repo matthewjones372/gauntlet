@@ -54,6 +54,16 @@ When Gradle can't find one of those tasks (the module doesn't apply Pitest, or
 its project path doesn't follow its directory) the gate runs the root `pitest`
 task instead, as before.
 
+### 4. Pitest's JVMs share reusable containers
+
+The Pitest run gets `TESTCONTAINERS_REUSE_ENABLE=true`, unless the environment
+already sets it, so it can be turned off. Pitest starts a JVM per batch of
+mutants, and a Testcontainers fixture that opts in with `withReuse(true)` then
+shares one container across them instead of starting its own each time (on
+petshop's Postgres fixture, 7 to 9 seconds a JVM without reuse, 5.5 to 5.8 with
+it). A fixture without `withReuse` ignores the variable. The unit and coverage
+runs don't get it.
+
 ## Not covered
 
 - Pitest's coverage run still runs each touched module's whole test suite once.
@@ -67,7 +77,8 @@ task instead, as before.
 - The gate writes `svc/domain/Money.kt:<line>` for a changed line of a file
   declaring `package svc.domain`, turns the feature on only with `on changed`,
   runs `:app:pitest` for `app/src/main/...`, and falls back to `pitest` when
-  Gradle says the task isn't there (`packs/jvm/test/pitest-changed-lines.test.ts`).
+  Gradle says the task isn't there, and gives the Pitest run
+  `TESTCONTAINERS_REUSE_ENABLE=true` (`packs/jvm/test/pitest-changed-lines.test.ts`).
 - End to end on `examples/fixtures/kotlin-service` with real Gradle and Pitest
   (`packs/jvm/test/changed-lines.e2e.ts`): a change to one line of a Kotlin
   function, and to one line of a Java class, leaves only that line's mutants in
