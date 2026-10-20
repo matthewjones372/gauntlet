@@ -151,7 +151,8 @@ describe("over budget, an advise gate samples", () => {
     const { ir } = compiled(text("verify { mutation advise on changed max 40 mutants }"))
     const gate = { kind: "gate" as const, name: "mutation", ratchet: false, advise: true as const, scope: "changed" as const, max: 40 }
     const pick = (head: string) => [...sampleLines(estimateMutants(ir, facts, gate), 40, head)].map(([p, ls]) => `${p}:${ls.join(",")}`).join(" ")
-    expect(pick("0123abcd")).toBe(pick("0123abcd"))
+    // Pinned: a new Gauntlet version, or another run, picks the same lines for the same head.
+    expect(pick("0123abcd")).toBe("cli/B.kt:6,11,14,18,22,23,31,32,34,39 core/A.kt:1,5,6,13,16,25,27,29,30,50")
     const others = ["89abcdef", "fedcba98", "00000001", "deadbeef"].map(pick)
     expect(others.some((o) => o !== pick("0123abcd"))).toBe(true)
   })
