@@ -74,11 +74,15 @@ export interface CheckRequest {
    * edited rather than restored from base. Local working-tree checks only.
    */
   readonly adoption?: boolean
+  /** Gauntlet's GitHub workflow runs \`advise\` mutation in a job of its own (spec 0020 §6). */
+  readonly advisedMutation?: "skip" | "only"
 }
 
 export interface CheckResult {
   readonly report: Report
   readonly exitCode: 0 | 1
+  /** When it ran and what each gate took (spec 0020 §7); absent for a report read from the cache. */
+  readonly run?: RunRecord
 }
 
 /** The check couldn't run: bad policy, missing base, git failure. Exit code 2. */
@@ -362,6 +366,7 @@ export const runCheck = (request: CheckRequest) =>
           ...(unchanged ? { behaviourUnchanged: true } : {}),
           ...(fromCi.length > 0 ? { fromCi: { files: fromCi, source: request.ciReports!.source } } : {}),
           ...(selections.size > 0 ? { selections } : {}),
+          ...(request.advisedMutation ? { advisedMutation: request.advisedMutation } : {}),
         })
       const imports = request.skipGates
         ? { checks: [], newViolations: [], runs: [], caution: [], records: [] }
@@ -386,7 +391,7 @@ export const runCheck = (request: CheckRequest) =>
     const run: RunRecord = { startedAt: iso(started), finishedAt: iso(finished), durationsMs: { ...executed.durationsMs, total: finished - started } }
     yield* (yield* Reporter).write(request.outDir, report, executed.runs, run)
     if (request.record !== false) yield* (yield* ShadowLog).append(request.repo, shadowRecordOf(report, run.finishedAt))
-    return { report, exitCode: report.decision.blocking ? 1 : 0 } satisfies CheckResult
+    return { report, exitCode: report.decision.blocking ? 1 : 0, run } satisfies CheckResult
   })
 
 export interface JudgeRequest {

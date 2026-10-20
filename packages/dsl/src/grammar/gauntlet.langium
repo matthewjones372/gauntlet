@@ -162,6 +162,7 @@ MetricCheck:
     (advise?='advise')?
     (op=Cmp value=Quantity)?
     ('on' scope=Name)?
+    ('max' max=Quantity)?
     ('in' 'zone' zone=Name)?;
 
 OnFail:

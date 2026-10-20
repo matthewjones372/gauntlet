@@ -272,9 +272,12 @@ export const renderMarkdown = (r: Report, opts: RenderOptions = {}): string => {
     lines.push(
       "### Review it as stacked pull requests",
       "",
-      `This change is big (${plural(r.stack.lines, "line")}) and spans ${r.stack.steps.length} parts of the repository. It would be easier to review as ${r.stack.steps.length} pull requests, each on top of the one before:`,
+      r.stack.mutation
+        // Spec 0020: split so each pull request stays within the mutation budget.
+        ? `This change brings about ${r.stack.mutation.estimate} mutants to mutation testing, over the policy's budget of ${r.stack.mutation.budget}. It would fit as ${r.stack.steps.length} pull requests, each on top of the one before:`
+        : `This change is big (${plural(r.stack.lines, "line")}) and spans ${r.stack.steps.length} parts of the repository. It would be easier to review as ${r.stack.steps.length} pull requests, each on top of the one before:`,
       "",
-      ...r.stack.steps.map((s, i) => `${i + 1}. **${s.title}** (${plural(s.files.length, "file")}, ${plural(s.lines, "line")})${s.needsOwner ? ", for an owner" : ""}: ${s.files.slice(0, 3).map((f) => link(f)).join(", ")}${s.files.length > 3 ? ` and ${s.files.length - 3} more` : ""}`),
+      ...r.stack.steps.map((s, i) => `${i + 1}. **${s.title}** (${plural(s.files.length, "file")}, ${plural(s.lines, "line")}${s.mutants !== undefined ? `, about ${plural(s.mutants, "mutant")}` : ""})${s.needsOwner ? ", for an owner" : ""}: ${s.files.slice(0, 3).map((f) => link(f)).join(", ")}${s.files.length > 3 ? ` and ${s.files.length - 3} more` : ""}`),
       "",
     )
   }

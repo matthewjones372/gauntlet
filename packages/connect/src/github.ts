@@ -158,12 +158,31 @@ const baseStep = `- name: Find the base to judge against
     if [ "$ACTION" = reopened ]; then sha=$(git rev-parse "refs/remotes/origin/$BASE_REF"); fi
     echo "sha=$sha" >> "$GITHUB_OUTPUT"`
 
-const evidenceJob = (o: GithubOptions, refs: { readonly base: string; readonly head: string; readonly checkoutRef: string; readonly condition: string; readonly resolveBase?: boolean; readonly judgeFrom?: string }) => `evidence:
+interface EvidenceRefs {
+  readonly base: string
+  readonly head: string
+  readonly checkoutRef: string
+  readonly condition: string
+  readonly resolveBase?: boolean
+  readonly judgeFrom?: string
+  /**
+   * Spec 0020 §6: \`mutation\` is the job that runs only the policy's \`advise\` mutation, beside
+   * \`evidence\`, which then skips it. Absent, \`evidence\` runs every check.
+   */
+  readonly advisedMutation?: "skip" | "only"
+}
+
+const evidenceJob = (o: GithubOptions, refs: EvidenceRefs) => {
+  const mutationOnly = refs.advisedMutation === "only"
+  // The project's CI reports stand in for its tests, which the mutation job doesn't run.
+  const reuseCi = o.reuseCi && !mutationOnly
+  const out = mutationOnly ? "gauntlet-mutation" : "gauntlet-out"
+  return `${mutationOnly ? "mutation" : "evidence"}:
   if: ${refs.condition}
   runs-on: ubuntu-latest
   timeout-minutes: 90
   permissions:
-    contents: read${o.reuseCi ? "\n    actions: read" : ""}
+    contents: read${reuseCi ? "\n    actions: read" : ""}
   steps:
     - name: Check out the change, without credentials
       uses: ${pinned(ACTIONS.checkout)}
@@ -182,7 +201,7 @@ ${refs.resolveBase ? `${indent(baseStep, 4)}\n` : ""}${indent(installStep(o, ref
 ${indent(toolchainSteps(o).filter((t) => !(o.fromSource && t.includes("setup-bun"))).map(onlyWhenBuilding).join("\n"), 4)}${o.ciSetup && o.ciSetup.length > 0 ? `
     # The project's own CI setup, from .gauntlet/ci.yml, so its builds build here as in its CI.
 ${indent(o.ciSetup.map((s) => `- ${JSON.stringify(withBuildCondition(s))}`).join("\n"), 4)}` : ""}
-${o.reuseCi && !o.protectOnly ? `    # What the project's own CI already ran isn't run again (ADR 0024): wait for its run on this commit and take its reports.
+${reuseCi && !o.protectOnly ? `    # What the project's own CI already ran isn't run again (ADR 0024): wait for its run on this commit and take its reports.
     - name: Take the project's CI reports for this commit
       id: ci
       if: \${{ ${BUILDING} }}
@@ -202,24 +221,25 @@ ${o.reuseCi && !o.protectOnly ? `    # What the project's own CI already ran isn
           done
         done
         echo "source=$(echo "$runs" | jq -r '.[0].html_url // ""')" >> "$GITHUB_OUTPUT"
-` : ""}    - name: Check the change with the base commit's policy
+` : ""}    - name: ${mutationOnly ? "Run the policy's advise mutation testing, beside the verdict" : "Check the change with the base commit's policy"}
       env:
         BASE: ${refs.base}
-        HEAD: ${refs.head}${o.reuseCi && !o.protectOnly ? `
+        HEAD: ${refs.head}${reuseCi && !o.protectOnly ? `
         CI_SOURCE: \${{ steps.ci.outputs.source }}` : ""}
       run: |
-        ${o.reuseCi && !o.protectOnly ? `reports=""; if [ -n "$(ls -A ci-reports 2>/dev/null)" ]; then reports="--ci-reports ci-reports --ci-source $CI_SOURCE"; fi
-        ` : ""}"$RUNNER_TEMP/gauntlet" check --policy-ref "$BASE" --head "$HEAD" --out gauntlet-out --no-record${o.protectOnly ? " --protect-only" : runsHoldouts(o) ? " --holdouts" : ""}${o.ciSetup !== undefined ? " --ci" : ""}${o.reuseCi && !o.protectOnly ? " $reports" : ""} || true
+        ${reuseCi && !o.protectOnly ? `reports=""; if [ -n "$(ls -A ci-reports 2>/dev/null)" ]; then reports="--ci-reports ci-reports --ci-source $CI_SOURCE"; fi
+        ` : ""}"$RUNNER_TEMP/gauntlet" check --policy-ref "$BASE" --head "$HEAD" --out ${out} --no-record${o.protectOnly ? " --protect-only" : runsHoldouts(o) && !mutationOnly ? " --holdouts" : ""}${o.ciSetup !== undefined ? " --ci" : ""}${refs.advisedMutation ? ` --advised-mutation ${refs.advisedMutation}` : ""}${reuseCi && !o.protectOnly ? " $reports" : ""} || true${mutationOnly ? "" : `
         # When the change edits .gauntlet/, prove the proposed policy still catches tampering.
         if ! git diff --quiet "$BASE" "$HEAD" -- .gauntlet; then
           "$RUNNER_TEMP/gauntlet" selftest --base "$HEAD" --json > gauntlet-out/selftest.json || true
-        fi
-    - name: Keep the evidence
+        fi`}
+    - name: Keep the ${mutationOnly ? "mutation report" : "evidence"}
       uses: ${pinned(ACTIONS.uploadArtifact)}
       with:
-        name: gauntlet-evidence
-        path: gauntlet-out
+        name: ${mutationOnly ? "gauntlet-mutation" : "gauntlet-evidence"}
+        path: ${out}
         retention-days: 30`
+}
 
 const statusJob = (o: GithubOptions, refs: { readonly base: string; readonly head: string; readonly pr: string; readonly record: string }) => `status:
   needs: [evidence]
@@ -409,6 +429,61 @@ const stackJob = `stack:
         gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$MERGED" > /dev/null
         echo "Deleted $MERGED."`
 
+/**
+ * Spec 0020 §6: the policy's mutation only advises, so it runs in a job of its own beside
+ * \`evidence\` and never holds the verdict. Org mode keeps it in \`evidence\`: it has no token to post a second check.
+ */
+export const splitsMutation = (o: GithubOptions): boolean => {
+  if (o.protectOnly || o.mode !== "repo") return false
+  const checks = o.ir.gates.flatMap((t) => t.checks)
+  // The scenarios check reads which tests killed which mutants (spec 0012), so it needs mutation in its own run.
+  if (checks.some((c) => c.kind === "scenarios")) return false
+  const mutation = checks.filter((c) => c.kind === "gate" && c.name === "mutation")
+  return mutation.length > 0 && mutation.every((c) => c.kind === "gate" && c.advise === true)
+}
+
+/**
+ * Posts the mutation job's survivors as a \`gauntlet mutation\` check of their own, neutral. The
+ * report comes from a job that ran the pull request's code, so it only ever becomes annotations:
+ * nothing in it reaches the verdict. No pull request code runs here.
+ */
+const mutationReportJob = (refs: { readonly head: string }) => `mutation-report:
+  needs: [mutation]
+  if: always() && needs.mutation.result == 'success'
+  runs-on: ubuntu-latest
+  timeout-minutes: 10
+  permissions:
+    actions: read
+    checks: write
+  env:
+    GH_TOKEN: \${{ github.token }}
+    HEAD: ${refs.head}
+  steps:
+    - name: Get the mutation report
+      uses: ${pinned(ACTIONS.downloadArtifact)}
+      with:
+        name: gauntlet-mutation
+        path: mutation
+    - name: Post the surviving mutants as annotations
+      run: |
+        report=mutation/gauntlet-report.json
+        [ -f "$report" ] || exit 0
+        jq --arg sha "$HEAD" '
+          ([.advice // [] | .[] | select(.check == "mutation")]) as $found
+          | ([.checks[] | select(.check == "mutation")][0] // {status: "not-executed"}) as $gate
+          | {
+              name: "gauntlet mutation", head_sha: $sha, status: "completed", conclusion: "neutral",
+              output: {
+                title: ("mutation: " + $gate.status + (if $gate.reason then " (" + $gate.reason + ")" else "" end))[:250],
+                summary: (if ($found | length) == 0 then "No advisory mutation findings." else ($found | map("- " + (if .path then .path + (if .line then ":" + (.line | tostring) else "" end) + ": " else "" end) + .message) | join("\\n")) end)[:60000],
+                annotations: ([$found[] | select(.path != null and .line != null) | {path, start_line: .line, end_line: .line, annotation_level: "warning", title: ("mutation: " + .ruleId), message}] | .[:50])
+              }
+            }' "$report" > check.json
+        # GitHub refuses the whole request over one annotation it can't place: post the check without them then.
+        post_check() { gh api -X POST "repos/$GITHUB_REPOSITORY/check-runs" --input - > /dev/null; }
+        post_check < check.json || jq '.output.annotations = []' check.json | post_check`
+
+
 /** Org mode: no write token on fork pull requests, so the verdict is the job's own result. */
 const verdictJob = (o: GithubOptions, refs: { readonly base: string; readonly head: string }) => `verdict:
   needs: [evidence]
@@ -444,6 +519,17 @@ ${indent(installStep(o, refs.base), 4)}
         # Review and owner tiers are enforced by the ruleset's code owner review; only blocking fails here.
         test "$(jq -r .conclusion gauntlet-out/status.json)" != failure`
 
+/** The evidence job of the single-repository workflow, and the mutation job beside it (spec 0020 §6). */
+const repoEvidence: EvidenceRefs = {
+  base: "${{ steps.base.outputs.sha }}",
+  head: "${{ github.event.pull_request.head.sha }}",
+  checkoutRef: "${{ github.event.pull_request.head.sha }}",
+  condition: "github.event_name == 'pull_request_target' && github.event.action != 'closed'",
+  resolveBase: true,
+  // The judge is built from the event's base commit, which GitHub names; the base it judges against may be newer.
+  judgeFrom: "${{ github.event.pull_request.base.sha }}",
+}
+
 /** b + d: the single-repository workflow. */
 export const repoWorkflow = (o: GithubOptions): string => `${header("Single-repository mode.")}
 
@@ -464,16 +550,12 @@ concurrency:
   cancel-in-progress: true
 
 ${o.fromSource ? "" : `env:\n  GAUNTLET_URL: "${o.downloadUrl}"\n\n`}jobs:
-${indent(evidenceJob(o, {
-  base: "${{ steps.base.outputs.sha }}",
-  head: "${{ github.event.pull_request.head.sha }}",
-  checkoutRef: "${{ github.event.pull_request.head.sha }}",
-  condition: "github.event_name == 'pull_request_target' && github.event.action != 'closed'",
-  resolveBase: true,
-  // The judge is built from the event's base commit, which GitHub names; the base it judges against may be newer.
-  judgeFrom: "${{ github.event.pull_request.base.sha }}",
-}), 2)}
+${indent(evidenceJob(o, { ...repoEvidence, ...(splitsMutation(o) ? { advisedMutation: "skip" as const } : {}) }), 2)}
+${splitsMutation(o) ? `
+${indent(evidenceJob(o, { ...repoEvidence, advisedMutation: "only" }), 2)}
 
+${indent(mutationReportJob({ head: "${{ github.event.pull_request.head.sha }}" }), 2)}
+` : ""}
 ${indent(statusJob(o, {
   base: "${{ github.event.pull_request.base.sha }}",
   head: "${{ github.event.pull_request.head.sha }}",

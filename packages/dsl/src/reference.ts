@@ -24,7 +24,8 @@ integrity {                          // only adds or tightens; defaults always a
 import semgrep { command "semgrep scan --sarif --output {sarif}" }
 gates {                              // advise: report the gate's findings (surviving mutants), block nothing
   fast      { build, lint ratchet, arch }
-  verify    { unit, coverage ratchet >= 90% on changed in zone money, mutation advise on changed }
+  // max 150 mutants: over it, advise samples the changed lines and a blocking gate isn't run; both suggest a split
+  verify    { unit, coverage ratchet >= 90% on changed in zone money, mutation advise on changed max 150 mutants }
   behaviour { scenarios }            // each scenario's tests ran, passed, can fail and catch a bug on the change; scenarios advise blocks nothing
 }
 on fail mutation { fix "Kill the surviving mutants listed in the report. Do not weaken tests." }

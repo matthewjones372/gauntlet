@@ -2,7 +2,7 @@ import {
   agentSummary, blockingSet, knownBlock, BASELINE_PATH, BaselineStore, renderBaselineSummary, summarizeBaseline, MUTATION_COST, MUTATION_FASTER, MUTATION_WHAT, runsMutation, unsupportedBuilds, unsupportedNote, type CheckRecord, BLOCKED_ACK, CheckFailed, checkWorkingTree, endAdoption, nothingToJudge, openAdoption, readAdoption, recordAdoptionEdit, renderAdoptionReport, startAdoption, coverage, templateDraft, explainPolicy, Git, githubStatus, judgeWithEvidence, recordedApproval, sameCodeCommits, GRANTS_REF, grantPathProblem, grantsBetween, recordGrant, Overrides, OVERRIDES_REF, PackRegistry, PolicySource, pullRequestBase, protectionFor,
   ProcessRunner, ownerDecision, protectOnlyIr, pushTarget, recordBaseline, recordBlocked, renderCorpus, runCorpus, renderAgentSummary, renderCoverage, renderDoctor, runDoctor, doctorRows, scanProject, renderJson, renderMarkdown, APPROVE_BOX, buildsOf, changeLeavesBehaviour, CI_CONFIG_PATH, type CiConfig, parseCiConfig, PrComment, Report, Review, StackInfo, runnerConfigFor, Teams,
   renderFlaky, renderPruneCode, renderPruneTests, renderSelftest, renderSelftestText, renderShadowSummary, runCheck, runSelftest, ShadowLog, summariseFlaky, summariseShadow, surveyCode, surveyTests,
-  formatScenarioDiagnostics, readScenarioFiles,
+  formatScenarioDiagnostics, readScenarioFiles, REPORT_FILES, RunRecord, timingLine, timingSection,
   attemptBranch, attemptNote, renderStopHookCorpus, runStopHookCorpus, clearAttempts, commonDir, exhaustedLine, fingerprintLines, fingerprintOf, listAttempts, nextAttempt, readAttempts, reportedBlocked, worktreeOf, writeAttempts,
 } from "@gauntlet/core"
 import { type Baseline, decodeBaseline, emptyBaseline, encodeBaseline, parseDetektBaseline, updateBaseline } from "@gauntlet/sarif"
@@ -118,13 +118,15 @@ const check = Command.make("check", {
   ci: Flag.Boolean("ci").pipe(Flag.withDefault(false), Flag.withDescription("run each build's tools as .gauntlet/ci.yml at the base says (Gauntlet's GitHub check)")),
   ciReports: Flag.optional(Flag.String("ci-reports").pipe(Flag.withDescription("the project's own CI reports for this commit, one folder per artifact holding paths from the repository's root: tests, coverage and the build are read from them instead of run again"))),
   ciSource: Flag.optional(Flag.String("ci-source").pipe(Flag.withDescription("where --ci-reports came from (a CI run's URL), for the proof"))),
-}, ({ repo, policyRef, base, head, out, json, noRecord, workingTree, protectOnly, holdouts, ci, ciReports, ciSource }) =>
+  advisedMutation: Flag.optional(Flag.Literals("advised-mutation", ["skip", "only"]).pipe(Flag.withDescription("for Gauntlet's GitHub workflow, which runs `advise` mutation in a job of its own: skip it here, or run only it"))),
+}, ({ repo, policyRef, base, head, out, json, noRecord, workingTree, protectOnly, holdouts, ci, ciReports, ciSource, advisedMutation }) =>
   Effect.gen(function*() {
     const output = yield* Output
     const root = yield* absolute(repo)
     const outDir = Option.isSome(out) ? yield* absolute(out.value) : `${yield* (yield* Git).gitDir(root)}/gauntlet/report`
     if (workingTree && protectOnly) return yield* fail("--working-tree and --protect-only can't be combined: protect-only judges a commit against its base.")
     if (workingTree && holdouts) return yield* fail("--working-tree and --holdouts can't be combined: holdouts run only against a commit, in CI.")
+    if (workingTree && Option.isSome(advisedMutation)) return yield* fail("--working-tree and --advised-mutation can't be combined: the mutation job judges a commit, in CI.")
     if (workingTree) {
       const r = yield* checkWorkingTree({ repo: root, outDir, gauntletVersion: GAUNTLET_VERSION, agent: agentFromEnv(process.env) })
       yield* output.out(json ? renderJson(r.report) : renderMarkdown(r.report))
@@ -143,8 +145,12 @@ const check = Command.make("check", {
       ...(holdouts ? { holdouts: true } : {}),
       ...(ci ? { ci: true } : {}),
       ...(Option.isSome(ciReports) ? { ciReports: { files: yield* readCiReports(ciReports.value), source: Option.getOrElse(ciSource, () => ciReports.value) } } : {}),
+      ...(Option.isSome(advisedMutation) ? { advisedMutation: advisedMutation.value } : {}),
     })
     yield* output.out(json ? renderJson(result.report) : renderMarkdown(result.report))
+    // Spec 0020 §7: where the time went, in CI logs too, where there's no terminal for the progress display.
+    const timings = result.run && timingLine(result.run.durationsMs)
+    if (timings !== undefined) yield* output.err(timings)
     yield* output.err(`Report written to ${outDir}`)
     yield* exitWith(result.exitCode)
   }).pipe(withGateProgress, Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("Run the policy's gates and integrity checks and decide the review tier."))
@@ -1557,6 +1563,7 @@ const decodeReviews = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Ar
 const decodeComments = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(PrComment)))
 const decodeStack = Schema.decodeUnknownOption(Schema.fromJsonString(StackInfo))
 const decodeTeams = Schema.decodeUnknownOption(Schema.fromJsonString(Teams))
+const decodeRunRecord = Schema.decodeUnknownOption(Schema.fromJsonString(RunRecord))
 
 const githubStatusCommand = Command.make("github-status", {
   repo: repoFlag,
@@ -1579,6 +1586,8 @@ const githubStatusCommand = Command.make("github-status", {
     const read = (p: string) => fs.readFileString(path.resolve(root, p)).pipe(Effect.option)
     const evidence = Option.flatMap(yield* read(args.evidence), decodeReport)
     if (Option.isNone(evidence)) yield* output.err("No readable evidence report: every check counts as not executed.")
+    // The evidence job's run record, beside its report: what each gate took there (spec 0020 §7). Shown, never judged.
+    const evidenceRun = Option.flatMap(yield* read(path.join(path.dirname(args.evidence), REPORT_FILES.run)), decodeRunRecord)
     const git = yield* Git
     const head = yield* git.revParse(root, args.head)
     const report = yield* judgeWithEvidence({
@@ -1644,6 +1653,13 @@ const githubStatusCommand = Command.make("github-status", {
         const note = `> [!NOTE]\n> ${status.notOwners.map((u) => `@${u}`).join(", ")} ticked the box or approved, but isn't an owner, so it doesn't count. An owner ticks the box below.`
         yield* fs.writeFileString(md, [first, "", note, ...rest].join("\n"))
       }
+    }
+    // The comment ends with what each gate took in the evidence job (spec 0020 §7): shown, never judged.
+    const timings = Option.match(evidenceRun, { onNone: () => "", onSome: (r) => timingSection(r.durationsMs) })
+    if (timings !== "") {
+      const md = path.resolve(root, args.out, "gauntlet-report.md")
+      const text = yield* fs.readFileString(md).pipe(Effect.option)
+      if (Option.isSome(text)) yield* fs.writeFileString(md, `${text.value.trimEnd()}\n\n${timings}`)
     }
     yield* output.out(`${status.conclusion}: ${status.title}. ${status.summary}`)
   }).pipe(Effect.catch((e) => fail(describeFailure(e))))).pipe(Command.withDescription("CI's trusted job: recompute what needs no execution, then decide the gauntlet check."))

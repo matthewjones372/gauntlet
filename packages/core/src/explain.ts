@@ -31,6 +31,7 @@ const describeCheck = (c: Check): string => {
       if (c.threshold) parts.push(`${c.threshold.op} ${c.threshold.value.value}${c.threshold.value.unit ?? ""}`)
       if (c.ratchet) parts.push("and no worse than the baseline")
       if (c.scope === "changed") parts.push("on changed code")
+      if (c.max !== undefined) parts.push(`(at most ${c.max} mutants a change)`)
       if (c.zone) parts.push(`in zone ${c.zone}`)
       if (c.advise) parts.push("(findings reported, never blocking)")
       if (c.zoneDefault) parts.push("(zone default)")
