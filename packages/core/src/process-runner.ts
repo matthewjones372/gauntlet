@@ -10,6 +10,8 @@ export interface RunRequest {
   /** Start from an empty environment instead of inheriting Gauntlet's own. */
   readonly isolatedEnv?: boolean
   readonly timeout?: Duration.Input
+  /** Written to the process's standard input: lists that would otherwise grow its argv past what the OS allows (E2BIG). */
+  readonly stdin?: string
 }
 
 export interface RunResult {
@@ -75,6 +77,7 @@ export const ProcessRunnerLive = Layer.effect(
               cwd: request.cwd,
               env: { ...request.env },
               extendEnv: !request.isolatedEnv,
+              ...(request.stdin !== undefined ? { stdin: Stream.make(new TextEncoder().encode(request.stdin)) } : {}),
             })
             const handle = yield* spawner.spawn(command)
             const [stdout, stderr, exitCode] = yield* Effect.all(
