@@ -95,8 +95,8 @@ export class Git extends Context.Service<Git, {
 
 const splitZ = (out: string) => out.split("\0").filter((s) => s !== "")
 
-const chunks = <A>(xs: ReadonlyArray<A>, size: number): A[][] =>
-  Array.from({ length: Math.ceil(xs.length / size) }, (_, i) => xs.slice(i * size, (i + 1) * size))
+/** Paths for `--pathspec-from-file=- --pathspec-file-nul`: on stdin, so argv stays the same size however many there are. */
+const pathspecs = (paths: ReadonlyArray<string>) => paths.map((p) => `${p}\0`).join("")
 
 // Each snapshot gets its own temporary index, so concurrent snapshots never share one.
 let snapshots = 0
@@ -108,10 +108,10 @@ export const GitLive = Layer.effect(
     // A fixed, minimal environment so user config can't change what git prints.
     // Literal pathspecs so a file named ":(glob)**" is just a file name.
     const env = { GIT_CONFIG_NOSYSTEM: "1", GIT_TERMINAL_PROMPT: "0", GIT_LITERAL_PATHSPECS: "1", LC_ALL: "C" }
-    const raw = (repo: string, args: ReadonlyArray<string>) =>
-      runner.run({ command: "git", args: ["-c", "core.quotepath=off", ...args], cwd: repo, env })
-    const git = (repo: string, args: ReadonlyArray<string>) =>
-      raw(repo, args).pipe(
+    const raw = (repo: string, args: ReadonlyArray<string>, stdin?: string) =>
+      runner.run({ command: "git", args: ["-c", "core.quotepath=off", ...args], cwd: repo, env, ...(stdin !== undefined ? { stdin } : {}) })
+    const git = (repo: string, args: ReadonlyArray<string>, stdin?: string) =>
+      raw(repo, args, stdin).pipe(
         Effect.flatMap((r) => r.exitCode === 0 ? Effect.succeed(r.stdout) : Effect.fail(new GitError({ args, exitCode: r.exitCode, stderr: r.stderr.trim() }))),
       )
     // Worktrees are added and removed one at a time: removing the last one deletes .git/worktrees,
@@ -168,9 +168,10 @@ export const GitLive = Layer.effect(
       // Notes are Gauntlet's records, committed with its own identity so a machine without one (a CI runner) can still record.
       appendNote: (repo, ref, commit, line) =>
         Effect.gen(function*() {
-          const args = ["notes", `--ref=${ref}`, "append", "-m", line, commit]
+          // The line goes on stdin: a record can be larger than one argument may be (128 KiB on Linux).
+          const args = ["notes", `--ref=${ref}`, "append", "-F", "-", commit]
           const identity = { GIT_AUTHOR_NAME: "gauntlet", GIT_AUTHOR_EMAIL: "gauntlet@gauntlet.invalid", GIT_COMMITTER_NAME: "gauntlet", GIT_COMMITTER_EMAIL: "gauntlet@gauntlet.invalid" }
-          const r = yield* runner.run({ command: "git", args: ["-c", "core.quotepath=off", ...args], cwd: repo, env: { ...env, ...identity } })
+          const r = yield* runner.run({ command: "git", args: ["-c", "core.quotepath=off", ...args], cwd: repo, env: { ...env, ...identity }, stdin: line })
           if (r.exitCode !== 0) return yield* new GitError({ args, exitCode: r.exitCode, stderr: r.stderr.trim() })
         }),
       isAncestor: (repo, a, b) => raw(repo, ["merge-base", "--is-ancestor", a, b]).pipe(Effect.map((r) => r.exitCode === 0)),
@@ -216,9 +217,9 @@ export const GitLive = Layer.effect(
       lastChange: (repo, from, to, path) =>
         git(repo, ["log", "-n", "1", "--format=%H", `${from}..${to}`, "--", path]).pipe(Effect.map((out) => (out.trim() === "" ? Option.none<string>() : Option.some(out.trim())))),
       restore: (worktree, ref, paths) =>
-        Effect.forEach(chunks(paths, 200), (batch) => git(worktree, ["checkout", ref, "--", ...batch]), { discard: true }),
+        paths.length === 0 ? Effect.void : git(worktree, ["checkout", ref, "--pathspec-from-file=-", "--pathspec-file-nul"], pathspecs(paths)).pipe(Effect.asVoid),
       remove: (worktree, paths) =>
-        Effect.forEach(chunks(paths, 200), (batch) => git(worktree, ["rm", "-r", "-q", "-f", "--ignore-unmatch", "--", ...batch]), { discard: true }),
+        paths.length === 0 ? Effect.void : git(worktree, ["rm", "-r", "-q", "-f", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul"], pathspecs(paths)).pipe(Effect.asVoid),
     }
   }),
 )
