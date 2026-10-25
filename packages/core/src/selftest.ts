@@ -55,15 +55,15 @@ export interface TamperContext {
 }
 
 /**
- * The folder of the shallowest file named one of `markers` ("" at the root, else "dir/"): where a
- * fixture puts the runner config a build reads, since a build in a folder of its own
- * (`use scala in "bank-checks"`) never reads one at the repository's root.
+ * The folder ("" at the root, else "dir/") of a pack's shallowest build in the policy
+ * (`use scala in "bank-checks"`): where a fixture puts runner config, since a pack runs and reads
+ * its config there. A policy that names no folders runs every pack at the root.
  */
-export const buildRootOf = (files: ReadonlyArray<string>, markers: ReadonlyArray<string>): string =>
-  files
-    .filter((p) => markers.includes(p.slice(p.lastIndexOf("/") + 1)))
-    .map((p) => p.slice(0, p.lastIndexOf("/") + 1))
-    .sort((a, b) => a.split("/").length - b.split("/").length || (a < b ? -1 : 1))[0] ?? ""
+export const buildRootOf = (ir: Pick<PolicyIR, "builds"> | undefined, pack: string): string => {
+  const dirs = (ir?.builds ?? []).filter((b) => b.pack === pack).map((b) => b.dir)
+  const dir = dirs.sort((a, b) => a.split("/").length - b.split("/").length || (a < b ? -1 : 1))[0] ?? "."
+  return dir === "." ? "" : `${dir}/`
+}
 
 export interface FixtureResult {
   readonly fixture: string
