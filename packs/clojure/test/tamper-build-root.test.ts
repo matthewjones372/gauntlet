@@ -10,11 +10,11 @@ const setupPath = async (builds: PolicyIR["builds"], files: Record<string, strin
 }
 
 describe("the test setup fixture", () => {
-  test("puts a kaocha tests.edn in the pack's build folder in the policy", async () => {
+  test("puts a kaocha tests.edn in the build's folder when the build has a folder of its own", async () => {
     expect(await setupPath([{ pack: "jvm", dir: "jobs" }, { pack: "clojure", dir: "svc" }], { "jobs/build.gradle.kts": "", "svc/deps.edn": "{}" })).toBe("svc/tests.edn")
   })
 
-  test("puts a kaocha tests.edn at the root when the policy runs the pack there, wherever the build's files are", async () => {
+  test("puts a kaocha tests.edn at the root when the build is at the root", async () => {
     expect(await setupPath(undefined, { "web/deps.edn": "{}" })).toBe("tests.edn")
   })
 })

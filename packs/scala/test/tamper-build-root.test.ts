@@ -9,12 +9,12 @@ const setupPath = async (builds: PolicyIR["builds"], files: Record<string, strin
   return out.find((t) => t.fixture === "edited-test-setup")!.edits[0]!.path
 }
 
-describe("the test setup fixture", () => {
-  test("puts an sbt plugin in the pack's build folder in the policy", async () => {
+describe("the sbt plugin fixture", () => {
+  test("goes in the project/ of an sbt build in a folder of its own", async () => {
     expect(await setupPath([{ pack: "jvm", dir: "jobs" }, { pack: "scala", dir: "svc" }], { "jobs/build.gradle.kts": "", "svc/build.sbt": "{}" })).toBe("svc/project/GauntletSelftest.scala")
   })
 
-  test("puts an sbt plugin at the root when the policy runs the pack there, wherever the build's files are", async () => {
+  test("goes in the root's project/ when the build is at the root", async () => {
     expect(await setupPath(undefined, { "web/build.sbt": "{}" })).toBe("project/GauntletSelftest.scala")
   })
 })
