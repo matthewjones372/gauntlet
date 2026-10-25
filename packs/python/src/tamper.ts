@@ -1,4 +1,4 @@
-import type { FileEdit, TamperContext, Tampering } from "@gauntlet/core"
+import { buildRootOf, type FileEdit, type TamperContext, type Tampering } from "@gauntlet/core"
 import { Effect, Option } from "effect"
 import { testFunctions } from "./detectors.ts"
 import { calleeText, line, nameOf, type Node, ofType, parsePython } from "./syntax.ts"
@@ -64,6 +64,6 @@ export const tamper = (ctx: TamperContext) =>
       break
     }
 
-    edit("edited-test-setup", "the change adds a conftest.py that collects no tests", [{ path: "conftest.py", content: `collect_ignore_glob = ["*"]\n` }])
+    edit("edited-test-setup", "the change adds a conftest.py that collects no tests", [{ path: `${buildRootOf(ctx.files, ["pyproject.toml", "setup.py", "setup.cfg", "pytest.ini", "tox.ini"])}conftest.py`, content: `collect_ignore_glob = ["*"]\n` }])
     return out
   })

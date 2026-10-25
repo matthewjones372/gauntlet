@@ -1,4 +1,4 @@
-import type { FileEdit, TamperContext, Tampering } from "@gauntlet/core"
+import { buildRootOf, type FileEdit, type TamperContext, type Tampering } from "@gauntlet/core"
 import { Effect, Option } from "effect"
 import { testDefinitions } from "./detectors.ts"
 import { args, calleeName, line, nameOf, type Node, ofType, operatorOf, parseScala } from "./syntax.ts"
@@ -64,9 +64,9 @@ export const tamper = (ctx: TamperContext) =>
       break
     }
 
-    // Test setup: an sbt plugin in project/ that filters out every test.
+    // Test setup: an sbt plugin in the build's project/ that filters out every test.
     edit("edited-test-setup", "the change adds an sbt plugin that runs no tests", [{
-      path: "project/GauntletSelftest.scala",
+      path: `${buildRootOf(ctx.files, ["build.sbt"])}project/GauntletSelftest.scala`,
       content: "import sbt._\nimport sbt.Keys._\n\nobject GauntletSelftest extends AutoPlugin {\n  override def trigger = allRequirements\n  override def projectSettings = Seq(Test / testOptions += Tests.Filter(_ => false))\n}\n",
     }])
     return out

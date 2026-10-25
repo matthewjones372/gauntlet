@@ -54,6 +54,17 @@ export interface TamperContext {
   readonly isTestPath: (path: string) => boolean
 }
 
+/**
+ * The folder of the shallowest file named one of `markers` ("" at the root, else "dir/"): where a
+ * fixture puts the runner config a build reads, since a build in a folder of its own
+ * (`use scala in "bank-checks"`) never reads one at the repository's root.
+ */
+export const buildRootOf = (files: ReadonlyArray<string>, markers: ReadonlyArray<string>): string =>
+  files
+    .filter((p) => markers.includes(p.slice(p.lastIndexOf("/") + 1)))
+    .map((p) => p.slice(0, p.lastIndexOf("/") + 1))
+    .sort((a, b) => a.split("/").length - b.split("/").length || (a < b ? -1 : 1))[0] ?? ""
+
 export interface FixtureResult {
   readonly fixture: string
   readonly description: string

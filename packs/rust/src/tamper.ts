@@ -1,4 +1,4 @@
-import type { FileEdit, TamperContext, Tampering } from "@gauntlet/core"
+import { buildRootOf, type FileEdit, type TamperContext, type Tampering } from "@gauntlet/core"
 import { Effect, Option } from "effect"
 import { testFunctions } from "./detectors.ts"
 import { line, macroName, nameOf, type Node, ofType, parseRust } from "./syntax.ts"
@@ -74,7 +74,7 @@ export const tamper = (ctx: TamperContext) =>
     }
 
     // Test setup: a nextest profile that retries failures until they pass.
-    edit("edited-test-setup", "the change adds a nextest config that retries failing tests", [{ path: ".config/nextest.toml", content: "[profile.default]\nretries = 5\n" }])
+    edit("edited-test-setup", "the change adds a nextest config that retries failing tests", [{ path: `${buildRootOf(ctx.files, ["Cargo.toml"])}.config/nextest.toml`, content: "[profile.default]\nretries = 5\n" }])
     return out
   })
 
