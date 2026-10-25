@@ -1,4 +1,4 @@
-import type { FileEdit, TamperContext, Tampering } from "@gauntlet/core"
+import { buildRootOf, type FileEdit, type TamperContext, type Tampering } from "@gauntlet/core"
 import { Effect, Option } from "effect"
 import { testFunctions } from "./detectors.ts"
 import { args, calleeText, line, type Node, ofType, parseTs } from "./syntax.ts"
@@ -70,11 +70,13 @@ export const tamper = (ctx: TamperContext) =>
     }
 
     // Test setup that runs nothing; it is runner config, so it should be put back.
-    const pkg = Option.getOrElse(yield* ctx.read("package.json"), () => "")
-    const vitestConfig = ctx.files.find((f) => /^vitest\.config\.[cm]?[jt]s$/.test(f))
-    const jestConfig = ctx.files.find((f) => /^jest\.config\.[cm]?[jt]s$/.test(f))
+    const root = buildRootOf(ctx.files, ["package.json"])
+    const pkg = Option.getOrElse(yield* ctx.read(`${root}package.json`), () => "")
+    const atRoot = (f: string, name: RegExp) => f.startsWith(root) && name.test(f.slice(root.length))
+    const vitestConfig = ctx.files.find((f) => atRoot(f, /^vitest\.config\.[cm]?[jt]s$/))
+    const jestConfig = ctx.files.find((f) => atRoot(f, /^jest\.config\.[cm]?[jt]s$/))
     if (vitestConfig) edit("edited-test-setup", `the change points ${vitestConfig} at no tests`, [{ path: vitestConfig, content: `export default { test: { include: ["gauntlet-selftest-nothing/**"] } }\n` }])
     else if (jestConfig) edit("edited-test-setup", `the change points ${jestConfig} at no tests`, [{ path: jestConfig, content: `module.exports = { testMatch: ["<rootDir>/gauntlet-selftest-nothing/**"] }\n` }])
-    else if (!pkg.includes("\"vitest\"") && !pkg.includes("\"jest\"")) edit("edited-test-setup", "the change points bun test at no tests", [{ path: "bunfig.toml", content: `[test]\nroot = "gauntlet-selftest-nothing"\n` }])
+    else if (!pkg.includes("\"vitest\"") && !pkg.includes("\"jest\"")) edit("edited-test-setup", "the change points bun test at no tests", [{ path: `${root}bunfig.toml`, content: `[test]\nroot = "gauntlet-selftest-nothing"\n` }])
     return out
   })
