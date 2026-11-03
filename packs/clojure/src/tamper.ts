@@ -63,7 +63,7 @@ export const tamper = (ctx: TamperContext) =>
 
     // Test setup: a kaocha configuration that points the suite at a directory with no tests.
     edit("edited-test-setup", "the change points kaocha at a directory with no tests", [{
-      path: `${buildRootOf(ctx.files, ["deps.edn", "project.clj"])}tests.edn`,
+      path: `${buildRootOf(ctx.ir, "clojure")}tests.edn`,
       content: "#kaocha/v1\n{:tests [{:id :unit :test-paths [\"gauntlet-selftest-none\"]}]}\n",
     }])
     return out

@@ -2,19 +2,19 @@ import { describe, expect, test } from "bun:test"
 import { buildRootOf } from "../src/selftest.ts"
 
 describe("the folder a fixture's runner config goes in", () => {
-  test("is the root when a marker is there, whatever builds sit below it", () => {
-    expect(buildRootOf(["core/Cargo.toml", "Cargo.toml", "src/lib.rs"], ["Cargo.toml"])).toBe("")
+  test("is the pack's build folder in the policy", () => {
+    expect(buildRootOf({ builds: [{ pack: "jvm", dir: "lark-bank" }, { pack: "scala", dir: "bank-checks" }] }, "scala")).toBe("bank-checks/")
   })
 
-  test("is the shallowest folder with a marker when the build has a folder of its own", () => {
-    expect(buildRootOf(["lark-bank/build.gradle.kts", "bank-checks/policy/build.sbt", "bank-checks/build.sbt"], ["build.sbt"])).toBe("bank-checks/")
+  test("is the shallowest of the pack's build folders", () => {
+    expect(buildRootOf({ builds: [{ pack: "jvm", dir: "lark-bank/events" }, { pack: "jvm", dir: "lark-bank" }] }, "jvm")).toBe("lark-bank/")
   })
 
-  test("takes any of the markers, and only whole file names", () => {
-    expect(buildRootOf(["svc/setup.cfg", "docs/not-pyproject.toml"], ["pyproject.toml", "setup.cfg"])).toBe("svc/")
+  test("is the root when the policy runs the pack at the root", () => {
+    expect(buildRootOf({ builds: [{ pack: "typescript", dir: "." }] }, "typescript")).toBe("")
   })
 
-  test("is the root when nothing is marked", () => {
-    expect(buildRootOf(["src/main.py"], ["pyproject.toml"])).toBe("")
+  test("is the root when the policy names no folders", () => {
+    expect(buildRootOf({}, "typescript")).toBe("")
   })
 })

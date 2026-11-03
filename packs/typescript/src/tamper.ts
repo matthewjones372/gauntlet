@@ -70,7 +70,7 @@ export const tamper = (ctx: TamperContext) =>
     }
 
     // Test setup that runs nothing; it is runner config, so it should be put back.
-    const root = buildRootOf(ctx.files, ["package.json"])
+    const root = buildRootOf(ctx.ir, "typescript")
     const pkg = Option.getOrElse(yield* ctx.read(`${root}package.json`), () => "")
     const atRoot = (f: string, name: RegExp) => f.startsWith(root) && name.test(f.slice(root.length))
     const vitestConfig = ctx.files.find((f) => atRoot(f, /^vitest\.config\.[cm]?[jt]s$/))

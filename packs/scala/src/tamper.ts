@@ -66,7 +66,7 @@ export const tamper = (ctx: TamperContext) =>
 
     // Test setup: an sbt plugin in the build's project/ that filters out every test.
     edit("edited-test-setup", "the change adds an sbt plugin that runs no tests", [{
-      path: `${buildRootOf(ctx.files, ["build.sbt"])}project/GauntletSelftest.scala`,
+      path: `${buildRootOf(ctx.ir, "scala")}project/GauntletSelftest.scala`,
       content: "import sbt._\nimport sbt.Keys._\n\nobject GauntletSelftest extends AutoPlugin {\n  override def trigger = allRequirements\n  override def projectSettings = Seq(Test / testOptions += Tests.Filter(_ => false))\n}\n",
     }])
     return out
